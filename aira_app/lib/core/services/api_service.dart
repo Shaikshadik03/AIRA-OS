@@ -242,6 +242,56 @@ class ApiService {
     return response.data;
   }
 
+  // ──────────────────── Phase 5 Voice, Creative & Business CRM ────────────────────
+
+  /// Transcribe speech audio file.
+  Future<String> transcribeAudio(List<int> fileBytes, String filename) async {
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(fileBytes, filename: filename),
+    });
+    final response = await _dio.post('/voice/stt', data: formData);
+    return response.data['transcript'] ?? '';
+  }
+
+  /// Synthesize text into voice bytes.
+  Future<List<int>> textToSpeech(String text) async {
+    final response = await _dio.post(
+      '/voice/tts',
+      data: {'text': text},
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return response.data as List<int>;
+  }
+
+  /// Generate AI image prompt.
+  Future<Map<String, dynamic>> generateImage(String prompt) async {
+    final response = await _dio.post('/creative/generate-image', data: {'prompt': prompt});
+    return response.data;
+  }
+
+  /// List CRM business clients.
+  Future<List<Map<String, dynamic>>> listClients() async {
+    final response = await _dio.get('/business/clients');
+    return List<Map<String, dynamic>>.from(response.data);
+  }
+
+  /// Add a business client contact.
+  Future<Map<String, dynamic>> createClient(Map<String, dynamic> clientData) async {
+    final response = await _dio.post('/business/clients', data: clientData);
+    return response.data;
+  }
+
+  /// Delete a business client contact.
+  Future<void> deleteClient(String clientId) async {
+    await _dio.delete('/business/clients/$clientId');
+  }
+
+  /// Compile print invoices.
+  Future<Map<String, dynamic>> generateInvoice(Map<String, dynamic> invoiceData) async {
+    final response = await _dio.post('/business/invoices', data: invoiceData);
+    return response.data;
+  }
+
   // ──────────────────── Health ────────────────────
 
   /// Check backend health.

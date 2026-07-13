@@ -13,6 +13,9 @@ import 'package:aira_app/features/nav_shell/presentation/screens/main_shell_scre
 import 'package:aira_app/features/memory/presentation/screens/memory_screen.dart';
 import 'package:aira_app/features/study/presentation/screens/study_screen.dart';
 import 'package:aira_app/features/coding/presentation/screens/coding_screen.dart';
+import 'package:aira_app/features/voice/presentation/screens/voice_assistant_panel.dart';
+import 'package:aira_app/features/creative/presentation/screens/creative_screen.dart';
+import 'package:aira_app/features/business/presentation/screens/business_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -83,6 +86,51 @@ final GoRouter appRouter = GoRouter(
             SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/creative',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const CreativeScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/business',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const BusinessScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/voice',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const VoiceAssistantPanel(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
             end: Offset.zero,
           ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
           child: child,

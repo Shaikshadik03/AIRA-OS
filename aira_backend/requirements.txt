@@ -9,3 +9,4 @@ python-jose[cryptography]==3.4.0
 groq==0.25.0
 python-multipart==0.0.20
 sse-starlette==2.3.6
+gTTS==2.5.1
