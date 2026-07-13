@@ -11,6 +11,8 @@ import 'package:aira_app/features/finance/presentation/screens/finance_screen.da
 import 'package:aira_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:aira_app/features/nav_shell/presentation/screens/main_shell_screen.dart';
 import 'package:aira_app/features/memory/presentation/screens/memory_screen.dart';
+import 'package:aira_app/features/study/presentation/screens/study_screen.dart';
+import 'package:aira_app/features/coding/presentation/screens/coding_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -51,6 +53,36 @@ final GoRouter appRouter = GoRouter(
             SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/study',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const StudyScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/coding',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const CodingScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
             end: Offset.zero,
           ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
           child: child,

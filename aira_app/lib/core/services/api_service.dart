@@ -198,6 +198,50 @@ class ApiService {
     return List<Map<String, dynamic>>.from(response.data);
   }
 
+  // ──────────────────── Intelligence (Phase 4) ────────────────────
+
+  /// Perform a web search query.
+  Future<Map<String, dynamic>> searchWeb(String query) async {
+    final response = await _dio.post('/agents/web-search', data: {'query': query});
+    return response.data;
+  }
+
+  /// Draft an email.
+  Future<Map<String, dynamic>> draftEmail(String prompt) async {
+    final response = await _dio.post('/agents/email-draft', data: {'prompt': prompt});
+    return response.data;
+  }
+
+  /// Generate notes.
+  Future<Map<String, dynamic>> generateStudyNotes(String topic) async {
+    final response = await _dio.post('/study/generate-notes', data: {'topic': topic});
+    return response.data;
+  }
+
+  /// Generate MCQs quiz.
+  Future<List<Map<String, dynamic>>> generateQuiz(String topic) async {
+    final response = await _dio.post('/study/generate-quiz', data: {'topic': topic});
+    return List<Map<String, dynamic>>.from(response.data);
+  }
+
+  /// Debug code snippet.
+  Future<Map<String, dynamic>> debugCode(String code, String language) async {
+    final response = await _dio.post('/coding/debug', data: {
+      'code': code,
+      'language': language,
+    });
+    return response.data;
+  }
+
+  /// Explain code.
+  Future<Map<String, dynamic>> explainCode(String code, String language) async {
+    final response = await _dio.post('/coding/explain', data: {
+      'code': code,
+      'language': language,
+    });
+    return response.data;
+  }
+
   // ──────────────────── Health ────────────────────
 
   /// Check backend health.
