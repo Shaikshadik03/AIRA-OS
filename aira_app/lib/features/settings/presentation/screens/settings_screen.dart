@@ -75,6 +75,8 @@ class SettingsScreen extends ConsumerWidget {
 
           const SizedBox(height: 20),
           _sectionTitle('Privacy'),
+          _settingsTile(Icons.psychology_outlined, "AIRA's Memory", null,
+              onTap: () => context.go('/settings/memory')),
           _settingsTile(Icons.shield_outlined, 'Privacy & Security', null),
           _settingsTile(Icons.storage_outlined, 'Data & Storage', null),
 
@@ -127,7 +129,8 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _settingsTile(IconData icon, String title, String? trailing) {
+  Widget _settingsTile(IconData icon, String title, String? trailing,
+      {VoidCallback? onTap}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
       child: ListTile(
@@ -152,7 +155,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ],
         ),
-        onTap: () {},
+        onTap: onTap ?? () {},
       ),
     );
   }
