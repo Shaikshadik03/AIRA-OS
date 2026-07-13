@@ -51,10 +51,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
-      if (_isSignUp) {
-        context.go('/profile-setup');
-      } else {
-        context.go('/dashboard');
+      context.go('/chat');
+    } else if (mounted) {
+      // Show the real error from Supabase
+      final error = ref.read(authProvider.notifier).errorMessage;
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: AiraColors.error,
+          ),
+        );
       }
     }
   }

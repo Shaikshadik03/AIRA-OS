@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 
@@ -15,11 +16,23 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 2800), () {
-      if (mounted) {
-        context.go('/onboarding');
-      }
-    });
+    _checkAuthAndNavigate();
+  }
+
+  Future<void> _checkAuthAndNavigate() async {
+    // Wait for splash animation
+    await Future.delayed(const Duration(milliseconds: 2500));
+    if (!mounted) return;
+
+    // Check if user has an existing session
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null) {
+      // User is already logged in — go straight to chat
+      context.go('/chat');
+    } else {
+      // No session — show login
+      context.go('/login');
+    }
   }
 
   @override
@@ -52,44 +65,25 @@ class _SplashScreenState extends State<SplashScreen> {
                     'AIRA',
                     style: AiraTypography.h1.copyWith(
                       fontSize: 64,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w900,
                       color: Colors.white,
-                      letterSpacing: 6,
                     ),
                   ),
                 ),
               ),
-            )
-                .animate()
-                .fadeIn(duration: 800.ms, curve: Curves.easeOut)
-                .scale(
+            ).animate().fadeIn(duration: 600.ms).scale(
                   begin: const Offset(0.8, 0.8),
                   end: const Offset(1.0, 1.0),
-                  duration: 800.ms,
-                  curve: Curves.easeOut,
+                  duration: 600.ms,
+                  curve: Curves.easeOutBack,
                 ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Text(
-              'Your Personal AI OS',
+              'Your Personal AI Assistant',
               style: AiraTypography.bodyMedium.copyWith(
                 color: AiraColors.textSecondary,
-                letterSpacing: 2,
               ),
-            )
-                .animate(delay: 600.ms)
-                .fadeIn(duration: 600.ms)
-                .slideY(begin: 0.3, end: 0, duration: 600.ms),
-            const SizedBox(height: 48),
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation(
-                  AiraColors.electricCyan.withValues(alpha: 0.6),
-                ),
-              ),
-            ).animate(delay: 1200.ms).fadeIn(duration: 400.ms),
+            ).animate().fadeIn(delay: 400.ms, duration: 500.ms),
           ],
         ),
       ),

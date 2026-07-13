@@ -4,12 +4,11 @@ import 'package:aira_app/features/auth/presentation/screens/splash_screen.dart';
 import 'package:aira_app/features/auth/presentation/screens/onboarding_screen.dart';
 import 'package:aira_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:aira_app/features/auth/presentation/screens/profile_setup_screen.dart';
-import 'package:aira_app/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:aira_app/features/chat/presentation/screens/chat_screen.dart';
+import 'package:aira_app/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:aira_app/features/planner/presentation/screens/planner_screen.dart';
 import 'package:aira_app/features/finance/presentation/screens/finance_screen.dart';
 import 'package:aira_app/features/settings/presentation/screens/settings_screen.dart';
-import 'package:aira_app/features/nav_shell/presentation/screens/main_shell_screen.dart';
 import 'package:aira_app/features/memory/presentation/screens/memory_screen.dart';
 import 'package:aira_app/features/study/presentation/screens/study_screen.dart';
 import 'package:aira_app/features/coding/presentation/screens/coding_screen.dart';
@@ -53,11 +52,78 @@ final GoRouter appRouter = GoRouter(
         key: state.pageKey,
         child: const ProfileSetupScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    ),
+    // ──── Main app: Chat is home ────
+    GoRoute(
+      path: '/chat',
+      pageBuilder: (context, state) => const NoTransitionPage(
+        child: ChatScreen(),
+      ),
+    ),
+    // ──── Tool screens (accessed from drawer) ────
+    GoRoute(
+      path: '/dashboard',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const DashboardScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 1),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/planner',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const PlannerScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/finance',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const FinanceScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/settings',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const SettingsScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/memory',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const MemoryScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
           child: child,
         ),
       ),
@@ -69,10 +135,8 @@ final GoRouter appRouter = GoRouter(
         child: const StudyScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
           child: child,
         ),
       ),
@@ -84,10 +148,8 @@ final GoRouter appRouter = GoRouter(
         child: const CodingScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
           child: child,
         ),
       ),
@@ -99,10 +161,8 @@ final GoRouter appRouter = GoRouter(
         child: const CreativeScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
           child: child,
         ),
       ),
@@ -114,10 +174,8 @@ final GoRouter appRouter = GoRouter(
         child: const BusinessScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
           child: child,
         ),
       ),
@@ -129,89 +187,11 @@ final GoRouter appRouter = GoRouter(
         child: const VoiceAssistantPanel(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 1),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
           child: child,
         ),
       ),
-    ),
-    StatefulShellRoute.indexedStack(
-      builder: (context, state, navigationShell) {
-        return MainShellScreen(navigationShell: navigationShell);
-      },
-      branches: [
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/dashboard',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: DashboardScreen(),
-              ),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/chat',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: ChatScreen(),
-              ),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/planner',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: PlannerScreen(),
-              ),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/finance',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: FinanceScreen(),
-              ),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/settings',
-              pageBuilder: (context, state) => const NoTransitionPage(
-                child: SettingsScreen(),
-              ),
-              routes: [
-                GoRoute(
-                  path: 'memory',
-                  pageBuilder: (context, state) => CustomTransitionPage(
-                    key: state.pageKey,
-                    child: const MemoryScreen(),
-                    transitionsBuilder:
-                        (context, animation, secondaryAnimation, child) =>
-                            SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(1, 0),
-                        end: Offset.zero,
-                      ).animate(CurvedAnimation(
-                          parent: animation, curve: Curves.easeOut)),
-                      child: child,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ],
     ),
   ],
 );
