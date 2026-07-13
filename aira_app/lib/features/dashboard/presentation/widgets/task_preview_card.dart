@@ -1,62 +1,77 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/core/widgets/glassmorphic_container.dart';
+import 'package:aira_app/features/planner/presentation/providers/planner_provider.dart';
+import 'package:intl/intl.dart';
 
-class TaskPreviewCard extends StatefulWidget {
+class TaskPreviewCard extends ConsumerWidget {
   const TaskPreviewCard({super.key});
 
   @override
-  State<TaskPreviewCard> createState() => _TaskPreviewCardState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final plannerState = ref.watch(plannerProvider);
+    
+    // Grab only the top 3 pending tasks for dashboard preview
+    final pendingTasks = plannerState.tasks.where((t) => !t.isCompleted).take(3).toList();
 
-class _TaskPreviewCardState extends State<TaskPreviewCard> {
-  final List<_TaskItem> _tasks = [
-    _TaskItem(
-      title: 'Review Flutter architecture docs',
-      time: '9:00 AM',
-      priority: AiraColors.warning,
-      isCompleted: true,
-    ),
-    _TaskItem(
-      title: 'Build AIRA dashboard UI',
-      time: '11:00 AM',
-      priority: AiraColors.error,
-      isCompleted: false,
-    ),
-    _TaskItem(
-      title: 'Set up Supabase database',
-      time: '2:00 PM',
-      priority: AiraColors.electricCyan,
-      isCompleted: false,
-    ),
-  ];
+    if (plannerState.isLoading) {
+      return const GlassmorphicContainer(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator(color: AiraColors.electricCyan)),
+      );
+    }
 
-  @override
-  Widget build(BuildContext context) {
+    if (pendingTasks.isEmpty) {
+      return GlassmorphicContainer(
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.check_circle_outline_rounded, color: AiraColors.success.withValues(alpha: 0.6), size: 32),
+              const SizedBox(height: 8),
+              Text(
+                'All tasks completed!',
+                style: AiraTypography.bodyMedium.copyWith(color: AiraColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return GlassmorphicContainer(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: List.generate(
-          _tasks.length,
+          pendingTasks.length,
           (index) {
-            final task = _tasks[index];
+            final task = pendingTasks[index];
+            Color priorityColor;
+            switch (task.priority) {
+              case 'urgent':
+                priorityColor = AiraColors.error;
+                break;
+              case 'high':
+                priorityColor = AiraColors.warning;
+                break;
+              case 'medium':
+                priorityColor = AiraColors.neonBlue;
+                break;
+              default:
+                priorityColor = AiraColors.success;
+            }
+
             return Padding(
               padding: EdgeInsets.only(
-                bottom: index < _tasks.length - 1 ? 12 : 0,
+                bottom: index < pendingTasks.length - 1 ? 12 : 0,
               ),
               child: Row(
                 children: [
                   GestureDetector(
                     onTap: () {
-                      setState(() {
-                        _tasks[index] = _TaskItem(
-                          title: task.title,
-                          time: task.time,
-                          priority: task.priority,
-                          isCompleted: !task.isCompleted,
-                        );
-                      });
+                      ref.read(plannerProvider.notifier).toggleTask(task.id, true);
                     },
                     child: Container(
                       width: 22,
@@ -64,22 +79,12 @@ class _TaskPreviewCardState extends State<TaskPreviewCard> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: task.isCompleted
-                              ? AiraColors.electricCyan
-                              : AiraColors.textMuted,
+                          color: AiraColors.textMuted,
                           width: 1.5,
                         ),
-                        color: task.isCompleted
-                            ? AiraColors.electricCyan.withValues(alpha: 0.15)
-                            : Colors.transparent,
+                        color: Colors.transparent,
                       ),
-                      child: task.isCompleted
-                          ? const Icon(
-                              Icons.check_rounded,
-                              size: 14,
-                              color: AiraColors.electricCyan,
-                            )
-                          : null,
+                      child: null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -89,23 +94,20 @@ class _TaskPreviewCardState extends State<TaskPreviewCard> {
                       children: [
                         Text(
                           task.title,
-                          style: AiraTypography.bodyMedium.copyWith(
-                            decoration: task.isCompleted
-                                ? TextDecoration.lineThrough
-                                : null,
-                            color: task.isCompleted
-                                ? AiraColors.textMuted
-                                : AiraColors.textPrimary,
-                          ),
+                          style: AiraTypography.bodyMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          task.time,
-                          style: AiraTypography.caption.copyWith(
-                            color: AiraColors.textMuted,
-                            fontSize: 11,
+                        if (task.dueDate != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            DateFormat('MMM d, h:mm a').format(task.dueDate!),
+                            style: AiraTypography.caption.copyWith(
+                              color: AiraColors.textMuted,
+                              fontSize: 11,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -114,7 +116,7 @@ class _TaskPreviewCardState extends State<TaskPreviewCard> {
                     height: 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: task.priority,
+                      color: priorityColor,
                     ),
                   ),
                 ],
@@ -125,18 +127,4 @@ class _TaskPreviewCardState extends State<TaskPreviewCard> {
       ),
     );
   }
-}
-
-class _TaskItem {
-  final String title;
-  final String time;
-  final Color priority;
-  final bool isCompleted;
-
-  const _TaskItem({
-    required this.title,
-    required this.time,
-    required this.priority,
-    required this.isCompleted,
-  });
 }

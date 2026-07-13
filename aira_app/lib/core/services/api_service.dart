@@ -103,6 +103,101 @@ class ApiService {
     await _dio.delete('/memory/$memoryId');
   }
 
+  // ──────────────────── Planner API ────────────────────
+
+  /// List tasks, optional status filter.
+  Future<List<Map<String, dynamic>>> listTasks({String? status}) async {
+    final params = <String, dynamic>{};
+    if (status != null) params['status'] = status;
+    final response = await _dio.get('/planner/tasks', queryParameters: params);
+    return List<Map<String, dynamic>>.from(response.data);
+  }
+
+  /// Create a new task.
+  Future<Map<String, dynamic>> createTask(Map<String, dynamic> taskData) async {
+    final response = await _dio.post('/planner/tasks', data: taskData);
+    return response.data;
+  }
+
+  /// Update a task.
+  Future<Map<String, dynamic>> updateTask(
+    String taskId,
+    Map<String, dynamic> updateData,
+  ) async {
+    final response = await _dio.patch('/planner/tasks/$taskId', data: updateData);
+    return response.data;
+  }
+
+  /// Delete a task.
+  Future<void> deleteTask(String taskId) async {
+    await _dio.delete('/planner/tasks/$taskId');
+  }
+
+  /// List habits.
+  Future<List<Map<String, dynamic>>> listHabits() async {
+    final response = await _dio.get('/planner/habits');
+    return List<Map<String, dynamic>>.from(response.data);
+  }
+
+  /// Create a new habit.
+  Future<Map<String, dynamic>> createHabit(Map<String, dynamic> habitData) async {
+    final response = await _dio.post('/planner/habits', data: habitData);
+    return response.data;
+  }
+
+  /// Log checking in for a habit.
+  Future<Map<String, dynamic>> logHabit(
+    String habitId, {
+    String? dateStr,
+  }) async {
+    final params = <String, dynamic>{};
+    if (dateStr != null) params['logged_date'] = dateStr;
+    final response = await _dio.post('/planner/habits/$habitId/log', queryParameters: params);
+    return response.data;
+  }
+
+  /// Delete/Deactivate a habit.
+  Future<void> deleteHabit(String habitId) async {
+    await _dio.delete('/planner/habits/$habitId');
+  }
+
+  // ──────────────────── Finance API ────────────────────
+
+  /// List transactions.
+  Future<List<Map<String, dynamic>>> listTransactions({int limit = 50}) async {
+    final response = await _dio.get('/finance/transactions', queryParameters: {'limit': limit});
+    return List<Map<String, dynamic>>.from(response.data);
+  }
+
+  /// Create a new transaction.
+  Future<Map<String, dynamic>> createTransaction(Map<String, dynamic> txData) async {
+    final response = await _dio.post('/finance/transactions', data: txData);
+    return response.data;
+  }
+
+  /// Delete a transaction.
+  Future<void> deleteTransaction(String txId) async {
+    await _dio.delete('/finance/transactions/$txId');
+  }
+
+  /// List category budgets with spent balances.
+  Future<List<Map<String, dynamic>>> listBudgets() async {
+    final response = await _dio.get('/finance/budgets');
+    return List<Map<String, dynamic>>.from(response.data);
+  }
+
+  /// Create a budget.
+  Future<Map<String, dynamic>> createBudget(Map<String, dynamic> budgetData) async {
+    final response = await _dio.post('/finance/budgets', data: budgetData);
+    return response.data;
+  }
+
+  /// List expense/income category tags.
+  Future<List<Map<String, dynamic>>> listCategories() async {
+    final response = await _dio.get('/finance/categories');
+    return List<Map<String, dynamic>>.from(response.data);
+  }
+
   // ──────────────────── Health ────────────────────
 
   /// Check backend health.
