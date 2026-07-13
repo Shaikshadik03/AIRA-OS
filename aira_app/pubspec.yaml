@@ -1,0 +1,52 @@
+name: aira_app
+description: "AIRA OS - Your Personal AI Operating System"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Supabase
+  supabase_flutter: ^2.8.4
+
+  # UI & Design
+  google_fonts: ^6.2.1
+  flutter_animate: ^4.5.2
+  fl_chart: ^0.70.2
+  shimmer: ^3.0.0
+  cached_network_image: ^3.4.1
+  gap: ^3.0.1
+
+  # Storage & Security
+  hive_flutter: ^1.1.0
+  flutter_secure_storage: ^9.2.4
+
+  # Utilities
+  intl: ^0.20.2
+  uuid: ^4.5.1
+  dio: ^5.7.0
+  connectivity_plus: ^6.1.4
+  url_launcher: ^6.3.1
+  image_picker: ^1.1.2
+
+  # Chat & Markdown
+  flutter_markdown: ^0.7.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
