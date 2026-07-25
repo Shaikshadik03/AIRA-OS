@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
+import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    // Start listening to auth changes
+    ref.read(authProvider.notifier).checkAuthStatus();
     _checkAuthAndNavigate();
   }
 
@@ -24,15 +28,8 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future.delayed(const Duration(milliseconds: 2500));
     if (!mounted) return;
 
-    // Check if user has an existing session
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session != null) {
-      // User is already logged in — go straight to chat
-      context.go('/chat');
-    } else {
-      // No session — show login
-      context.go('/login');
-    }
+    // Always allow entry to the app so user can try it out without logging in.
+    context.go('/chat');
   }
 
   @override

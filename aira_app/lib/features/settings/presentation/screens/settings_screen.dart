@@ -11,6 +11,10 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authProvider);
+    final user = ref.watch(currentUserProvider);
+    final isAuthenticated = authState == AuthStatus.authenticated;
+
     return Scaffold(
       backgroundColor: AiraColors.scaffoldDark,
       appBar: AppBar(
@@ -34,7 +38,7 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   child: Center(
                     child: Text(
-                      'A',
+                      isAuthenticated ? (user?.displayName.isNotEmpty == true ? user!.displayName[0].toUpperCase() : 'U') : 'G',
                       style: AiraTypography.h4.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
@@ -46,10 +50,10 @@ class SettingsScreen extends ConsumerWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Arshan', style: AiraTypography.h5),
+                    Text(isAuthenticated ? (user?.displayName ?? 'User') : 'Guest Account', style: AiraTypography.h5),
                     const SizedBox(height: 2),
                     Text(
-                      'arshan@aira.os',
+                      isAuthenticated ? (user?.email ?? 'Logged in') : 'Sign in to save data',
                       style: AiraTypography.caption.copyWith(
                         color: AiraColors.textMuted,
                       ),
@@ -86,26 +90,32 @@ class SettingsScreen extends ConsumerWidget {
           _settingsTile(Icons.help_outline_rounded, 'Help & Support', null),
 
           const SizedBox(height: 24),
-          // Sign Out
+          // Sign In / Sign Out
           GestureDetector(
             onTap: () {
-              ref.read(authProvider.notifier).signOut();
+              if (isAuthenticated) {
+                ref.read(authProvider.notifier).signOut();
+              }
               context.go('/login');
             },
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 14),
               decoration: BoxDecoration(
-                color: AiraColors.error.withValues(alpha: 0.08),
+                color: isAuthenticated 
+                    ? AiraColors.error.withValues(alpha: 0.08)
+                    : AiraColors.electricCyan.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AiraColors.error.withValues(alpha: 0.2),
+                  color: isAuthenticated
+                      ? AiraColors.error.withValues(alpha: 0.2)
+                      : AiraColors.electricCyan.withValues(alpha: 0.2),
                 ),
               ),
               child: Center(
                 child: Text(
-                  'Sign Out',
+                  isAuthenticated ? 'Sign Out' : 'Sign In / Create Account',
                   style: AiraTypography.buttonText.copyWith(
-                    color: AiraColors.error,
+                    color: isAuthenticated ? AiraColors.error : AiraColors.electricCyan,
                   ),
                 ),
               ),

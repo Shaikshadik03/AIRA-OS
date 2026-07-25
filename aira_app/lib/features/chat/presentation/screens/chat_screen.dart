@@ -1,11 +1,16 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart';
+import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -18,6 +23,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+  
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initSpeech();
+  }
+
+  void _initSpeech() async {
+    await _speech.initialize();
+    setState(() {});
+  }
+
+  void _listen() async {
+    if (!_isListening) {
+      bool available = await _speech.initialize();
+      if (available) {
+        setState(() => _isListening = true);
+        _speech.listen(
+          onResult: (val) => setState(() {
+            _textController.text = val.recognizedWords;
+          }),
+        );
+      }
+    } else {
+      setState(() => _isListening = false);
+      _speech.stop();
+    }
+  }
 
   @override
   void dispose() {
@@ -41,16 +79,42 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  void _sendMessage() {
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to pick image: $e')));
+      }
+    }
+  }
+
+  void _sendMessage() async {
     final text = _textController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _selectedImage == null) return;
+    
     _textController.clear();
-    ref.read(chatProvider.notifier).sendMessage(text);
+    String? base64String;
+    if (_selectedImage != null) {
+      final bytes = await _selectedImage!.readAsBytes();
+      base64String = base64Encode(bytes);
+      setState(() {
+        _selectedImage = null;
+      });
+    }
+    
+    ref.read(chatProvider.notifier).sendMessage(text, base64Image: base64String);
   }
 
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatProvider);
+    final user = ref.watch(currentUserProvider);
 
     // Auto-scroll when new messages arrive
     ref.listen<ChatState>(chatProvider, (prev, next) {
@@ -71,31 +135,56 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
-        title: Row(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ShaderMask(
-              shaderCallback: (bounds) =>
-                  AiraColors.cyanPurpleGradient.createShader(bounds),
-              child: Text(
-                'AIRA',
-                style: AiraTypography.h4.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
+            Row(
+              children: [
+                ShaderMask(
+                  shaderCallback: (bounds) =>
+                      AiraColors.cyanPurpleGradient.createShader(bounds),
+                  child: Text(
+                    'AIRA',
+                    style: AiraTypography.h4.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AiraColors.success,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Container(
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: AiraColors.success,
+            Text(
+              "What's on your mind today, ${user?.displayName ?? 'User'}?",
+              style: AiraTypography.caption.copyWith(
+                color: AiraColors.textMuted,
+                fontFamily: 'Source Serif 4',
+                fontStyle: FontStyle.italic,
               ),
             ),
           ],
         ),
         actions: [
+          if (chatState.messages.isNotEmpty)
+            IconButton(
+              icon: Icon(
+                ref.read(chatProvider.notifier).isVoiceEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded, 
+                color: AiraColors.textSecondary,
+              ),
+              onPressed: () {
+                final notifier = ref.read(chatProvider.notifier);
+                notifier.toggleVoice(!notifier.isVoiceEnabled);
+                setState((){}); // rebuild for icon
+              },
+            ),
           if (chatState.messages.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.add_rounded, color: AiraColors.textSecondary),
@@ -237,13 +326,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
 
         return message.isUser
-            ? _buildUserBubble(message.content)
+            ? _buildUserBubble(message.content, message.base64Image)
             : _buildAssistantBubble(message.content);
       },
     );
   }
 
-  Widget _buildUserBubble(String content) {
+  Widget _buildUserBubble(String content, String? base64Image) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -263,12 +352,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   bottomRight: Radius.circular(4),
                 ),
               ),
-              child: Text(
-                content,
-                style: AiraTypography.bodyMedium.copyWith(
-                  color: AiraColors.textPrimary,
-                  height: 1.5,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (base64Image != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        image: DecorationImage(
+                          image: MemoryImage(base64Decode(base64Image)),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      width: double.infinity,
+                      height: 150,
+                    ),
+                  Text(
+                    content,
+                    style: AiraTypography.bodyMedium.copyWith(
+                      color: AiraColors.textPrimary,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -382,87 +490,143 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ──────────────────── Input Bar ────────────────────
 
   Widget _buildInputBar(bool isSending) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(12, 8, 12, MediaQuery.of(context).padding.bottom + 8),
-      decoration: BoxDecoration(
-        color: AiraColors.cardDark,
-        border: Border(top: BorderSide(color: AiraColors.glassBorder)),
-      ),
-      child: Row(
-        children: [
-          // Attachment button
-          IconButton(
-            icon: const Icon(Icons.attach_file_rounded, color: AiraColors.textMuted, size: 22),
-            tooltip: 'Attach file',
-            onPressed: () {
-              // TODO: image_picker integration
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('File sharing coming soon!', style: AiraTypography.bodySmall),
-                  backgroundColor: AiraColors.surfaceDark,
-                ),
-              );
-            },
-          ),
-          // Text field
-          Expanded(
-            child: TextField(
-              controller: _textController,
-              focusNode: _focusNode,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _sendMessage(),
-              style: AiraTypography.bodyMedium.copyWith(color: AiraColors.textPrimary),
-              decoration: InputDecoration(
-                hintText: 'Message AIRA...',
-                hintStyle: AiraTypography.bodyMedium.copyWith(color: AiraColors.textMuted),
-                filled: true,
-                fillColor: AiraColors.surfaceDark,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: const BorderSide(color: AiraColors.electricCyan, width: 1),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Send button
-          GestureDetector(
-            onTap: isSending ? null : _sendMessage,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: isSending ? null : AiraColors.cyanPurpleGradient,
-                color: isSending ? AiraColors.surfaceDark : null,
-              ),
-              child: Center(
-                child: isSending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AiraColors.electricCyan,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_selectedImage != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: AiraColors.scaffoldDark,
+            child: Row(
+              children: [
+                Stack(
+                  children: [
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        image: DecorationImage(
+                          image: FileImage(_selectedImage!),
+                          fit: BoxFit.cover,
                         ),
-                      )
-                    : const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
-              ),
+                      ),
+                    ),
+                    Positioned(
+                      right: -4,
+                      top: -4,
+                      child: GestureDetector(
+                        onTap: () => setState(() => _selectedImage = null),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.close, size: 16, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        Container(
+          padding: EdgeInsets.fromLTRB(12, 8, 12, MediaQuery.of(context).padding.bottom + 8),
+          decoration: BoxDecoration(
+            color: AiraColors.cardDark,
+            border: Border(top: BorderSide(color: AiraColors.glassBorder)),
+          ),
+          child: Row(
+            children: [
+              // Attachment button
+              IconButton(
+                icon: const Icon(Icons.attach_file_rounded, color: AiraColors.textMuted, size: 22),
+                tooltip: 'Attach photo',
+                onPressed: _pickImage,
+              ),
+              // Text field
+              Expanded(
+                child: TextField(
+                  controller: _textController,
+                  focusNode: _focusNode,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _sendMessage(),
+                  style: AiraTypography.bodyMedium.copyWith(color: AiraColors.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: 'Message AIRA...',
+                    hintStyle: AiraTypography.bodyMedium.copyWith(color: AiraColors.textMuted),
+                    filled: true,
+                    fillColor: AiraColors.surfaceDark,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: const BorderSide(color: AiraColors.electricCyan, width: 1),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Voice / Send button
+              if (_textController.text.isEmpty && _selectedImage == null)
+                GestureDetector(
+                  onTap: _listen,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _isListening ? AiraColors.error.withValues(alpha: 0.2) : AiraColors.surfaceDark,
+                      border: Border.all(color: _isListening ? AiraColors.error : AiraColors.glassBorder),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                        color: _isListening ? AiraColors.error : AiraColors.electricCyan,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                GestureDetector(
+                  onTap: isSending ? null : _sendMessage,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: isSending ? null : AiraColors.cyanPurpleGradient,
+                      color: isSending ? AiraColors.surfaceDark : null,
+                    ),
+                    child: Center(
+                      child: isSending
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(AiraColors.electricCyan),
+                              ),
+                            )
+                          : const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

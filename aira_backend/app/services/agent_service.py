@@ -15,37 +15,38 @@ class AgentService:
         self.ai = get_ai_engine()
 
     async def search_web(self, query: str) -> str:
-        """Search the web using DuckDuckGo HTML parsing and compile a summary using Groq."""
+        """Search the web using Tavily API and compile a summary using Groq."""
+        import os
+        from tavily import AsyncTavilyClient
+        
         try:
-            logger.info(f"Agent searching web for: {query}")
-            headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/119.0.0.0 Safari/537.36"
-                )
-            }
-            # DuckDuckGo HTML search endpoint
-            url = f"https://html.duckduckgo.com/html/?q={query}"
+            logger.info(f"Agent searching web via Tavily for: {query}")
+            api_key = os.getenv("TAVILY_API_KEY")
             
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(url, headers=headers)
+            if not api_key:
+                logger.warning("No TAVILY_API_KEY found, falling back to offline search.")
+                return await self._generate_offline_search_summary(query)
                 
-            if response.status_code != 200:
-                logger.warning(f"DuckDuckGo search returned status: {response.status_code}")
-                return await self._generate_offline_search_summary(query)
-
-            # Parse results
-            soup = BeautifulSoup(response.text, "html.parser")
-            results = []
-            for link in soup.find_all("a", class_="result__snippet")[:4]:
-                results.append(link.get_text().strip())
-
+            client = AsyncTavilyClient(api_key=api_key)
+            
+            # Using 'advanced' search depth for high-quality technical context
+            response = await client.search(
+                query=query, 
+                search_depth="advanced", 
+                max_results=5,
+                include_answer=True
+            )
+            
+            # If Tavily provided a direct AI answer, use it, else synthesize snippets
+            if response.get("answer"):
+                return response["answer"]
+                
+            results = response.get("results", [])
             if not results:
-                logger.warning("No search snippets parsed from page.")
+                logger.warning("No results found via Tavily.")
                 return await self._generate_offline_search_summary(query)
 
-            search_context = "\n".join(f"- {res}" for res in results)
+            search_context = "\n".join(f"- {res.get('title')}: {res.get('content')}" for res in results)
             
             # Synthesize search results using Groq LLM
             prompt = (

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class MessageCreate(BaseModel):
     """Request body for sending a message."""
     content: str
+    base64_image: str | None = None
 
 
 class MessageResponse(BaseModel):

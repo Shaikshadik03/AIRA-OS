@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/core/widgets/aira_button.dart';
@@ -171,14 +172,23 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               // Complete button
               AiraButton(
                 label: 'Complete Setup',
-                onPressed: () => context.go('/dashboard'),
+                onPressed: () async {
+                  final name = _nameController.text.trim();
+                  if (name.isNotEmpty) {
+                    await Supabase.instance.client.auth.updateUser(
+                      UserAttributes(data: {'display_name': name}),
+                    );
+                    // Force refresh of providers if needed, or simply navigate
+                  }
+                  if (context.mounted) context.go('/chat');
+                },
                 isFullWidth: true,
                 icon: Icons.check_circle_rounded,
               ),
               const SizedBox(height: 12),
               Center(
                 child: TextButton(
-                  onPressed: () => context.go('/dashboard'),
+                  onPressed: () => context.go('/chat'),
                   child: Text(
                     'Skip for now',
                     style: AiraTypography.bodySmall.copyWith(

@@ -36,16 +36,31 @@ Key traits:
   /// Send a message and get AI response.
   /// [history] is the list of previous messages in OpenAI format:
   /// `[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]`
-  Future<String> chat(String userMessage, List<Map<String, String>> history) async {
-    final messages = <Map<String, String>>[
+  Future<String> chat(String userMessage, List<Map<String, dynamic>> history, {String? base64Image}) async {
+    final messages = <Map<String, dynamic>>[
       {'role': 'system', 'content': _systemPrompt},
-      ...history,
-      {'role': 'user', 'content': userMessage},
     ];
+
+    if (base64Image != null) {
+      // Vision model doesn't support multi-turn conversations yet, so we don't include history
+      messages.add({
+        'role': 'user',
+        'content': [
+          {'type': 'text', 'text': userMessage},
+          {
+            'type': 'image_url',
+            'image_url': {'url': 'data:image/jpeg;base64,$base64Image'}
+          }
+        ]
+      });
+    } else {
+      messages.addAll(history);
+      messages.add({'role': 'user', 'content': userMessage});
+    }
 
     try {
       final response = await _dio.post('/chat/completions', data: {
-        'model': AppConfig.groqModel,
+        'model': base64Image != null ? 'llama-3.2-90b-vision-preview' : AppConfig.groqModel,
         'messages': messages,
         'temperature': 0.7,
         'max_tokens': 4096,

@@ -50,3 +50,37 @@ async def email_draft(
         )
     service = get_agent_service()
     return await service.draft_email(body.prompt)
+
+
+class DelegationRequest(BaseModel):
+    goal: str
+    task_id: str | None = None
+
+@router.post("/delegate")
+async def delegate_task(
+    body: DelegationRequest,
+    user_id: str = Depends(get_current_user),
+) -> dict:
+    """Delegate a complex goal to the autonomous background agent."""
+    from app.core.scheduler import scheduler
+    from app.jobs.background_agent import run_delegation_loop
+    
+    if not body.goal.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Goal cannot be empty",
+        )
+        
+    # Schedule the agent loop to run immediately in the background
+    scheduler.add_job(
+        run_delegation_loop,
+        kwargs={"user_id": user_id, "task_id": body.task_id, "goal": body.goal},
+        id=f"delegate_{user_id}_{body.task_id or 'adhoc'}",
+        replace_existing=True
+    )
+    
+    return {
+        "success": True,
+        "message": "Autonomous agent dispatched.",
+        "goal": body.goal
+    }

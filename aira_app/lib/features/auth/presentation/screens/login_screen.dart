@@ -72,7 +72,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (success && mounted) {
-      context.go('/dashboard');
+      context.go('/chat');
+    } else if (mounted) {
+      final error = ref.read(authProvider.notifier).errorMessage;
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: AiraColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -165,6 +175,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ],
               const SizedBox(height: 24),
+              const SizedBox(height: 24),
               // Submit button
               AiraButton(
                 label: _isSignUp ? 'Create Account' : 'Sign In',
@@ -175,32 +186,43 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ? Icons.person_add_rounded
                     : Icons.login_rounded,
               ),
-              const SizedBox(height: 24),
-              // Divider
+              const SizedBox(height: 16),
+              // Divider OR
               Row(
                 children: [
                   Expanded(child: Divider(color: AiraColors.glassBorder)),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: Text(
-                      'or',
-                      style: AiraTypography.caption,
+                      'OR',
+                      style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
                     ),
                   ),
                   Expanded(child: Divider(color: AiraColors.glassBorder)),
                 ],
               ),
-              const SizedBox(height: 24),
-              // Google sign in
-              AiraButton(
-                label: 'Continue with Google',
+              const SizedBox(height: 16),
+              // Google Sign-In Button
+              OutlinedButton.icon(
                 onPressed: _handleGoogleSignIn,
-                isLoading: _isLoading,
-                isFullWidth: true,
-                isPrimary: false,
-                icon: Icons.g_mobiledata_rounded,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(color: AiraColors.glassBorder),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  backgroundColor: AiraColors.cardDark,
+                ),
+                icon: const Icon(Icons.g_mobiledata_rounded, size: 28, color: AiraColors.electricCyan),
+                label: Text(
+                  'Continue with Google',
+                  style: AiraTypography.bodyMedium.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               // Toggle
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,

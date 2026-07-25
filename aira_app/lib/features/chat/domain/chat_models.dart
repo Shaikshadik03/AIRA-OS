@@ -6,6 +6,7 @@ class ChatMessage {
   final String content;
   final DateTime createdAt;
   final bool isStreaming;
+  final String? base64Image;
 
   const ChatMessage({
     required this.id,
@@ -14,6 +15,7 @@ class ChatMessage {
     required this.content,
     required this.createdAt,
     this.isStreaming = false,
+    this.base64Image,
   });
 
   bool get isUser => role == 'user';
@@ -28,7 +30,19 @@ class ChatMessage {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
+      base64Image: json['base64Image'],
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'conversation_id': conversationId,
+      'role': role,
+      'content': content,
+      'created_at': createdAt.toIso8601String(),
+      'base64Image': base64Image,
+    };
   }
 
   /// Create a temporary user message before server response.
@@ -55,17 +69,18 @@ class ChatMessage {
   }
 
   ChatMessage copyWith({
-    String? id,
     String? content,
     bool? isStreaming,
+    String? base64Image,
   }) {
     return ChatMessage(
-      id: id ?? this.id,
+      id: id,
       conversationId: conversationId,
       role: role,
       content: content ?? this.content,
       createdAt: createdAt,
       isStreaming: isStreaming ?? this.isStreaming,
+      base64Image: base64Image ?? this.base64Image,
     );
   }
 }

@@ -10,3 +10,9 @@ groq==0.25.0
 python-multipart==0.0.20
 sse-starlette==2.3.6
 gTTS==2.5.1
+google-auth==2.38.0
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.160.0
+apscheduler==3.11.0
+tavily-python==0.5.1
+sentence-transformers==3.4.1

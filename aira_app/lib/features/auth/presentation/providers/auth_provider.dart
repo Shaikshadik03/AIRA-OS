@@ -1,14 +1,31 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:aira_app/features/auth/domain/user_model.dart';
+import 'package:aira_app/core/services/api_service.dart';
+
+import 'package:google_sign_in/google_sign_in.dart';
 
 enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
 class AuthNotifier extends StateNotifier<AuthStatus> {
-  AuthNotifier() : super(AuthStatus.initial);
+  AuthNotifier() : super(AuthStatus.initial) {
+    _initAuthListener();
+  }
 
   final _supabase = Supabase.instance.client;
   String? errorMessage;
+
+  void _initAuthListener() {
+    _supabase.auth.onAuthStateChange.listen((data) {
+      if (data.session != null) {
+        ApiService().setAuthToken(data.session!.accessToken);
+        state = AuthStatus.authenticated;
+      } else {
+        ApiService().clearAuthToken();
+        state = AuthStatus.unauthenticated;
+      }
+    });
+  }
 
   /// Check if user is already logged in (session persists).
   Future<void> checkAuthStatus() async {
@@ -18,7 +35,12 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
       if (session != null) {
         state = AuthStatus.authenticated;
       } else {
-        state = AuthStatus.unauthenticated;
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (_supabase.auth.currentSession == null) {
+          state = AuthStatus.unauthenticated;
+        } else {
+          state = AuthStatus.authenticated;
+        }
       }
     } catch (e) {
       state = AuthStatus.unauthenticated;
@@ -100,11 +122,32 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
     state = AuthStatus.loading;
     errorMessage = null;
     try {
-      await _supabase.auth.signInWithOAuth(
-        OAuthProvider.google,
-        redirectTo: 'io.supabase.airaos://login-callback/',
+      const webClientId = '952571077863-8ucblk4et686f7t1hqeuj90mot2othgp.apps.googleusercontent.com';
+      
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        serverClientId: webClientId,
       );
-      // OAuth opens browser — state change happens via listener
+      
+      final googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        state = AuthStatus.unauthenticated;
+        return false; // User canceled
+      }
+      
+      final googleAuth = await googleUser.authentication;
+      final accessToken = googleAuth.accessToken;
+      final idToken = googleAuth.idToken;
+
+      if (accessToken == null || idToken == null) {
+        throw 'Missing Google Auth Tokens';
+      }
+
+      await _supabase.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+        accessToken: accessToken,
+      );
+      
       state = AuthStatus.authenticated;
       return true;
     } catch (e) {
@@ -135,6 +178,8 @@ final currentUserProvider = Provider<UserModel?>((ref) {
         id: user.id,
         email: user.email ?? '',
         displayName: user.userMetadata?['display_name'] ??
+            user.userMetadata?['name'] ??
+            user.userMetadata?['full_name'] ??
             user.email?.split('@').first ??
             'User',
         timezone: 'Asia/Kolkata',

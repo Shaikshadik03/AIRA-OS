@@ -28,7 +28,26 @@ class PlannerService:
         """Create a new task."""
         data = {**task_data, "user_id": user_id}
         res = self.db.table("tasks").insert(data).execute()
-        return res.data[0] if res.data else {}
+        task = res.data[0] if res.data else {}
+        
+        # Optional: Sync to Google Tasks
+        if task:
+            from app.services.google_service import GoogleService
+            import asyncio
+            
+            def _sync():
+                gs = GoogleService(user_id)
+                gs.sync_task(
+                    local_task_id=task["id"],
+                    title=task.get("title", "New Task"),
+                    description=task.get("description"),
+                    due_date=task.get("due_date"),
+                    completed=task.get("status") == "completed"
+                )
+            
+            asyncio.create_task(asyncio.to_thread(_sync))
+            
+        return task
 
     async def update_task(self, user_id: str, task_id: str, task_data: dict) -> dict:
         """Update a task's details or completion status."""
@@ -52,11 +71,40 @@ class PlannerService:
             .eq("user_id", user_id)
             .execute()
         )
-        return res.data[0] if res.data else {}
+        task = res.data[0] if res.data else {}
+
+        # Optional: Sync to Google Tasks
+        if task:
+            from app.services.google_service import GoogleService
+            import asyncio
+            
+            def _sync():
+                gs = GoogleService(user_id)
+                gs.sync_task(
+                    local_task_id=task["id"],
+                    title=task.get("title", "Updated Task"),
+                    description=task.get("description"),
+                    due_date=task.get("due_date"),
+                    completed=task.get("status") == "completed"
+                )
+            
+            asyncio.create_task(asyncio.to_thread(_sync))
+
+        return task
 
     async def delete_task(self, user_id: str, task_id: str) -> bool:
         """Delete a task."""
         self.db.table("tasks").delete().eq("id", task_id).eq("user_id", user_id).execute()
+        
+        # Delete from Google Tasks
+        from app.services.google_service import GoogleService
+        import asyncio
+        
+        def _sync_delete():
+            gs = GoogleService(user_id)
+            gs.delete_task(task_id)
+            
+        asyncio.create_task(asyncio.to_thread(_sync_delete))
         return True
 
     # ──────────────────── Habits ────────────────────

@@ -3,6 +3,11 @@
 import logging
 from app.config.database import get_supabase_admin_client
 from app.core.ai_engine import get_ai_engine
+try:
+    from sentence_transformers import SentenceTransformer
+    embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+except Exception as e:
+    embedding_model = None
 
 logger = logging.getLogger("aira.memory")
 
@@ -63,6 +68,14 @@ class MemoryEngine:
                     logger.info(f"Skipping duplicate memory: {content[:50]}...")
                     continue
 
+                # Generate embedding
+                emb = None
+                if embedding_model:
+                    try:
+                        emb = embedding_model.encode(content).tolist()
+                    except Exception as e:
+                        logger.error(f"Embedding generation failed: {e}")
+
                 # Store the memory
                 record = {
                     "user_id": user_id,
@@ -70,6 +83,7 @@ class MemoryEngine:
                     "category": category,
                     "importance_score": self._calculate_importance(category),
                     "source_conversation_id": conversation_id,
+                    "embedding": emb,
                 }
 
                 result = self.db.table("memories").insert(record).execute()
@@ -119,8 +133,31 @@ class MemoryEngine:
         Returns:
             List of memory content strings.
         """
-        # Get all user memories (simple approach for now)
-        # In future: use vector embeddings for semantic search
+        # Attempt vector search first
+        if embedding_model:
+            try:
+                query_embedding = embedding_model.encode(message).tolist()
+                result = self.db.rpc(
+                    'match_memories', 
+                    {
+                        'query_embedding': query_embedding,
+                        'match_threshold': 0.5,
+                        'match_count': 10,
+                        'p_user_id': user_id
+                    }
+                ).execute()
+                
+                if result.data:
+                    memories = []
+                    for m in result.data:
+                        category = m.get("category", "general")
+                        content = m.get("content", "")
+                        memories.append(f"[{category}] {content}")
+                    return memories
+            except Exception as e:
+                logger.error(f"Vector search failed, falling back to recent memories: {e}")
+
+        # Fallback: Get recent important user memories
         result = (
             self.db.table("memories")
             .select("content, category, importance_score")

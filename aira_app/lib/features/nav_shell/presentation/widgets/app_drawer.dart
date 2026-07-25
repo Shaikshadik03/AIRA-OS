@@ -4,12 +4,43 @@ import 'package:go_router/go_router.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:aira_app/core/services/api_service.dart';
 
-class AppDrawer extends ConsumerWidget {
+class AppDrawer extends ConsumerStatefulWidget {
   const AppDrawer({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends ConsumerState<AppDrawer> {
+  List<Map<String, dynamic>> _history = [];
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    try {
+      final conversations = await ApiService()
+          .listConversations()
+          .timeout(const Duration(seconds: 3));
+      if (mounted) setState(() => _history = conversations);
+    } catch (e) {
+      // Backend unavailable or timed out, display empty state
+      if (mounted) setState(() => _history = []);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
 
     return Drawer(
@@ -69,7 +100,7 @@ class AppDrawer extends ConsumerWidget {
                 children: [
                   _DrawerItem(
                     icon: Icons.chat_rounded,
-                    label: 'Chat',
+                    label: 'New Chat',
                     color: AiraColors.electricCyan,
                     onTap: () {
                       Navigator.pop(context);
@@ -77,77 +108,35 @@ class AppDrawer extends ConsumerWidget {
                     },
                   ),
                   const _DrawerDivider(),
-                  _DrawerSectionTitle(title: 'TOOLS'),
-                  _DrawerItem(
-                    icon: Icons.check_circle_outline_rounded,
-                    label: 'Tasks & Planner',
-                    color: AiraColors.success,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go('/planner');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.account_balance_wallet_outlined,
-                    label: 'Finance Tracker',
-                    color: AiraColors.purple,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go('/finance');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.menu_book_outlined,
-                    label: 'Study Tools',
-                    color: AiraColors.warning,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go('/study');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.code_rounded,
-                    label: 'Code Assistant',
-                    color: AiraColors.neonBlue,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go('/coding');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.palette_outlined,
-                    label: 'Creative Studio',
-                    color: AiraColors.neonPink,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go('/creative');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.business_center_outlined,
-                    label: 'Business CRM',
-                    color: AiraColors.amber,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go('/business');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.psychology_outlined,
-                    label: 'Memory Bank',
-                    color: AiraColors.cyanLight,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go('/memory');
-                    },
-                  ),
+                  _DrawerSectionTitle(title: 'CHAT HISTORY'),
+                  if (_loading)
+                    const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Center(child: CircularProgressIndicator(color: AiraColors.electricCyan)),
+                    )
+                  else if (_history.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text('No previous chats found.', style: AiraTypography.bodySmall.copyWith(color: AiraColors.textMuted)),
+                    )
+                  else
+                    ..._history.map((chat) => _DrawerItem(
+                          icon: Icons.chat_bubble_outline_rounded,
+                          label: chat['title'] ?? 'New Conversation',
+                          color: AiraColors.textSecondary,
+                          onTap: () {
+                            Navigator.pop(context);
+                            // TODO: load specific chat via provider
+                            context.go('/chat');
+                          },
+                        )),
                 ],
               ),
             ),
 
-            // ─── Bottom Section ───
+            // ─── Bottom Actions ───
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
                 border: Border(
                   top: BorderSide(color: AiraColors.glassBorder),
@@ -156,12 +145,12 @@ class AppDrawer extends ConsumerWidget {
               child: Column(
                 children: [
                   _DrawerItem(
-                    icon: Icons.settings_outlined,
+                    icon: Icons.settings_rounded,
                     label: 'Settings',
                     color: AiraColors.textSecondary,
                     onTap: () {
                       Navigator.pop(context);
-                      context.go('/settings');
+                      context.push('/settings');
                     },
                   ),
                   _DrawerItem(
@@ -170,7 +159,8 @@ class AppDrawer extends ConsumerWidget {
                     color: AiraColors.error,
                     onTap: () async {
                       Navigator.pop(context);
-                      await ref.read(authProvider.notifier).signOut();
+                      final notifier = ref.read(authProvider.notifier);
+                      await notifier.signOut();
                       if (context.mounted) {
                         context.go('/login');
                       }
@@ -201,12 +191,47 @@ class _DrawerItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: color, size: 22),
-      title: Text(label, style: AiraTypography.bodyMedium),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+    return InkWell(
       onTap: onTap,
+      splashColor: color.withValues(alpha: 0.1),
+      highlightColor: color.withValues(alpha: 0.05),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: AiraTypography.bodyMedium.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerSectionTitle extends StatelessWidget {
+  final String title;
+
+  const _DrawerSectionTitle({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Text(
+        title,
+        style: AiraTypography.overline.copyWith(
+          color: AiraColors.textMuted,
+        ),
+      ),
     );
   }
 }
@@ -217,26 +242,10 @@ class _DrawerDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      child: Divider(color: AiraColors.glassBorder, height: 1),
-    );
-  }
-}
-
-class _DrawerSectionTitle extends StatelessWidget {
-  final String title;
-  const _DrawerSectionTitle({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-      child: Text(
-        title,
-        style: AiraTypography.overline.copyWith(
-          color: AiraColors.textMuted,
-          letterSpacing: 2.0,
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Divider(
+        color: AiraColors.glassBorder,
+        height: 1,
       ),
     );
   }

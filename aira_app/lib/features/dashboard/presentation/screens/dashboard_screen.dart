@@ -8,7 +8,6 @@ import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/core/widgets/glassmorphic_container.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:aira_app/features/planner/presentation/providers/planner_provider.dart';
-import 'package:aira_app/features/finance/presentation/providers/finance_provider.dart';
 import 'package:aira_app/features/dashboard/presentation/widgets/progress_ring.dart';
 import 'package:aira_app/features/dashboard/presentation/widgets/quick_action_card.dart';
 import 'package:aira_app/features/dashboard/presentation/widgets/task_preview_card.dart';
@@ -25,10 +24,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // Load planner and finance items dynamically on load
     Future.microtask(() {
       ref.read(plannerProvider.notifier).loadAll();
-      ref.read(financeProvider.notifier).loadAll();
     });
   }
 
@@ -43,15 +40,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final today = DateFormat('EEEE, d MMMM yyyy').format(DateTime.now());
     
-    // Auth and planner states
     final currentUser = ref.watch(currentUserProvider);
     final plannerState = ref.watch(plannerProvider);
-    final financeState = ref.watch(financeProvider);
 
     final String displayName = currentUser?.displayName ?? 'Arshan';
     final double progress = plannerState.completionRate;
-
-    final format = NumberFormat.simpleCurrency(locale: 'en_IN', name: 'INR');
 
     return Scaffold(
       backgroundColor: AiraColors.scaffoldDark,
@@ -60,7 +53,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           color: AiraColors.electricCyan,
           onRefresh: () async {
             await ref.read(plannerProvider.notifier).loadAll();
-            await ref.read(financeProvider.notifier).loadAll();
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -123,7 +115,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ProgressRing(progress: progress, size: 150),
                       const SizedBox(height: 8),
                       Text(
-                        'Daily Progress',
+                        'Daily Productivity Progress',
                         style: AiraTypography.caption.copyWith(
                           color: AiraColors.textMuted,
                         ),
@@ -144,66 +136,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     .fadeIn(delay: 300.ms, duration: 300.ms),
                 const SizedBox(height: 12),
                 GridView.count(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: 1.0,
+                  childAspectRatio: 2.2,
                   children: [
                     QuickActionCard(
                       icon: Icons.chat_bubble_outline_rounded,
-                      label: 'Chat',
+                      label: 'AI Chat',
                       color: AiraColors.electricCyan,
                       onTap: () => context.go('/chat'),
                     ),
                     QuickActionCard(
                       icon: Icons.add_circle_outline_rounded,
-                      label: 'Planner',
+                      label: 'Planner & Tasks',
                       color: AiraColors.success,
                       onTap: () => context.go('/planner'),
                     ),
                     QuickActionCard(
-                      icon: Icons.account_balance_wallet_outlined,
-                      label: 'Expense',
-                      color: AiraColors.purple,
-                      onTap: () => context.go('/finance'),
-                    ),
-                    QuickActionCard(
-                      icon: Icons.menu_book_outlined,
-                      label: 'Study',
-                      color: AiraColors.warning,
-                      onTap: () => context.go('/study'),
-                    ),
-                    QuickActionCard(
-                      icon: Icons.code_rounded,
-                      label: 'Coding',
-                      color: AiraColors.neonBlue,
-                      onTap: () => context.go('/coding'),
-                    ),
-                    QuickActionCard(
                       icon: Icons.mic_outlined,
-                      label: 'Voice',
-                      color: AiraColors.electricCyan,
-                      onTap: () => context.go('/voice'),
+                      label: 'Voice Assistant',
+                      color: AiraColors.purple,
+                      onTap: () => context.go('/voice-panel'),
                     ),
                     QuickActionCard(
-                      icon: Icons.palette_outlined,
-                      label: 'Creative',
-                      color: AiraColors.neonPink,
-                      onTap: () => context.go('/creative'),
-                    ),
-                    QuickActionCard(
-                      icon: Icons.business_center_rounded,
-                      label: 'CRM',
-                      color: AiraColors.amber,
-                      onTap: () => context.go('/business'),
-                    ),
-                    QuickActionCard(
-                      icon: Icons.psychology_outlined,
-                      label: 'Memory',
-                      color: AiraColors.success,
-                      onTap: () => context.go('/settings/memory'),
+                      icon: Icons.settings_outlined,
+                      label: 'Settings',
+                      color: AiraColors.warning,
+                      onTap: () => context.go('/settings'),
                     ),
                   ],
                 ).animate().fadeIn(delay: 400.ms, duration: 400.ms),
@@ -232,7 +194,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   child: plannerState.habits.isEmpty
                       ? Center(
                           child: Text(
-                            'No habits tracked. Tap Planner to start!',
+                            'No habits tracked yet. Tap Planner to start!',
                             style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
                           ),
                         )
@@ -258,103 +220,38 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
                 const SizedBox(height: 28),
 
-                // Financial Overview
-                Text('Financial Overview', style: AiraTypography.h5)
+                // Recent AI Activity
+                Text('Recent AI Activity', style: AiraTypography.h5)
                     .animate()
                     .fadeIn(delay: 700.ms, duration: 300.ms),
-                const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: () => context.go('/finance'),
-                  child: GlassmorphicContainer(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Spent this month',
-                                style: AiraTypography.caption.copyWith(
-                                  color: AiraColors.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                format.format(financeState.totalExpense),
-                                style: AiraTypography.h3.copyWith(
-                                  color: AiraColors.error,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          width: 1,
-                          height: 40,
-                          color: AiraColors.glassBorder,
-                        ),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 20),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Income total',
-                                  style: AiraTypography.caption.copyWith(
-                                    color: AiraColors.textMuted,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  format.format(financeState.totalIncome),
-                                  style: AiraTypography.h3.copyWith(
-                                    color: AiraColors.success,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ).animate().fadeIn(delay: 750.ms, duration: 400.ms).slideY(begin: 0.05, end: 0),
-
-                const SizedBox(height: 28),
-
-                // Recent Activity
-                Text('Recent Activity', style: AiraTypography.h5)
-                    .animate()
-                    .fadeIn(delay: 800.ms, duration: 300.ms),
                 const SizedBox(height: 12),
                 GlassmorphicContainer(
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                   child: Column(
                     children: [
                       _activityRow(
-                        Icons.description_outlined,
-                        'Summarized your research PDF',
-                        '2 hours ago',
+                        Icons.chat_bubble_outline_rounded,
+                        'Started new AI chat session',
+                        'Just now',
                         AiraColors.electricCyan,
                       ),
                       Divider(color: AiraColors.glassBorder, height: 16),
                       _activityRow(
-                        Icons.notifications_active_outlined,
-                        'Reminder: Team meeting at 3 PM',
-                        '4 hours ago',
-                        AiraColors.warning,
+                        Icons.check_circle_outline,
+                        'Planner daily task update',
+                        '2 hours ago',
+                        AiraColors.success,
                       ),
                       Divider(color: AiraColors.glassBorder, height: 16),
                       _activityRow(
-                        Icons.code_rounded,
-                        'Debugged your Python script',
-                        'Yesterday',
+                        Icons.mic_none_rounded,
+                        'Voice assistant query processed',
+                        'Today',
                         AiraColors.purple,
                       ),
                     ],
                   ),
-                ).animate().fadeIn(delay: 850.ms, duration: 400.ms).slideY(begin: 0.05, end: 0),
+                ).animate().fadeIn(delay: 750.ms, duration: 400.ms).slideY(begin: 0.05, end: 0),
               ],
             ),
           ),
@@ -363,39 +260,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _activityRow(IconData icon, String title, String time, Color color) {
+  Widget _activityRow(
+    IconData icon,
+    String title,
+    String time,
+    Color iconColor,
+  ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
           Container(
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: iconColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 18, color: color),
+            child: Icon(icon, color: iconColor, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AiraTypography.bodySmall.copyWith(
-                    color: AiraColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  time,
-                  style: AiraTypography.overline.copyWith(
-                    color: AiraColors.textMuted,
-                    letterSpacing: 0,
-                  ),
-                ),
-              ],
+            child: Text(
+              title,
+              style: AiraTypography.bodyMedium.copyWith(
+                color: Colors.white,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Text(
+            time,
+            style: AiraTypography.caption.copyWith(
+              color: AiraColors.textMuted,
+              fontSize: 11,
             ),
           ),
         ],

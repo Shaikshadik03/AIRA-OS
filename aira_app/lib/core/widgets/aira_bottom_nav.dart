@@ -16,7 +16,7 @@ class AiraBottomNav extends StatelessWidget {
     _NavItem(icon: Icons.dashboard_rounded, label: 'Home'),
     _NavItem(icon: Icons.chat_bubble_rounded, label: 'Chat'),
     _NavItem(icon: Icons.calendar_month_rounded, label: 'Planner'),
-    _NavItem(icon: Icons.account_balance_wallet_rounded, label: 'Finance'),
+    _NavItem(icon: Icons.mic_rounded, label: 'Voice'),
     _NavItem(icon: Icons.settings_rounded, label: 'Settings'),
   ];
 

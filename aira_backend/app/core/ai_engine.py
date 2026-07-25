@@ -50,16 +50,18 @@ class AIEngine:
         messages: list[dict],
         system_prompt: str | None = None,
         memories: list[str] | None = None,
-    ) -> str:
+        tools: list[dict] | None = None,
+    ):
         """Generate an AI response.
 
         Args:
             messages: List of {"role": "user"|"assistant", "content": "..."}
             system_prompt: Optional system prompt override.
             memories: Optional list of relevant memory strings to inject.
+            tools: Optional list of tool definitions.
 
         Returns:
-            The assistant's response text.
+            The assistant's response object.
         """
         prompt = system_prompt or AIRA_SYSTEM_PROMPT
 
@@ -71,31 +73,47 @@ class AIEngine:
         api_messages = [{"role": "system", "content": prompt}]
 
         for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role in ("user", "assistant"):
-                api_messages.append({"role": role, "content": content})
+            # Pass along tool_calls and tool responses if they exist in the history
+            if msg.get("role") in ("user", "assistant", "tool"):
+                # Copy the msg to avoid modifying the original list
+                api_msg = {k: v for k, v in msg.items() if v is not None}
+                api_messages.append(api_msg)
 
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=api_messages,
-            temperature=0.7,
-            max_tokens=2048,
-        )
+        # Detect if any message contains an image to switch to a vision model
+        current_model = self.model
+        has_vision = False
+        for msg in api_messages:
+            if isinstance(msg.get("content"), list):
+                for part in msg["content"]:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        has_vision = True
+                        break
+        
+        if has_vision:
+            current_model = "llama-3.2-90b-vision-preview"
 
-        return response.choices[0].message.content
+        kwargs = {
+            "model": current_model,
+            "messages": api_messages,
+            "temperature": 0.7,
+            "max_tokens": 2048,
+        }
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        response = await self.client.chat.completions.create(**kwargs)
+
+        return response.choices[0].message
 
     async def generate_stream(
         self,
         messages: list[dict],
         system_prompt: str | None = None,
         memories: list[str] | None = None,
+        tools: list[dict] | None = None,
     ):
-        """Generate a streaming AI response (async generator yielding tokens).
-
-        Yields:
-            String tokens as they arrive from Groq.
-        """
+        """Generate a streaming AI response (async generator yielding tokens)."""
         prompt = system_prompt or AIRA_SYSTEM_PROMPT
 
         if memories:
@@ -105,23 +123,62 @@ class AIEngine:
         api_messages = [{"role": "system", "content": prompt}]
 
         for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role in ("user", "assistant"):
-                api_messages.append({"role": role, "content": content})
+            if msg.get("role") in ("user", "assistant", "tool"):
+                api_msg = {k: v for k, v in msg.items() if v is not None}
+                api_messages.append(api_msg)
 
-        stream = await self.client.chat.completions.create(
-            model=self.model,
-            messages=api_messages,
-            temperature=0.7,
-            max_tokens=2048,
-            stream=True,
-        )
+        current_model = self.model
+        has_vision = False
+        for msg in api_messages:
+            if isinstance(msg.get("content"), list):
+                for part in msg["content"]:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        has_vision = True
+                        break
+        
+        if has_vision:
+            current_model = "llama-3.2-90b-vision-preview"
+
+        kwargs = {
+            "model": current_model,
+            "messages": api_messages,
+            "temperature": 0.7,
+            "max_tokens": 2048,
+            "stream": True,
+        }
+        
+        # Tools in stream can be tricky with Groq, but they are supported as delta tool_calls
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        stream = await self.client.chat.completions.create(**kwargs)
+
+        # In streaming tool mode, we need to assemble the tool call
+        tool_calls = []
 
         async for chunk in stream:
             delta = chunk.choices[0].delta
+            
+            if delta.tool_calls:
+                for tc_delta in delta.tool_calls:
+                    # Append new tool calls
+                    if tc_delta.index >= len(tool_calls):
+                        tool_calls.append({
+                            "id": tc_delta.id or "",
+                            "type": "function",
+                            "function": {"name": tc_delta.function.name or "", "arguments": tc_delta.function.arguments or ""}
+                        })
+                    else:
+                        # Append arguments to existing tool call
+                        if tc_delta.function.arguments:
+                            tool_calls[tc_delta.index]["function"]["arguments"] += tc_delta.function.arguments
+            
             if delta.content:
-                yield delta.content
+                yield {"type": "content", "content": delta.content}
+                
+        if tool_calls:
+            yield {"type": "tool_calls", "tool_calls": tool_calls}
 
     async def extract_memories(self, messages: list[dict]) -> list[dict]:
         """Extract memorable facts from a conversation.

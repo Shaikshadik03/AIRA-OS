@@ -17,6 +17,54 @@ class ChatService:
         self.ai = get_ai_engine()
         self.memory = get_memory_engine()
 
+    async def _execute_tool(self, user_id: str, name: str, arguments_str: str) -> str:
+        """Execute a tool requested by the AI."""
+        import json
+        from app.services.google_service import GoogleService
+        from app.services.agent_service import AgentService
+        from app.services.planner_service import PlannerService
+        
+        try:
+            args = json.loads(arguments_str) if arguments_str else {}
+        except json.JSONDecodeError:
+            return "Error: Invalid JSON arguments."
+
+        try:
+            if name == "create_task":
+                planner = PlannerService()
+                task = await planner.create_task(user_id, {
+                    "title": args.get("title"),
+                    "description": args.get("description", ""),
+                    "due_date": args.get("due_date")
+                })
+                return f"Task created successfully: {json.dumps(task)}"
+            
+            elif name == "draft_email":
+                google_service = GoogleService()
+                result = await google_service.draft_email(
+                    user_id=user_id,
+                    to=args.get("to"),
+                    subject=args.get("subject"),
+                    body=args.get("body")
+                )
+                return f"Email drafted. Link: {result.get('draft_url')}"
+
+            elif name == "get_calendar_events":
+                google_service = GoogleService()
+                events = await google_service.get_upcoming_events(user_id, days=args.get("days", 7))
+                return json.dumps(events)
+                
+            elif name == "search_web":
+                agent = AgentService()
+                result = await agent.search_web(args.get("query"))
+                return result
+            
+            else:
+                return f"Error: Tool {name} not found."
+        except Exception as e:
+            logger.error(f"Error executing tool {name}: {e}")
+            return f"Error executing tool: {e}"
+
     async def create_conversation(self, user_id: str, title: str | None = None) -> dict:
         """Create a new conversation."""
         result = (
@@ -99,7 +147,36 @@ class ChatService:
         messages = [{"role": m["role"], "content": m["content"]} for m in (history.data or [])]
 
         # Generate AI response with memory context
-        ai_response = await self.ai.generate_response(messages, memories=memories)
+        from app.core.tools import AIRA_TOOLS
+        
+        while True:
+            ai_msg = await self.ai.generate_response(messages, memories=memories, tools=AIRA_TOOLS)
+            
+            if ai_msg.tool_calls:
+                messages.append({
+                    "role": "assistant",
+                    "content": ai_msg.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id, 
+                            "type": "function", 
+                            "function": {"name": tc.function.name, "arguments": tc.function.arguments}
+                        }
+                        for tc in ai_msg.tool_calls
+                    ]
+                })
+                
+                for tc in ai_msg.tool_calls:
+                    tool_result = await self._execute_tool(user_id, tc.function.name, tc.function.arguments)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "name": tc.function.name,
+                        "content": tool_result
+                    })
+            else:
+                ai_response = ai_msg.content
+                break
 
         # Save assistant message
         assistant_msg = (
@@ -175,18 +252,51 @@ class ChatService:
 
         messages = [{"role": m["role"], "content": m["content"]} for m in (history.data or [])]
 
-        # Stream the response
-        full_response = ""
-        async for token in self.ai.generate_stream(messages, memories=memories):
-            full_response += token
-            yield token
+        # Stream the response with tool support
+        from app.core.tools import AIRA_TOOLS
+        
+        overall_response = ""
+        
+        while True:
+            full_response = ""
+            tool_calls_to_execute = None
+            
+            async for chunk in self.ai.generate_stream(messages, memories=memories, tools=AIRA_TOOLS):
+                if chunk["type"] == "content":
+                    full_response += chunk["content"]
+                    overall_response += chunk["content"]
+                    yield chunk["content"]
+                elif chunk["type"] == "tool_calls":
+                    tool_calls_to_execute = chunk["tool_calls"]
+            
+            if tool_calls_to_execute:
+                messages.append({
+                    "role": "assistant",
+                    "content": full_response,
+                    "tool_calls": tool_calls_to_execute
+                })
+                
+                for tc in tool_calls_to_execute:
+                    yield f"\n\n*[Executing {tc['function']['name']}...]*\n\n"
+                    overall_response += f"\n\n*[Executing {tc['function']['name']}...]*\n\n"
+                    
+                    tool_result = await self._execute_tool(user_id, tc["function"]["name"], tc["function"]["arguments"])
+                    
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "name": tc["function"]["name"],
+                        "content": tool_result
+                    })
+            else:
+                break
 
         # Save complete assistant message
         self.db.table("messages").insert({
             "conversation_id": conversation_id,
             "user_id": user_id,
             "role": "assistant",
-            "content": full_response,
+            "content": overall_response,
         }).execute()
 
         # Update conversation
@@ -195,7 +305,7 @@ class ChatService:
         ).eq("id", conversation_id).execute()
 
         # Extract memories in background
-        messages.append({"role": "assistant", "content": full_response})
+        messages.append({"role": "assistant", "content": overall_response})
         asyncio.create_task(
             self._extract_memories_background(user_id, messages, conversation_id)
         )
