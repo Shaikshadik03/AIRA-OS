@@ -173,16 +173,61 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ],
         ),
         actions: [
+          // Google Workspace status chip
+          GestureDetector(
+            onTap: () {
+              if (!chatState.isGoogleConnected) {
+                ref.read(chatProvider.notifier).connectGoogleWorkspace();
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Google Workspace connected ✓')),
+                );
+              }
+            },
+            child: Container(
+              margin: const EdgeInsets.only(right: 4, top: 10, bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: chatState.isGoogleConnected
+                    ? AiraColors.success.withValues(alpha: 0.15)
+                    : AiraColors.surfaceDark,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: chatState.isGoogleConnected
+                      ? AiraColors.success.withValues(alpha: 0.4)
+                      : AiraColors.glassBorder,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    chatState.isGoogleConnected ? Icons.check_circle_rounded : Icons.g_mobiledata_rounded,
+                    size: 16,
+                    color: chatState.isGoogleConnected ? AiraColors.success : AiraColors.textMuted,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    chatState.isGoogleConnected ? 'Google' : 'Connect',
+                    style: AiraTypography.caption.copyWith(
+                      color: chatState.isGoogleConnected ? AiraColors.success : AiraColors.textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (chatState.messages.isNotEmpty)
             IconButton(
               icon: Icon(
-                ref.read(chatProvider.notifier).isVoiceEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded, 
+                ref.read(chatProvider.notifier).isVoiceEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
                 color: AiraColors.textSecondary,
               ),
               onPressed: () {
                 final notifier = ref.read(chatProvider.notifier);
                 notifier.toggleVoice(!notifier.isVoiceEnabled);
-                setState((){}); // rebuild for icon
+                setState(() {});
               },
             ),
           if (chatState.messages.isNotEmpty)
@@ -192,6 +237,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               onPressed: () => ref.read(chatProvider.notifier).clearChat(),
             ),
         ],
+
       ),
       body: Column(
         children: [
@@ -278,22 +324,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               runSpacing: 8,
               alignment: WrapAlignment.center,
               children: [
-                _suggestionChip('Plan my day'),
-                _suggestionChip('Explain quantum computing'),
-                _suggestionChip('Help me write code'),
-                _suggestionChip('Summarize a topic'),
+                _suggestionChip('Plan my day', Icons.today_rounded),
+                _suggestionChip('Help me write code', Icons.code_rounded),
+                _suggestionChip('Show my emails 📬', Icons.email_rounded),
+                _suggestionChip('Show my calendar 📅', Icons.calendar_today_rounded),
               ],
             ).animate().fadeIn(delay: 600.ms, duration: 400.ms),
+            const SizedBox(height: 16),
+            Text(
+              'Tip: Say "connect Google Workspace" to enable Gmail & Calendar',
+              style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
+              textAlign: TextAlign.center,
+            ).animate().fadeIn(delay: 800.ms, duration: 400.ms),
+
           ],
         ),
       ),
     );
   }
 
-  Widget _suggestionChip(String label) {
+  Widget _suggestionChip(String label, [IconData? icon]) {
     return GestureDetector(
       onTap: () {
-        _textController.text = label;
+        _textController.text = label.replaceAll(RegExp(r'[📬📅]'), '').trim();
         _sendMessage();
       },
       child: Container(
@@ -303,13 +356,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AiraColors.glassBorder),
         ),
-        child: Text(
-          label,
-          style: AiraTypography.caption.copyWith(color: AiraColors.textSecondary),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: AiraColors.electricCyan),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: AiraTypography.caption.copyWith(color: AiraColors.textSecondary),
+            ),
+          ],
         ),
       ),
     );
   }
+
 
   // ──────────────────── Message List ────────────────────
 
