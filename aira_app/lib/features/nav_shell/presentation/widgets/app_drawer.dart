@@ -4,7 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
-import 'package:aira_app/core/services/api_service.dart';
+import 'package:aira_app/core/services/supabase_chat_service.dart';
+import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 
 class AppDrawer extends ConsumerStatefulWidget {
   const AppDrawer({super.key});
@@ -27,12 +28,11 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     if (!mounted) return;
     setState(() => _loading = true);
     try {
-      final conversations = await ApiService()
+      final conversations = await SupabaseChatService()
           .listConversations()
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 5));
       if (mounted) setState(() => _history = conversations);
-    } catch (e) {
-      // Backend unavailable or timed out, display empty state
+    } catch (_) {
       if (mounted) setState(() => _history = []);
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -60,22 +60,33 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: AiraColors.cyanPurpleGradient,
-                    ),
-                    child: Center(
-                      child: Text(
-                        (user?.displayName ?? 'U')[0].toUpperCase(),
-                        style: AiraTypography.h4.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
+                  Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: AiraColors.cyanPurpleGradient,
+                        ),
+                        child: Center(
+                          child: Text(
+                            (user?.displayName ?? 'U')[0].toUpperCase(),
+                            style: AiraTypography.h4.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const Spacer(),
+                      // Refresh history button
+                      IconButton(
+                        icon: const Icon(Icons.refresh_rounded, color: AiraColors.textMuted, size: 20),
+                        tooltip: 'Refresh history',
+                        onPressed: _loadHistory,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -84,7 +95,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    user?.email ?? '',
+                    user?.email ?? 'Not signed in',
                     style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
                   ),
                 ],
@@ -93,43 +104,107 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
 
             const SizedBox(height: 8),
 
-            // ─── Navigation Items ───
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  _DrawerItem(
-                    icon: Icons.chat_rounded,
-                    label: 'New Chat',
-                    color: AiraColors.electricCyan,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go('/chat');
-                    },
+            // ─── New Chat Button ───
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    ref.read(chatProvider.notifier).clearChat();
+                    context.go('/chat');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AiraColors.electricCyan.withValues(alpha: 0.15),
+                    foregroundColor: AiraColors.electricCyan,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: AiraColors.electricCyan.withValues(alpha: 0.3)),
+                    ),
                   ),
-                  const _DrawerDivider(),
-                  _DrawerSectionTitle(title: 'CHAT HISTORY'),
-                  if (_loading)
-                    const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Center(child: CircularProgressIndicator(color: AiraColors.electricCyan)),
-                    )
-                  else if (_history.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Text('No previous chats found.', style: AiraTypography.bodySmall.copyWith(color: AiraColors.textMuted)),
-                    )
-                  else
-                    ..._history.map((chat) => _DrawerItem(
-                          icon: Icons.chat_bubble_outline_rounded,
-                          label: chat['title'] ?? 'New Conversation',
-                          color: AiraColors.textSecondary,
-                          onTap: () {
-                            Navigator.pop(context);
-                            // TODO: load specific chat via provider
-                            context.go('/chat');
-                          },
-                        )),
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  label: Text('New Chat', style: AiraTypography.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // ─── Chat History ───
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DrawerSectionTitle(title: 'RECENT CHATS'),
+                  Expanded(
+                    child: _loading
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(20),
+                              child: CircularProgressIndicator(
+                                color: AiraColors.electricCyan,
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          )
+                        : _history.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Column(
+                                  children: [
+                                    Icon(
+                                      Icons.chat_bubble_outline_rounded,
+                                      color: AiraColors.textMuted,
+                                      size: 32,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'No previous chats',
+                                      style: AiraTypography.bodySmall.copyWith(color: AiraColors.textMuted),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Start a new chat above',
+                                      style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: EdgeInsets.zero,
+                                itemCount: _history.length,
+                                itemBuilder: (context, index) {
+                                  final chat = _history[index];
+                                  final title = (chat['title'] as String?) ?? 'New Chat';
+                                  final updatedAt = chat['updated_at'] != null
+                                      ? DateTime.tryParse(chat['updated_at'] as String)
+                                      : null;
+                                  final timeAgo = _formatTimeAgo(updatedAt);
+
+                                  return _ChatHistoryItem(
+                                    title: title,
+                                    timeAgo: timeAgo,
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      ref.read(chatProvider.notifier).loadConversation(
+                                            chat['id'] as String,
+                                            title,
+                                          );
+                                      context.go('/chat');
+                                    },
+                                    onDelete: () async {
+                                      try {
+                                        await SupabaseChatService().deleteConversation(chat['id'] as String);
+                                        await _loadHistory();
+                                      } catch (_) {}
+                                    },
+                                  );
+                                },
+                              ),
+                  ),
                 ],
               ),
             ),
@@ -174,7 +249,85 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
       ),
     );
   }
+
+  String _formatTimeAgo(DateTime? dt) {
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
 }
+
+// ──────────────────── Chat History Item ────────────────────
+
+class _ChatHistoryItem extends StatelessWidget {
+  final String title;
+  final String timeAgo;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _ChatHistoryItem({
+    required this.title,
+    required this.timeAgo,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      splashColor: AiraColors.electricCyan.withValues(alpha: 0.1),
+      highlightColor: AiraColors.electricCyan.withValues(alpha: 0.05),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.chat_bubble_outline_rounded,
+              color: AiraColors.textMuted,
+              size: 18,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AiraTypography.bodySmall.copyWith(
+                      color: AiraColors.textPrimary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (timeAgo.isNotEmpty)
+                    Text(
+                      timeAgo,
+                      style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AiraColors.textMuted),
+              onPressed: onDelete,
+              tooltip: 'Delete chat',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────── Drawer Helpers ────────────────────
 
 class _DrawerItem extends StatelessWidget {
   final IconData icon;
@@ -231,21 +384,6 @@ class _DrawerSectionTitle extends StatelessWidget {
         style: AiraTypography.overline.copyWith(
           color: AiraColors.textMuted,
         ),
-      ),
-    );
-  }
-}
-
-class _DrawerDivider extends StatelessWidget {
-  const _DrawerDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Divider(
-        color: AiraColors.glassBorder,
-        height: 1,
       ),
     );
   }

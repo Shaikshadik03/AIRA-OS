@@ -128,6 +128,11 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
         serverClientId: webClientId,
       );
       
+      // Force native Google account selection picker prompt
+      try {
+        await googleSignIn.signOut();
+      } catch (_) {}
+
       final googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
         state = AuthStatus.unauthenticated;
@@ -159,6 +164,9 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
 
   /// Sign out.
   Future<void> signOut() async {
+    try {
+      await GoogleSignIn().signOut();
+    } catch (_) {}
     await _supabase.auth.signOut();
     state = AuthStatus.unauthenticated;
     errorMessage = null;

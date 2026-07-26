@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
@@ -28,8 +27,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     await Future.delayed(const Duration(milliseconds: 2500));
     if (!mounted) return;
 
-    // Always allow entry to the app so user can try it out without logging in.
-    context.go('/chat');
+    // Check if already logged in
+    final authState = ref.read(authProvider);
+    if (authState == AuthStatus.authenticated) {
+      context.go('/chat');
+    } else {
+      context.go('/login');
+    }
   }
 
   @override
