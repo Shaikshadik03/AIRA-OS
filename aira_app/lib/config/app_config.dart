@@ -1,4 +1,8 @@
 /// AIRA OS Application Configuration
+/// 
+/// API keys are loaded from build-time environment variables (--dart-define).
+/// For local development, use the build script or pass them manually.
+/// NEVER hardcode keys here — they get caught by GitHub secret scanning.
 class AppConfig {
   AppConfig._();
 
@@ -9,20 +13,32 @@ class AppConfig {
   // ============================================
   // 🔑 SUPABASE
   // ============================================
-  static const String supabaseUrl = 'https://oeaorhoftuivzvuupyqm.supabase.co';
-  static const String supabaseAnonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lYW9yaG9mdHVpdnp2dXVweXFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4Njg3NjgsImV4cCI6MjA5OTQ0NDc2OH0.BM3uNMB9um3LelTPaT_jBHsAkmsYeTezX5zoirkfTOE';
+  static const String supabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: 'https://oeaorhoftuivzvuupyqm.supabase.co',
+  );
+  static const String supabaseAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    // Key is loaded via --dart-define at build time. See README for how to build.
+    defaultValue: '',
+  );
 
   // ============================================
-  // 🤖 GROQ AI (Direct from app — no backend needed)
+  // 🤖 GROQ AI
   // ============================================
-  static const String groqApiKey =
-      'GROQ_API_KEY_USE_DART_DEFINE';
+  static const String groqApiKey = String.fromEnvironment(
+    'GROQ_API_KEY',
+    // Key is loaded via --dart-define at build time. See README for how to build.
+    defaultValue: '',
+  );
   static const String groqModel = 'llama-3.3-70b-versatile';
   static const String groqBaseUrl = 'https://api.groq.com/openai/v1';
 
   // ============================================
   // Backend API URL (for other services)
   // ============================================
-  static const String backendUrl = 'http://10.0.2.2:8000/api/v1';
+  static const String backendUrl = String.fromEnvironment(
+    'BACKEND_URL',
+    defaultValue: 'http://10.0.2.2:8000/api/v1',
+  );
 }
