@@ -70,16 +70,32 @@ class WorkspaceIntentDetector {
     final msg = message.toLowerCase().trim();
 
     // ── Email intents ──
-    if (_matches(msg, ['send email', 'write email', 'compose email', 'email to', 'send a mail', 'send mail'])) {
-      final toMatch = RegExp(r'to\s+([A-Za-z0-9._%+\-@]+)', caseSensitive: false).firstMatch(message);
-      final subjectMatch = RegExp(r'(subject|about|regarding)[:\s]+(.+?)(?:\s+saying|\s+with|\s*$)', caseSensitive: false).firstMatch(message);
-      final bodyMatch = RegExp(r'saying\s+(.+)', caseSensitive: false).firstMatch(message);
+    if (_matches(msg, ['send email', 'write email', 'compose email', 'email to', 'send a mail', 'send mail', 'mail to'])) {
+      // 1. Check if an explicit email address (with @ and .) is present
+      final explicitEmailMatch = RegExp(r'([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})').firstMatch(message);
+      
+      // 2. Or extract target after "to" or "mail to"
+      final toMatch = RegExp(r'(?:to|mail to)\s+([A-Za-z0-9._%+\-@]+)', caseSensitive: false).firstMatch(message);
+
+      String recipient = '';
+      if (explicitEmailMatch != null) {
+        recipient = explicitEmailMatch.group(1)!;
+      } else if (toMatch != null) {
+        recipient = toMatch.group(1)!;
+      }
+
+      // Subject extraction
+      final subjectMatch = RegExp(r'(?:subject|about|regarding|asking)[:\s]+(.+?)(?:\s+saying|\s+with|\s*$)', caseSensitive: false).firstMatch(message);
+      
+      // Body extraction
+      final bodyMatch = RegExp(r'(?:saying|body|message)[:\s]+(.+)', caseSensitive: false).firstMatch(message);
+
       return WorkspaceCommand(
         intent: WorkspaceIntent.sendEmail,
         params: {
-          if (toMatch != null) 'to': toMatch.group(1) ?? '',
-          if (subjectMatch != null) 'subject': subjectMatch.group(2) ?? '',
-          if (bodyMatch != null) 'body': bodyMatch.group(1) ?? '',
+          'to': recipient,
+          if (subjectMatch != null) 'subject': subjectMatch.group(1)?.trim() ?? '',
+          if (bodyMatch != null) 'body': bodyMatch.group(1)?.trim() ?? '',
         },
         originalMessage: message,
       );

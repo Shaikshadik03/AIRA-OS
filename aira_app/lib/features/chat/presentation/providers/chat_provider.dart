@@ -82,7 +82,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(isGoogleConnected: success);
 
     final resultMsg = success
-        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"send email to [name] saying [message]"**\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create event [title] on [date] at [time]"**\n- Say **"create a Google Doc called [title]"**'
+        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"send email to name@gmail.com about [subject] saying [message]"**\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create event [title] on [date] at [time]"**\n- Say **"create a Google Doc called [title]"**'
         : '❌ Could not connect to Google Workspace. Please try again.';
 
     _addSystemMessage(resultMsg);
@@ -159,14 +159,19 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
         case WorkspaceIntent.sendEmail:
           final to = command.params['to'] ?? '';
-          final subject = command.params['subject'] ?? 'Message from AIRA';
-          final body = command.params['body'] ?? content;
+          final subject = command.params['subject'] ?? '';
+          final body = command.params['body'] ?? '';
 
           if (to.isEmpty) {
-            result = '❓ Who should I send the email to? Please say: *"send email to [email address] saying [message]"*';
+            result = '❓ Who should I send the email to? Please specify an email address like:\n> *"send email to user@gmail.com asking about tomorrow\'s meeting"*';
+          } else if (!to.contains('@')) {
+            final emailSub = subject.isNotEmpty ? subject : "the details";
+            result = '📧 I see you want to send an email to **$to** regarding *"$emailSub"*, but I need a valid email address (e.g. `$to@gmail.com`).\n\nPlease try again with the full email address:\n> *"send email to $to@gmail.com about $emailSub"*';
           } else {
-            await _workspace.sendEmail(to: to, subject: subject, body: body);
-            result = '✅ **Email sent successfully!**\n\nTo: $to\nSubject: $subject\n\n> $body';
+            final emailSubject = subject.isNotEmpty ? subject : 'Message from AIRA';
+            final emailBody = body.isNotEmpty ? body : content;
+            await _workspace.sendEmail(to: to, subject: emailSubject, body: emailBody);
+            result = '✅ **Email sent successfully via Gmail!**\n\n**To:** $to\n**Subject:** $emailSubject\n\n> $emailBody';
           }
           break;
 
@@ -213,7 +218,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
     } catch (e) {
       _removeLoadingMessage();
-      _addSystemMessage('❌ Error: ${e.toString().replaceAll('Exception: ', '')}');
+      final cleanErr = e.toString().replaceAll('Exception: ', '');
+      _addSystemMessage('❌ **Workspace Action Failed**\n\n$cleanErr');
     }
   }
 

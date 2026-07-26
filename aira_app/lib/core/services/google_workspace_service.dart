@@ -77,38 +77,43 @@ class GoogleWorkspaceService {
     _requireConnection();
     final dio = _buildDio('https://gmail.googleapis.com/gmail/v1/users/me');
 
-    final listResp = await dio.get(
-      '/messages',
-      queryParameters: {'maxResults': maxResults, 'labelIds': 'INBOX'},
-    );
+    try {
+      final listResp = await dio.get(
+        '/messages',
+        queryParameters: {'maxResults': maxResults, 'labelIds': 'INBOX'},
+      );
 
-    final messages = listResp.data['messages'] as List? ?? [];
-    final emails = <Map<String, dynamic>>[];
+      final messages = listResp.data['messages'] as List? ?? [];
+      final emails = <Map<String, dynamic>>[];
 
-    for (final msg in messages.take(5)) {
-      try {
-        final detail = await dio.get(
-          '/messages/${msg['id']}',
-          queryParameters: {
-            'format': 'metadata',
-            'metadataHeaders': ['Subject', 'From', 'Date'],
-          },
-        );
-        final headers = (detail.data['payload']['headers'] as List).fold<Map<String, String>>(
-          {},
-          (map, h) { map[h['name'] as String] = h['value'] as String? ?? ''; return map; },
-        );
-        emails.add({
-          'id': msg['id'],
-          'subject': headers['Subject'] ?? '(no subject)',
-          'from': headers['From'] ?? '',
-          'date': headers['Date'] ?? '',
-          'snippet': detail.data['snippet'] ?? '',
-        });
-      } catch (_) {}
+      for (final msg in messages.take(5)) {
+        try {
+          final detail = await dio.get(
+            '/messages/${msg['id']}',
+            queryParameters: {
+              'format': 'metadata',
+              'metadataHeaders': ['Subject', 'From', 'Date'],
+            },
+          );
+          final headers = (detail.data['payload']['headers'] as List).fold<Map<String, String>>(
+            {},
+            (map, h) { map[h['name'] as String] = h['value'] as String? ?? ''; return map; },
+          );
+          emails.add({
+            'id': msg['id'],
+            'subject': headers['Subject'] ?? '(no subject)',
+            'from': headers['From'] ?? '',
+            'date': headers['Date'] ?? '',
+            'snippet': detail.data['snippet'] ?? '',
+          });
+        } catch (_) {}
+      }
+
+      return emails;
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Gmail API error: $msg');
     }
-
-    return emails;
   }
 
   /// Send an email via Gmail API.
@@ -118,6 +123,11 @@ class GoogleWorkspaceService {
     required String body,
   }) async {
     _requireConnection();
+
+    if (!to.contains('@') || !to.contains('.')) {
+      throw Exception('Invalid email address "$to". Please provide a valid email like name@example.com.');
+    }
+
     final dio = _buildDio('https://gmail.googleapis.com/gmail/v1/users/me');
 
     // Build RFC 2822 formatted email
@@ -130,10 +140,17 @@ class GoogleWorkspaceService {
       body,
     ].join('\r\n');
 
-    final encoded = base64Url.encode(utf8.encode(rawEmail));
+    // RFC 4648 URL-safe Base64 WITHOUT padding '=' (required by Gmail API)
+    final encoded = base64Url.encode(utf8.encode(rawEmail)).replaceAll('=', '');
 
-    await dio.post('/messages/send', data: {'raw': encoded});
-    return true;
+    try {
+      await dio.post('/messages/send', data: {'raw': encoded});
+      return true;
+    } on DioException catch (e) {
+      final errorData = e.response?.data;
+      final msg = errorData is Map ? (errorData['error']?['message'] ?? e.message) : e.message;
+      throw Exception('Gmail send failed: $msg');
+    }
   }
 
   // ──────────────────── Calendar ────────────────────
@@ -143,26 +160,31 @@ class GoogleWorkspaceService {
     _requireConnection();
     final dio = _buildDio('https://www.googleapis.com/calendar/v3');
 
-    final now = DateTime.now().toUtc().toIso8601String();
-    final resp = await dio.get(
-      '/calendars/primary/events',
-      queryParameters: {
-        'maxResults': maxResults,
-        'timeMin': now,
-        'orderBy': 'startTime',
-        'singleEvents': true,
-      },
-    );
+    try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      final resp = await dio.get(
+        '/calendars/primary/events',
+        queryParameters: {
+          'maxResults': maxResults,
+          'timeMin': now,
+          'orderBy': 'startTime',
+          'singleEvents': true,
+        },
+      );
 
-    final items = resp.data['items'] as List? ?? [];
-    return items.map<Map<String, dynamic>>((e) => {
-      'id': e['id'] ?? '',
-      'title': e['summary'] ?? '(no title)',
-      'start': e['start']?['dateTime'] ?? e['start']?['date'] ?? '',
-      'end': e['end']?['dateTime'] ?? e['end']?['date'] ?? '',
-      'location': e['location'] ?? '',
-      'description': e['description'] ?? '',
-    }).toList();
+      final items = resp.data['items'] as List? ?? [];
+      return items.map<Map<String, dynamic>>((e) => {
+        'id': e['id'] ?? '',
+        'title': e['summary'] ?? '(no title)',
+        'start': e['start']?['dateTime'] ?? e['start']?['date'] ?? '',
+        'end': e['end']?['dateTime'] ?? e['end']?['date'] ?? '',
+        'location': e['location'] ?? '',
+        'description': e['description'] ?? '',
+      }).toList();
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Calendar API error: $msg');
+    }
   }
 
   /// Create a calendar event.
@@ -176,19 +198,24 @@ class GoogleWorkspaceService {
     _requireConnection();
     final dio = _buildDio('https://www.googleapis.com/calendar/v3');
 
-    final resp = await dio.post('/calendars/primary/events', data: {
-      'summary': title,
-      'description': description ?? '',
-      'location': location ?? '',
-      'start': {'dateTime': start.toIso8601String(), 'timeZone': 'Asia/Kolkata'},
-      'end': {'dateTime': end.toIso8601String(), 'timeZone': 'Asia/Kolkata'},
-    });
+    try {
+      final resp = await dio.post('/calendars/primary/events', data: {
+        'summary': title,
+        'description': description ?? '',
+        'location': location ?? '',
+        'start': {'dateTime': start.toIso8601String(), 'timeZone': 'Asia/Kolkata'},
+        'end': {'dateTime': end.toIso8601String(), 'timeZone': 'Asia/Kolkata'},
+      });
 
-    return {
-      'id': resp.data['id'] ?? '',
-      'title': resp.data['summary'] ?? title,
-      'link': resp.data['htmlLink'] ?? '',
-    };
+      return {
+        'id': resp.data['id'] ?? '',
+        'title': resp.data['summary'] ?? title,
+        'link': resp.data['htmlLink'] ?? '',
+      };
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Calendar create event failed: $msg');
+    }
   }
 
   // ──────────────────── Google Docs ────────────────────
@@ -198,14 +225,19 @@ class GoogleWorkspaceService {
     _requireConnection();
     final dio = _buildDio('https://docs.googleapis.com/v1');
 
-    final resp = await dio.post('/documents', data: {'title': title});
+    try {
+      final resp = await dio.post('/documents', data: {'title': title});
 
-    final docId = resp.data['documentId'] as String;
-    return {
-      'id': docId,
-      'title': resp.data['title'] ?? title,
-      'link': 'https://docs.google.com/document/d/$docId/edit',
-    };
+      final docId = resp.data['documentId'] as String;
+      return {
+        'id': docId,
+        'title': resp.data['title'] ?? title,
+        'link': 'https://docs.google.com/document/d/$docId/edit',
+      };
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Google Docs create failed: $msg');
+    }
   }
 
   // ──────────────────── Helpers ────────────────────
