@@ -82,7 +82,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(isGoogleConnected: success);
 
     final resultMsg = success
-        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"send email to name@gmail.com about [subject] saying [message]"**\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create event [title] on [date] at [time]"**\n- Say **"create a Google Doc called [title]"**'
+        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"send email to name@gmail.com about [subject] saying [message]"**\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create event [title] on [date] at [time]"**\n- Say **"create a Google Doc called [title]"**\n- Say **"create a sheet called Budget 2026"**\n- Say **"add row to Budget 2026: Groceries, 50, Food"**\n- Say **"show sheet Budget 2026"**'
         : '❌ Could not connect to Google Workspace. Please try again.';
 
     _addSystemMessage(resultMsg);
@@ -134,7 +134,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     if (!_workspace.isConnected) {
       _addSystemMessage(
-        '🔗 **Google Workspace is not connected.**\n\nTo use Gmail, Calendar, and Docs, say **"connect Google Workspace"** first.\n\nI\'ll ask you to sign in to your Google account.',
+        '🔗 **Google Workspace is not connected.**\n\nTo use Gmail, Calendar, Docs, and Sheets, say **"connect Google Workspace"** first.\n\nI\'ll ask you to sign in to your Google account.',
       );
       return;
     }
@@ -158,9 +158,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
           break;
 
         case WorkspaceIntent.sendEmail:
-          final to = command.params['to'] ?? '';
-          final subject = command.params['subject'] ?? '';
-          final body = command.params['body'] ?? '';
+          final to = command.params['to'] as String? ?? '';
+          final subject = command.params['subject'] as String? ?? '';
+          final body = command.params['body'] as String? ?? '';
 
           if (to.isEmpty) {
             result = '❓ Who should I send the email to? Please specify an email address like:\n> *"send email to user@gmail.com asking about tomorrow\'s meeting"*';
@@ -189,7 +189,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
           break;
 
         case WorkspaceIntent.createEvent:
-          final title = command.params['title'] ?? 'New Event';
+          final title = command.params['title'] as String? ?? 'New Event';
           // Default to tomorrow 10am-11am
           final now = DateTime.now();
           final start = DateTime(now.year, now.month, now.day + 1, 10, 0);
@@ -200,9 +200,54 @@ class ChatNotifier extends StateNotifier<ChatState> {
           break;
 
         case WorkspaceIntent.createDoc:
-          final title = command.params['title'] ?? 'New Document';
+          final title = command.params['title'] as String? ?? 'New Document';
           final doc = await _workspace.createDoc(title: title);
           result = '✅ **Google Doc created!**\n\n📄 **${doc['title']}**\n[Open Doc](${doc['link']})';
+          break;
+
+        // ── Google Sheets Handlers ──
+        case WorkspaceIntent.createSheet:
+          final title = command.params['title'] as String? ?? 'New Spreadsheet';
+          final sheet = await _workspace.createSheet(title: title);
+          result = '✅ **Google Sheet Created!**\n\n📊 **${sheet['title']}**\n[Open Spreadsheet](${sheet['link']})';
+          break;
+
+        case WorkspaceIntent.appendSheetRow:
+          final target = command.params['sheetTarget'] as String? ?? '';
+          final values = (command.params['values'] as List?)?.cast<String>() ?? [];
+
+          if (values.isEmpty) {
+            result = '❓ What values should I add to **$target**? Please provide comma-separated values like:\n> *"add row to $target: Item Name, 100, Completed"*';
+          } else {
+            final res = await _workspace.appendSheetRow(sheetTarget: target, values: values);
+            result = '✅ **Row added to Google Sheet!**\n\n📊 **Sheet:** $target\n📝 **Values Added:** ${values.join(" | ")}\n\n[Open Spreadsheet](${res['link']})';
+          }
+          break;
+
+        case WorkspaceIntent.readSheet:
+        case WorkspaceIntent.openSheet:
+          final target = command.params['sheetTarget'] as String? ?? '';
+          if (target.isEmpty) {
+            result = '❓ Which sheet would you like to view? Say *"show sheet [title]"*';
+          } else {
+            final res = await _workspace.readSheetData(sheetTarget: target);
+            final rows = res['rows'] as List<List<String>>;
+            if (rows.isEmpty) {
+              result = '📊 **Google Sheet ($target)** is empty.\n\n[Open Spreadsheet](${res['link']})';
+            } else {
+              result = '📊 **Google Sheet ($target):**\n\n';
+              for (int i = 0; i < rows.length; i++) {
+                final r = rows[i];
+                if (i == 0) {
+                  result += '| ${r.join(' | ')} |\n';
+                  result += '| ${r.map((_) => '---').join(' | ')} |\n';
+                } else {
+                  result += '| ${r.join(' | ')} |\n';
+                }
+              }
+              result += '\n[Open Spreadsheet](${res['link']})';
+            }
+          }
           break;
 
         default:
@@ -213,7 +258,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(result);
 
       if (_isVoiceEnabled && result.isNotEmpty) {
-        final clean = result.replaceAll(RegExp(r'[*#_`\[\]]'), '');
+        final clean = result.replaceAll(RegExp(r'[*#_`\[\]|]'), '');
         await _tts.speak(clean);
       }
     } catch (e) {

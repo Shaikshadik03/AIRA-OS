@@ -3,7 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dio/dio.dart';
 
 /// Google Workspace API service.
-/// Handles Gmail, Calendar, and Docs API calls using the user's Google OAuth token.
+/// Handles Gmail, Calendar, Docs, Sheets, and Drive API calls using the user's Google OAuth token.
 class GoogleWorkspaceService {
   static final GoogleWorkspaceService _instance = GoogleWorkspaceService._internal();
   factory GoogleWorkspaceService() => _instance;
@@ -15,6 +15,9 @@ class GoogleWorkspaceService {
   GoogleSignIn? _googleSignIn;
   GoogleSignInAccount? _currentUser;
   String? _accessToken;
+
+  // Cache for recently used spreadsheets: name -> spreadsheetId
+  final Map<String, String> _sheetCache = {};
 
   // ──────────────────── Auth ────────────────────
 
@@ -31,6 +34,8 @@ class GoogleWorkspaceService {
           'https://www.googleapis.com/auth/calendar',
           'https://www.googleapis.com/auth/calendar.events',
           'https://www.googleapis.com/auth/documents',
+          'https://www.googleapis.com/auth/spreadsheets',
+          'https://www.googleapis.com/auth/drive.readonly',
         ],
       );
 
@@ -54,6 +59,7 @@ class GoogleWorkspaceService {
     try { await _googleSignIn?.signOut(); } catch (_) {}
     _accessToken = null;
     _currentUser = null;
+    _sheetCache.clear();
   }
 
   bool get isConnected => _accessToken != null;
@@ -237,6 +243,139 @@ class GoogleWorkspaceService {
     } on DioException catch (e) {
       final msg = e.response?.data?['error']?['message'] ?? e.message;
       throw Exception('Google Docs create failed: $msg');
+    }
+  }
+
+  // ──────────────────── Google Sheets ────────────────────
+
+  /// Create a new Google Sheet (Spreadsheet).
+  Future<Map<String, dynamic>> createSheet({required String title}) async {
+    _requireConnection();
+    final dio = _buildDio('https://sheets.googleapis.com/v1');
+
+    try {
+      final resp = await dio.post(
+        '/spreadsheets',
+        data: {
+          'properties': {'title': title},
+        },
+      );
+
+      final spreadsheetId = resp.data['spreadsheetId'] as String;
+      final link = 'https://docs.google.com/spreadsheets/d/$spreadsheetId/edit';
+
+      // Cache title to ID mapping
+      _sheetCache[title.toLowerCase()] = spreadsheetId;
+
+      return {
+        'id': spreadsheetId,
+        'title': resp.data['properties']?['title'] ?? title,
+        'link': link,
+      };
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Google Sheets create failed: $msg');
+    }
+  }
+
+  /// Search Drive for a spreadsheet by name or ID.
+  Future<String?> findSpreadsheetId(String nameOrId) async {
+    _requireConnection();
+
+    // If it looks like a spreadsheet ID (length ~44, alphanumeric with -_)
+    if (nameOrId.length > 25 && !nameOrId.contains(' ')) {
+      return nameOrId;
+    }
+
+    final lowerName = nameOrId.toLowerCase().trim();
+    if (_sheetCache.containsKey(lowerName)) {
+      return _sheetCache[lowerName];
+    }
+
+    final dio = _buildDio('https://www.googleapis.com/drive/v3');
+
+    try {
+      final q = "mimeType='application/vnd.google-apps.spreadsheet' and name contains '${nameOrId.replaceAll("'", "\\'")}' and trashed = false";
+      final resp = await dio.get('/files', queryParameters: {'q': q, 'pageSize': 5});
+
+      final files = resp.data['files'] as List? ?? [];
+      if (files.isNotEmpty) {
+        final id = files.first['id'] as String;
+        _sheetCache[lowerName] = id;
+        return id;
+      }
+      return null;
+    } on DioException catch (_) {
+      return null;
+    }
+  }
+
+  /// Append a row of data values to a Google Sheet.
+  Future<Map<String, dynamic>> appendSheetRow({
+    required String sheetTarget,
+    required List<String> values,
+  }) async {
+    _requireConnection();
+
+    final spreadsheetId = await findSpreadsheetId(sheetTarget);
+    if (spreadsheetId == null) {
+      throw Exception('Could not find Google Sheet matching "$sheetTarget". Create it first by saying "create a sheet called $sheetTarget".');
+    }
+
+    final dio = _buildDio('https://sheets.googleapis.com/v1');
+
+    try {
+      final resp = await dio.post(
+        '/spreadsheets/$spreadsheetId/values/Sheet1!A1:append',
+        queryParameters: {'valueInputOption': 'USER_ENTERED'},
+        data: {
+          'values': [values],
+        },
+      );
+
+      final updatedRange = resp.data['updates']?['updatedRange'] ?? 'Sheet1';
+      final updatedRows = resp.data['updates']?['updatedRows'] ?? 1;
+
+      return {
+        'spreadsheetId': spreadsheetId,
+        'updatedRange': updatedRange,
+        'updatedRows': updatedRows,
+        'link': 'https://docs.google.com/spreadsheets/d/$spreadsheetId/edit',
+      };
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Failed to append row to Google Sheet: $msg');
+    }
+  }
+
+  /// Read rows/data from a Google Sheet.
+  Future<Map<String, dynamic>> readSheetData({
+    required String sheetTarget,
+    String range = 'Sheet1!A1:Z50',
+  }) async {
+    _requireConnection();
+
+    final spreadsheetId = await findSpreadsheetId(sheetTarget);
+    if (spreadsheetId == null) {
+      throw Exception('Could not find Google Sheet matching "$sheetTarget".');
+    }
+
+    final dio = _buildDio('https://sheets.googleapis.com/v1');
+
+    try {
+      final resp = await dio.get('/spreadsheets/$spreadsheetId/values/$range');
+
+      final rawValues = resp.data['values'] as List? ?? [];
+      final rows = rawValues.map((r) => (r as List).map((c) => c.toString()).toList()).toList();
+
+      return {
+        'spreadsheetId': spreadsheetId,
+        'rows': rows,
+        'link': 'https://docs.google.com/spreadsheets/d/$spreadsheetId/edit',
+      };
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Failed to read Google Sheet: $msg');
     }
   }
 

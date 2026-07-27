@@ -8,13 +8,16 @@ enum WorkspaceIntent {
   listEvents,
   createDoc,
   readDoc,
+  createSheet,
+  appendSheetRow,
+  readSheet,
   openSheet,
   unknown,
 }
 
 class WorkspaceCommand {
   final WorkspaceIntent intent;
-  final Map<String, String> params;
+  final Map<String, dynamic> params;
   final String originalMessage;
 
   const WorkspaceCommand({
@@ -39,8 +42,13 @@ class WorkspaceCommand {
         return 'Create Google Doc: ${params['title'] ?? 'New Document'}';
       case WorkspaceIntent.readDoc:
         return 'Open Google Doc';
+      case WorkspaceIntent.createSheet:
+        return 'Create Google Sheet: ${params['title'] ?? 'New Spreadsheet'}';
+      case WorkspaceIntent.appendSheetRow:
+        return 'Add row to Google Sheet: ${params['sheetTarget'] ?? 'Sheet'}';
+      case WorkspaceIntent.readSheet:
       case WorkspaceIntent.openSheet:
-        return 'Open Google Sheet';
+        return 'Read Google Sheet: ${params['sheetTarget'] ?? 'Sheet'}';
       default:
         return 'Google Workspace action';
     }
@@ -57,6 +65,9 @@ class WorkspaceCommand {
       case WorkspaceIntent.createDoc:
       case WorkspaceIntent.readDoc:
         return 'document';
+      case WorkspaceIntent.createSheet:
+      case WorkspaceIntent.appendSheetRow:
+      case WorkspaceIntent.readSheet:
       case WorkspaceIntent.openSheet:
         return 'spreadsheet';
       default:
@@ -71,10 +82,7 @@ class WorkspaceIntentDetector {
 
     // ── Email intents ──
     if (_matches(msg, ['send email', 'write email', 'compose email', 'email to', 'send a mail', 'send mail', 'mail to'])) {
-      // 1. Check if an explicit email address (with @ and .) is present
       final explicitEmailMatch = RegExp(r'([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})').firstMatch(message);
-      
-      // 2. Or extract target after "to" or "mail to"
       final toMatch = RegExp(r'(?:to|mail to)\s+([A-Za-z0-9._%+\-@]+)', caseSensitive: false).firstMatch(message);
 
       String recipient = '';
@@ -84,10 +92,7 @@ class WorkspaceIntentDetector {
         recipient = toMatch.group(1)!;
       }
 
-      // Subject extraction
       final subjectMatch = RegExp(r'(?:subject|about|regarding|asking)[:\s]+(.+?)(?:\s+saying|\s+with|\s*$)', caseSensitive: false).firstMatch(message);
-      
-      // Body extraction
       final bodyMatch = RegExp(r'(?:saying|body|message)[:\s]+(.+)', caseSensitive: false).firstMatch(message);
 
       return WorkspaceCommand(
@@ -140,8 +145,52 @@ class WorkspaceIntentDetector {
     }
 
     // ── Sheets intents ──
-    if (_matches(msg, ['open sheet', 'google sheet', 'spreadsheet', 'open spreadsheet'])) {
-      return WorkspaceCommand(intent: WorkspaceIntent.openSheet, params: {}, originalMessage: message);
+    // 1. Create Sheet
+    if (_matches(msg, ['create sheet', 'create a sheet', 'new sheet', 'create spreadsheet', 'new spreadsheet', 'make a sheet'])) {
+      final titleMatch = RegExp(r'(?:called|named|titled|sheet|spreadsheet)\s+(.+)', caseSensitive: false).firstMatch(message);
+      String title = titleMatch?.group(1)?.trim() ?? 'New Spreadsheet';
+      title = title.replaceAll(RegExp(r'^(called|named|titled)\s+', caseSensitive: false), '');
+      return WorkspaceCommand(
+        intent: WorkspaceIntent.createSheet,
+        params: {'title': title.isNotEmpty ? title : 'New Spreadsheet'},
+        originalMessage: message,
+      );
+    }
+
+    // 2. Append/Add row to Sheet
+    if (_matches(msg, ['add row', 'append row', 'add entry', 'insert row', 'add to sheet', 'append to sheet', 'add row to'])) {
+      final targetMatch = RegExp(r'(?:to|in)\s+(?:sheet|spreadsheet)?\s*([A-Za-z0-9_\-\s]+?)(?:[:\s]+with|[:\s]+values|:|\s+data|\s+row|$)', caseSensitive: false).firstMatch(message);
+      String target = targetMatch?.group(1)?.trim() ?? 'Spreadsheet';
+      
+      // Extract values after colon or "with"
+      List<String> values = [];
+      final valuesMatch = RegExp(r'(?:with|values|:)\s+(.+)', caseSensitive: false).firstMatch(message);
+      if (valuesMatch != null) {
+        final valStr = valuesMatch.group(1) ?? '';
+        values = valStr.split(RegExp(r'[,|;]')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      }
+
+      return WorkspaceCommand(
+        intent: WorkspaceIntent.appendSheetRow,
+        params: {
+          'sheetTarget': target,
+          'values': values,
+        },
+        originalMessage: message,
+      );
+    }
+
+    // 3. Read/Show Sheet
+    if (_matches(msg, ['read sheet', 'show sheet', 'open sheet', 'get sheet', 'view sheet', 'read spreadsheet', 'show spreadsheet'])) {
+      final targetMatch = RegExp(r'(?:sheet|spreadsheet)\s+(.+)', caseSensitive: false).firstMatch(message);
+      String target = targetMatch?.group(1)?.trim() ?? '';
+      target = target.replaceAll(RegExp(r'^(called|named|titled)\s+', caseSensitive: false), '');
+
+      return WorkspaceCommand(
+        intent: WorkspaceIntent.readSheet,
+        params: {'sheetTarget': target},
+        originalMessage: message,
+      );
     }
 
     return WorkspaceCommand(intent: WorkspaceIntent.none, params: {}, originalMessage: message);
