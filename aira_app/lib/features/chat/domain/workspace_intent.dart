@@ -94,7 +94,7 @@ class WorkspaceIntentDetector {
     final msg = message.toLowerCase().trim();
 
     // ── Email intents ──
-    if (_matches(msg, ['send email', 'write email', 'compose email', 'email to', 'send a mail', 'send mail', 'mail to'])) {
+    if (_matches(msg, ['send email', 'write email', 'compose email', 'email to', 'send a mail', 'send mail', 'mail to', 'send an email'])) {
       final explicitEmailMatch = RegExp(r'([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})').firstMatch(message);
       final toMatch = RegExp(r'(?:to|mail to)\s+([A-Za-z0-9._%+\-@]+)', caseSensitive: false).firstMatch(message);
 
@@ -119,19 +119,19 @@ class WorkspaceIntentDetector {
       );
     }
 
-    if (_matches(msg, ['check email', 'read email', 'show email', 'open email', 'my emails', 'inbox'])) {
+    if (_matches(msg, ['check email', 'read email', 'show email', 'open email', 'my emails', 'inbox', 'summarize my', 'summarize last', 'summarize email', 'recent emails'])) {
       return WorkspaceCommand(intent: WorkspaceIntent.readEmails, params: {}, originalMessage: message);
     }
 
     // ── Calendar intents ──
-    if (_matches(msg, ['schedule meeting', 'create event', 'add event', 'book meeting', 'schedule a call', 'set reminder'])) {
-      final titleMatch = RegExp(r'(meeting|event|call|reminder)\s+(for|about|with|on)?\s*(.+?)(?:\s+on\s+|\s+at\s+|\s*$)', caseSensitive: false).firstMatch(message);
-      final dateMatch = RegExp(r'(on|for)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|\d+[st|nd|rd|th]*\s+\w+)', caseSensitive: false).firstMatch(message);
+    if (_matches(msg, ['schedule meeting', 'create event', 'add event', 'book meeting', 'schedule a call', 'set reminder', 'add an event'])) {
+      final titleMatch = RegExp(r'(called|named|titled|about|for|with)?\s*(.+?)(?:\s+on\s+|\s+at\s+|\s+tomorrow|\s+today|\s*$)', caseSensitive: false).firstMatch(message);
+      final dateMatch = RegExp(r'(on|for)?\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|\d+[st|nd|rd|th]*\s+\w+)', caseSensitive: false).firstMatch(message);
       final timeMatch = RegExp(r'at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)', caseSensitive: false).firstMatch(message);
       return WorkspaceCommand(
         intent: WorkspaceIntent.createEvent,
         params: {
-          if (titleMatch != null) 'title': titleMatch.group(3) ?? message,
+          if (titleMatch != null) 'title': titleMatch.group(2) ?? message,
           if (dateMatch != null) 'date': dateMatch.group(2) ?? '',
           if (timeMatch != null) 'time': timeMatch.group(1) ?? '',
         },
@@ -139,12 +139,12 @@ class WorkspaceIntentDetector {
       );
     }
 
-    if (_matches(msg, ['show calendar', 'my events', 'upcoming events', 'my schedule', 'what do i have today', 'meetings today'])) {
+    if (_matches(msg, ['show calendar', 'my events', 'upcoming events', 'my schedule', 'what do i have today', 'meetings today', 'on my calendar', 'my calendar', 'this week'])) {
       return WorkspaceCommand(intent: WorkspaceIntent.listEvents, params: {}, originalMessage: message);
     }
 
     // ── Docs intents ──
-    if (_matches(msg, ['create doc', 'new document', 'write a doc', 'create a document', 'make a doc'])) {
+    if (_matches(msg, ['create doc', 'new document', 'write a doc', 'create a document', 'make a doc', 'create a doc'])) {
       final titleMatch = RegExp(r'(called|named|titled|about)\s+(.+)', caseSensitive: false).firstMatch(message);
       return WorkspaceCommand(
         intent: WorkspaceIntent.createDoc,
@@ -158,7 +158,7 @@ class WorkspaceIntentDetector {
     }
 
     // ── Sheets intents ──
-    if (_matches(msg, ['create sheet', 'create a sheet', 'new sheet', 'create spreadsheet', 'new spreadsheet', 'make a sheet'])) {
+    if (_matches(msg, ['create sheet', 'create a sheet', 'new sheet', 'create spreadsheet', 'create a spreadsheet', 'new spreadsheet', 'make a sheet'])) {
       final titleMatch = RegExp(r'(?:called|named|titled|sheet|spreadsheet)\s+(.+)', caseSensitive: false).firstMatch(message);
       String title = titleMatch?.group(1)?.trim() ?? 'New Spreadsheet';
       title = title.replaceAll(RegExp(r'^(called|named|titled)\s+', caseSensitive: false), '');
@@ -169,15 +169,16 @@ class WorkspaceIntentDetector {
       );
     }
 
-    if (_matches(msg, ['add row', 'append row', 'add entry', 'insert row', 'add to sheet', 'append to sheet', 'add row to'])) {
+    if (_matches(msg, ['add row', 'append row', 'add entry', 'insert row', 'add to sheet', 'append to sheet', 'add row to', 'add a row'])) {
       final targetMatch = RegExp(r'(?:to|in)\s+(?:sheet|spreadsheet)?\s*([A-Za-z0-9_\-\s]+?)(?:[:\s]+with|[:\s]+values|:|\s+data|\s+row|$)', caseSensitive: false).firstMatch(message);
       String target = targetMatch?.group(1)?.trim() ?? 'Spreadsheet';
       
       List<String> values = [];
       final valuesMatch = RegExp(r'(?:with|values|:)\s+(.+)', caseSensitive: false).firstMatch(message);
       if (valuesMatch != null) {
-        final valStr = valuesMatch.group(1) ?? '';
-        values = valStr.split(RegExp(r'[,|;]')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        var valStr = valuesMatch.group(1) ?? '';
+        valStr = valStr.replaceAll(RegExp(r'^(values|with)\s+', caseSensitive: false), '');
+        values = valStr.split(RegExp(r'[,|;]|\s+and\s+')).map((s) => s.trim().replaceAll(RegExp(r'\.$'), '')).where((s) => s.isNotEmpty).toList();
       }
 
       return WorkspaceCommand(
@@ -190,10 +191,10 @@ class WorkspaceIntentDetector {
       );
     }
 
-    if (_matches(msg, ['read sheet', 'show sheet', 'open sheet', 'get sheet', 'view sheet', 'read spreadsheet', 'show spreadsheet'])) {
-      final targetMatch = RegExp(r'(?:sheet|spreadsheet)\s+(.+)', caseSensitive: false).firstMatch(message);
+    if (_matches(msg, ['read sheet', 'show sheet', 'open sheet', 'get sheet', 'view sheet', 'read spreadsheet', 'show spreadsheet', 'read the data from', 'read data from', 'read the sheet'])) {
+      final targetMatch = RegExp(r'(?:sheet|spreadsheet|from)\s+(.+)', caseSensitive: false).firstMatch(message);
       String target = targetMatch?.group(1)?.trim() ?? '';
-      target = target.replaceAll(RegExp(r'^(called|named|titled)\s+', caseSensitive: false), '');
+      target = target.replaceAll(RegExp(r'^(called|named|titled|data from|from)\s+', caseSensitive: false), '').replaceAll(RegExp(r'\.$'), '');
 
       return WorkspaceCommand(
         intent: WorkspaceIntent.readSheet,
@@ -204,7 +205,7 @@ class WorkspaceIntentDetector {
 
     // ── Google Drive Intents ──
     // 1. List recent files
-    if (_matches(msg, ['list my recent files', 'recent files in drive', 'show my drive', 'list drive files', 'my drive files', 'show drive'])) {
+    if (_matches(msg, ['list my recent files', 'recent files in drive', 'show my drive', 'list drive files', 'my drive files', 'show drive', 'list recent drive files', 'list my recent drive files'])) {
       return WorkspaceCommand(
         intent: WorkspaceIntent.listDriveFiles,
         params: {},
@@ -216,7 +217,7 @@ class WorkspaceIntentDetector {
     if (_matches(msg, ['search drive for', 'search drive', 'find file in drive', 'find in drive', 'open my project folder', 'find file', 'open folder'])) {
       final queryMatch = RegExp(r'(?:for|drive|folder|file)\s+(.+)', caseSensitive: false).firstMatch(message);
       String query = queryMatch?.group(1)?.trim() ?? 'Project';
-      query = query.replaceAll(RegExp(r'^(folder|file|in drive)\s+', caseSensitive: false), '');
+      query = query.replaceAll(RegExp(r'^(for|folder|file|in drive)\s+', caseSensitive: false), '');
 
       return WorkspaceCommand(
         intent: WorkspaceIntent.searchDriveFiles,
@@ -226,11 +227,11 @@ class WorkspaceIntentDetector {
     }
 
     // 3. Upload to Drive
-    if (_matches(msg, ['upload to drive', 'upload note to drive', 'save to drive', 'create file in drive'])) {
+    if (_matches(msg, ['upload to drive', 'upload note to drive', 'upload a text note to drive', 'upload text note to drive', 'save to drive', 'create file in drive'])) {
       final nameMatch = RegExp(r'(?:drive|file|note)[:\s]+([A-Za-z0-9_\-\.\s]+?)(?:[:\s]+with|[:\s]+content|:|$)', caseSensitive: false).firstMatch(message);
       String filename = nameMatch?.group(1)?.trim() ?? 'Note';
 
-      final contentMatch = RegExp(r'(?:content|with|:)\s+(.+)', caseSensitive: false).firstMatch(message);
+      final contentMatch = RegExp(r'(?:content|with|saying|:)\s+(.+)', caseSensitive: false).firstMatch(message);
       String content = contentMatch?.group(1)?.trim() ?? message;
 
       return WorkspaceCommand(
