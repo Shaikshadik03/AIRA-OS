@@ -19,23 +19,41 @@ class AppConfig {
   );
   static const String supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    // Key is loaded via --dart-define at build time. See README for how to build.
     defaultValue: '',
   );
 
   // ============================================
-  // 🤖 GROQ AI
+  // 🤖 GROQ AI (Primary LLM)
   // ============================================
   static const String groqApiKey = String.fromEnvironment(
     'GROQ_API_KEY',
-    // Key is loaded via --dart-define at build time. See README for how to build.
     defaultValue: '',
   );
   static const String groqModel = 'llama-3.3-70b-versatile';
   static const String groqBaseUrl = 'https://api.groq.com/openai/v1';
 
   // ============================================
-  // Backend API URL (for other services)
+  // 🤖 GEMINI AI (Fallback 1)
+  // ============================================
+  static const String geminiApiKey = String.fromEnvironment(
+    'GEMINI_API_KEY',
+    defaultValue: '',
+  );
+  static const String geminiModel = 'gemini-2.0-flash';
+  static const String geminiBaseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+
+  // ============================================
+  // 🤖 OPENROUTER AI (Fallback 2)
+  // ============================================
+  static const String openRouterApiKey = String.fromEnvironment(
+    'OPENROUTER_API_KEY',
+    defaultValue: '',
+  );
+  static const String openRouterModel = 'meta-llama/llama-3.3-70b-instruct';
+  static const String openRouterBaseUrl = 'https://openrouter.ai/api/v1';
+
+  // ============================================
+  // Backend API URL
   // ============================================
   static const String backendUrl = String.fromEnvironment(
     'BACKEND_URL',

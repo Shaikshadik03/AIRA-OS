@@ -260,8 +260,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
         case WorkspaceIntent.sendEmail:
           String to = command.params['to'] as String? ?? '';
-          final subject = command.params['subject'] as String? ?? '';
-          final body = command.params['body'] as String? ?? '';
+          final rawSubject = command.params['subject'] as String? ?? '';
+          final rawBody = command.params['body'] as String? ?? '';
           String lookupNote = '';
 
           // 📇 SMART CONTACT LOOKUP: Google Contacts API -> AI Memory
@@ -288,13 +288,40 @@ class ChatNotifier extends StateNotifier<ChatState> {
           if (to.isEmpty) {
             result = '❓ Who should I send the email to? Please specify an email address or contact name like:\n> *"send email to Rahul asking about tomorrow\'s meeting"*';
           } else if (!to.contains('@')) {
-            final emailSub = subject.isNotEmpty ? subject : "the details";
+            final emailSub = rawSubject.isNotEmpty ? rawSubject : "the details";
             result = '📧 I see you want to send an email to **$to** regarding *"$emailSub"*, but I couldn\'t find them in your Google Contacts or AI Memory.\n\nPlease try again with their full email address:\n> *"send email to $to@gmail.com about $emailSub"*';
           } else {
-            final emailSubject = subject.isNotEmpty ? subject : 'Message from AIRA';
-            final emailBody = body.isNotEmpty ? body : content;
-            await _workspace.sendEmail(to: to, subject: subject.isNotEmpty ? subject : 'Message from AIRA', body: body.isNotEmpty ? body : content);
-            result = '$lookupNote✅ **Email sent successfully via Gmail!**\n\n**To:** $to\n**Subject:** $emailSubject\n\n> $emailBody';
+            // 📝 FIX EMAIL COMPOSITION BUG: Generate a real, well-written email body instead of raw command echoing
+            String emailBody = rawBody.trim();
+            if (emailBody.isEmpty ||
+                emailBody == content.trim() ||
+                emailBody.toLowerCase().startsWith('send mail') ||
+                emailBody.toLowerCase().startsWith('send email') ||
+                emailBody.toLowerCase().startsWith('send a mail')) {
+              try {
+                emailBody = await _groq.chat(
+                  'Write a polite, professional, short email body based on this user instruction: "$content". Do NOT include Subject lines, To lines, or placeholders. Write only the email body text ready to send.',
+                  [],
+                );
+              } catch (_) {
+                emailBody = rawSubject.isNotEmpty
+                    ? 'Hi,\n\nI am writing to inquire regarding $rawSubject.\n\nBest regards,\nAIRA'
+                    : 'Hi,\n\nHope you are doing well.\n\nBest regards,\nAIRA';
+              }
+            }
+
+            final emailSubject = rawSubject.isNotEmpty
+                ? rawSubject
+                : 'Message regarding ${content.length > 30 ? content.substring(0, 30) : content}';
+
+            await _workspace.sendEmail(
+              to: to,
+              subject: emailSubject,
+              body: emailBody,
+            );
+
+            final providerUsed = _groq.lastProviderName;
+            result = '$lookupNote✅ **Email sent successfully via Gmail!** *(LLM Provider: $providerUsed)*\n\n**To:** $to\n**Subject:** $emailSubject\n\n> ${emailBody.replaceAll('\n', '\n> ')}';
           }
           break;
 
@@ -446,7 +473,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
           .map((m) => <String, dynamic>{'role': m.role == 'user' ? 'user' : 'assistant', 'content': m.content})
           .toList();
 
-      // 🧠 Fetch AI memory context to inject into Groq system prompt
+      // 🧠 Fetch AI memory context to inject into LLM system prompt
       final memoryContext = await _memoryService.getMemoriesPromptContext();
 
       final response = await _groq.chat(
@@ -464,6 +491,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         createdAt: DateTime.now(),
       );
 
+
       final updatedMessages = state.messages.where((m) => m.id != typingMsg.id).toList();
       state = state.copyWith(messages: [...updatedMessages, assistantMsg], isSending: false);
 
@@ -478,6 +506,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         final cleanText = response.replaceAll(RegExp(r'[*#_`]'), '');
         await _tts.speak(cleanText);
       }
+
     } catch (e) {
       final updatedMessages = state.messages.where((m) => m.id != typingMsg.id).toList();
       state = state.copyWith(
