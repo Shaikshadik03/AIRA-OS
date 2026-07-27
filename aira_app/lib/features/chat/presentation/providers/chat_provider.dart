@@ -85,7 +85,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(isGoogleConnected: success);
 
     final resultMsg = success
-        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"send email to Rahul saying [message]"** (remembers contacts!)\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create event [title] on [date] at [time]"**\n- Say **"create a Google Doc called [title]"**\n- Say **"create a sheet called Budget 2026"**\n- Say **"add row to Budget 2026: Groceries, 50, Food"**'
+        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"send email to Rahul saying [message]"** (auto-searches Google Contacts!)\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create event [title] on [date] at [time]"**\n- Say **"create a Google Doc called [title]"**\n- Say **"create a sheet called Budget 2026"**\n- Say **"add row to Budget 2026: Groceries, 50, Food"**'
         : '❌ Could not connect to Google Workspace. Please try again.';
 
     _addSystemMessage(resultMsg);
@@ -221,28 +221,41 @@ class ChatNotifier extends StateNotifier<ChatState> {
           String to = command.params['to'] as String? ?? '';
           final subject = command.params['subject'] as String? ?? '';
           final body = command.params['body'] as String? ?? '';
-          String memoryNote = '';
+          String lookupNote = '';
 
-          // 🧠 MEMORY LOOKUP: If recipient is a name without @, look up in AI memory!
+          // 📇 SMART CONTACT LOOKUP: Google Contacts API -> AI Memory
           if (to.isNotEmpty && !to.contains('@')) {
-            final foundEmail = await _memoryService.findEmailForName(to);
-            if (foundEmail != null) {
-              memoryNote = '🧠 *Retrieved email for **$to** from AI Memory (`$foundEmail`)*\n\n';
-              to = foundEmail;
+            // Tier 1: Search Google Contacts API
+            try {
+              final contactMatch = await _workspace.searchGoogleContactEmail(to);
+              if (contactMatch != null && contactMatch['email'] != null) {
+                final cName = contactMatch['name'] ?? to;
+                final cEmail = contactMatch['email']!;
+                lookupNote = '📇 *Found in Google Contacts: **$cName** (`$cEmail`)*\n\n';
+                to = cEmail;
+              }
+            } catch (_) {}
+
+            // Tier 2: Search AI Memory (if Contacts API didn't find email)
+            if (!to.contains('@')) {
+              final memoryEmail = await _memoryService.findEmailForName(to);
+              if (memoryEmail != null) {
+                lookupNote = '🧠 *Retrieved email for **$to** from AI Memory (`$memoryEmail`)*\n\n';
+                to = memoryEmail;
+              }
             }
           }
 
           if (to.isEmpty) {
-            result = '❓ Who should I send the email to? Please specify an email address like:\n> *"send email to user@gmail.com asking about tomorrow\'s meeting"*';
+            result = '❓ Who should I send the email to? Please specify an email address or contact name like:\n> *"send email to Rahul asking about tomorrow\'s meeting"*';
           } else if (!to.contains('@')) {
             final emailSub = subject.isNotEmpty ? subject : "the details";
-            result = '📧 I see you want to send an email to **$to** regarding *"$emailSub"*, but I don\'t have their email address saved.\n\nYou can say:\n> *"Remember that $to\'s email is $to@gmail.com"*';
+            result = '📧 I see you want to send an email to **$to** regarding *"$emailSub"*, but I couldn\'t find them in your Google Contacts or AI Memory.\n\nPlease try again with their full email address:\n> *"send email to $to@gmail.com about $emailSub"*';
           } else {
             final emailSubject = subject.isNotEmpty ? subject : 'Message from AIRA';
             final emailBody = body.isNotEmpty ? body : content;
             await _workspace.sendEmail(to: to, subject: emailSubject, body: emailBody);
-            result = '$memoryNote✅ **Email sent successfully via Gmail!**\n\n**To:** $to\n**Subject:** $emailSubject\n\n> $emailBody';
-
+            result = '$lookupNote✅ **Email sent successfully via Gmail!**\n\n**To:** $to\n**Subject:** $emailSubject\n\n> $emailBody';
           }
           break;
 

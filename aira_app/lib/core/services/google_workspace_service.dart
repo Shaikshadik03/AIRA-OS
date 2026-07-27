@@ -3,7 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dio/dio.dart';
 
 /// Google Workspace API service.
-/// Handles Gmail, Calendar, Docs, Sheets, and Drive API calls using the user's Google OAuth token.
+/// Handles Gmail, Calendar, Docs, Sheets, Drive, and Google Contacts API calls.
 class GoogleWorkspaceService {
   static final GoogleWorkspaceService _instance = GoogleWorkspaceService._internal();
   factory GoogleWorkspaceService() => _instance;
@@ -21,7 +21,7 @@ class GoogleWorkspaceService {
 
   // ──────────────────── Auth ────────────────────
 
-  /// Sign in to Google and request Workspace scopes.
+  /// Sign in to Google and request Workspace scopes (including Contacts).
   Future<bool> signInWithWorkspaceScopes() async {
     try {
       _googleSignIn = GoogleSignIn(
@@ -36,6 +36,7 @@ class GoogleWorkspaceService {
           'https://www.googleapis.com/auth/documents',
           'https://www.googleapis.com/auth/spreadsheets',
           'https://www.googleapis.com/auth/drive.readonly',
+          'https://www.googleapis.com/auth/contacts.readonly',
         ],
       );
 
@@ -75,6 +76,81 @@ class GoogleWorkspaceService {
           'Content-Type': 'application/json',
         },
       ));
+
+  // ──────────────────── Google Contacts API ────────────────────
+
+  /// Search Google Contacts for a person by name and return their email address & display name.
+  /// Uses Google People API (v1).
+  Future<Map<String, String>?> searchGoogleContactEmail(String nameQuery) async {
+    _requireConnection();
+    final lowerQuery = nameQuery.toLowerCase().trim();
+    if (lowerQuery.isEmpty) return null;
+
+    final dio = _buildDio('https://people.googleapis.com/v1');
+
+    // 1. Try searchContacts endpoint
+    try {
+      final resp = await dio.get(
+        '/people:searchContacts',
+        queryParameters: {
+          'query': nameQuery,
+          'readMask': 'names,emailAddresses',
+          'pageSize': 5,
+        },
+      );
+
+      final results = resp.data['results'] as List? ?? [];
+      for (final r in results) {
+        final person = r['person'] as Map<String, dynamic>?;
+        if (person != null) {
+          final emails = person['emailAddresses'] as List? ?? [];
+          final names = person['names'] as List? ?? [];
+          final displayName = names.isNotEmpty ? (names.first['displayName'] ?? nameQuery) : nameQuery;
+
+          if (emails.isNotEmpty) {
+            final email = emails.first['value'] as String?;
+            if (email != null && email.contains('@')) {
+              return {
+                'name': displayName as String,
+                'email': email,
+              };
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback: Connections list (list contacts directly)
+    try {
+      final resp = await dio.get(
+        '/people/me/connections',
+        queryParameters: {
+          'personFields': 'names,emailAddresses',
+          'pageSize': 100,
+        },
+      );
+
+      final connections = resp.data['connections'] as List? ?? [];
+      for (final c in connections) {
+        final names = c['names'] as List? ?? [];
+        final emails = c['emailAddresses'] as List? ?? [];
+
+        if (emails.isNotEmpty) {
+          final displayName = names.isNotEmpty ? (names.first['displayName'] as String? ?? '') : '';
+          final email = emails.first['value'] as String? ?? '';
+
+          if (displayName.toLowerCase().contains(lowerQuery) && email.contains('@')) {
+            return {
+              'name': displayName.isNotEmpty ? displayName : nameQuery,
+              'email': email,
+            };
+          }
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
 
   // ──────────────────── Gmail ────────────────────
 
