@@ -85,7 +85,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(isGoogleConnected: success);
 
     final resultMsg = success
-        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"send email to Rahul saying [message]"** (auto-searches Google Contacts!)\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create event [title] on [date] at [time]"**\n- Say **"create a Google Doc called [title]"**\n- Say **"create a sheet called Budget 2026"**\n- Say **"add row to Budget 2026: Groceries, 50, Food"**'
+        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"list my recent files"** (Google Drive!)\n- Say **"search drive for Project"**\n- Say **"upload note to drive: Ideas with content Hello"**\n- Say **"send email to Rahul saying [message]"** (auto-searches Google Contacts!)\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create a sheet called Budget 2026"**'
         : '❌ Could not connect to Google Workspace. Please try again.';
 
     _addSystemMessage(resultMsg);
@@ -194,7 +194,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     if (!_workspace.isConnected) {
       _addSystemMessage(
-        '🔗 **Google Workspace is not connected.**\n\nTo use Gmail, Calendar, Docs, and Sheets, say **"connect Google Workspace"** first.',
+        '🔗 **Google Workspace is not connected.**\n\nTo use Drive, Gmail, Calendar, Docs, and Sheets, say **"connect Google Workspace"** first.',
       );
       return;
     }
@@ -205,6 +205,47 @@ class ChatNotifier extends StateNotifier<ChatState> {
       String result = '';
 
       switch (command.intent) {
+        // ── Google Drive Handlers ──
+        case WorkspaceIntent.listDriveFiles:
+          final files = await _workspace.listRecentDriveFiles();
+          if (files.isEmpty) {
+            result = '📁 No files found in your Google Drive.';
+          } else {
+            result = '📁 **Your Recent Google Drive Files:**\n\n';
+            for (final f in files) {
+              final isFolder = (f['mimeType'] as String).contains('folder');
+              final icon = isFolder ? '📁' : '📄';
+              result += '$icon **[${f['name']}](${f['link']})** (${f['size']})\n';
+            }
+          }
+          break;
+
+        case WorkspaceIntent.searchDriveFiles:
+          final query = command.params['query'] as String? ?? '';
+          final files = await _workspace.searchDriveFiles(query);
+          if (files.isEmpty) {
+            result = '🔍 No files or folders found matching **"$query"** in Google Drive.';
+          } else {
+            result = '🔍 **Google Drive Search Results for "$query":**\n\n';
+            for (final f in files) {
+              final icon = (f['isFolder'] as bool) ? '📁' : '📄';
+              result += '$icon **[${f['name']}](${f['link']})**\n';
+            }
+          }
+          break;
+
+        case WorkspaceIntent.uploadToDrive:
+          final filename = command.params['filename'] as String? ?? 'Note';
+          final fileContent = command.params['content'] as String? ?? content;
+
+          final res = await _workspace.uploadTextFileToDrive(
+            filename: filename,
+            content: fileContent,
+          );
+          result = '✅ **File Uploaded to Google Drive!**\n\n📄 **${res['name']}**\n[Open File in Drive](${res['link']})';
+          break;
+
+        // ── Gmail Handlers ──
         case WorkspaceIntent.readEmails:
           final emails = await _workspace.listEmails();
           if (emails.isEmpty) {
@@ -225,7 +266,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
           // 📇 SMART CONTACT LOOKUP: Google Contacts API -> AI Memory
           if (to.isNotEmpty && !to.contains('@')) {
-            // Tier 1: Search Google Contacts API
             try {
               final contactMatch = await _workspace.searchGoogleContactEmail(to);
               if (contactMatch != null && contactMatch['email'] != null) {
@@ -236,7 +276,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
               }
             } catch (_) {}
 
-            // Tier 2: Search AI Memory (if Contacts API didn't find email)
             if (!to.contains('@')) {
               final memoryEmail = await _memoryService.findEmailForName(to);
               if (memoryEmail != null) {
@@ -254,7 +293,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
           } else {
             final emailSubject = subject.isNotEmpty ? subject : 'Message from AIRA';
             final emailBody = body.isNotEmpty ? body : content;
-            await _workspace.sendEmail(to: to, subject: emailSubject, body: emailBody);
+            await _workspace.sendEmail(to: to, subject: subject.isNotEmpty ? subject : 'Message from AIRA', body: body.isNotEmpty ? body : content);
             result = '$lookupNote✅ **Email sent successfully via Gmail!**\n\n**To:** $to\n**Subject:** $emailSubject\n\n> $emailBody';
           }
           break;

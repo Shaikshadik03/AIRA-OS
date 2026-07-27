@@ -12,6 +12,9 @@ enum WorkspaceIntent {
   appendSheetRow,
   readSheet,
   openSheet,
+  listDriveFiles,
+  searchDriveFiles,
+  uploadToDrive,
   unknown,
 }
 
@@ -49,6 +52,12 @@ class WorkspaceCommand {
       case WorkspaceIntent.readSheet:
       case WorkspaceIntent.openSheet:
         return 'Read Google Sheet: ${params['sheetTarget'] ?? 'Sheet'}';
+      case WorkspaceIntent.listDriveFiles:
+        return 'List recent Google Drive files';
+      case WorkspaceIntent.searchDriveFiles:
+        return 'Search Google Drive for ${params['query'] ?? 'files'}';
+      case WorkspaceIntent.uploadToDrive:
+        return 'Upload file to Google Drive: ${params['filename'] ?? 'Note'}';
       default:
         return 'Google Workspace action';
     }
@@ -70,6 +79,10 @@ class WorkspaceCommand {
       case WorkspaceIntent.readSheet:
       case WorkspaceIntent.openSheet:
         return 'spreadsheet';
+      case WorkspaceIntent.listDriveFiles:
+      case WorkspaceIntent.searchDriveFiles:
+      case WorkspaceIntent.uploadToDrive:
+        return 'folder';
       default:
         return 'workspace';
     }
@@ -145,7 +158,6 @@ class WorkspaceIntentDetector {
     }
 
     // ── Sheets intents ──
-    // 1. Create Sheet
     if (_matches(msg, ['create sheet', 'create a sheet', 'new sheet', 'create spreadsheet', 'new spreadsheet', 'make a sheet'])) {
       final titleMatch = RegExp(r'(?:called|named|titled|sheet|spreadsheet)\s+(.+)', caseSensitive: false).firstMatch(message);
       String title = titleMatch?.group(1)?.trim() ?? 'New Spreadsheet';
@@ -157,12 +169,10 @@ class WorkspaceIntentDetector {
       );
     }
 
-    // 2. Append/Add row to Sheet
     if (_matches(msg, ['add row', 'append row', 'add entry', 'insert row', 'add to sheet', 'append to sheet', 'add row to'])) {
       final targetMatch = RegExp(r'(?:to|in)\s+(?:sheet|spreadsheet)?\s*([A-Za-z0-9_\-\s]+?)(?:[:\s]+with|[:\s]+values|:|\s+data|\s+row|$)', caseSensitive: false).firstMatch(message);
       String target = targetMatch?.group(1)?.trim() ?? 'Spreadsheet';
       
-      // Extract values after colon or "with"
       List<String> values = [];
       final valuesMatch = RegExp(r'(?:with|values|:)\s+(.+)', caseSensitive: false).firstMatch(message);
       if (valuesMatch != null) {
@@ -180,7 +190,6 @@ class WorkspaceIntentDetector {
       );
     }
 
-    // 3. Read/Show Sheet
     if (_matches(msg, ['read sheet', 'show sheet', 'open sheet', 'get sheet', 'view sheet', 'read spreadsheet', 'show spreadsheet'])) {
       final targetMatch = RegExp(r'(?:sheet|spreadsheet)\s+(.+)', caseSensitive: false).firstMatch(message);
       String target = targetMatch?.group(1)?.trim() ?? '';
@@ -189,6 +198,47 @@ class WorkspaceIntentDetector {
       return WorkspaceCommand(
         intent: WorkspaceIntent.readSheet,
         params: {'sheetTarget': target},
+        originalMessage: message,
+      );
+    }
+
+    // ── Google Drive Intents ──
+    // 1. List recent files
+    if (_matches(msg, ['list my recent files', 'recent files in drive', 'show my drive', 'list drive files', 'my drive files', 'show drive'])) {
+      return WorkspaceCommand(
+        intent: WorkspaceIntent.listDriveFiles,
+        params: {},
+        originalMessage: message,
+      );
+    }
+
+    // 2. Search drive / open folder
+    if (_matches(msg, ['search drive for', 'search drive', 'find file in drive', 'find in drive', 'open my project folder', 'find file', 'open folder'])) {
+      final queryMatch = RegExp(r'(?:for|drive|folder|file)\s+(.+)', caseSensitive: false).firstMatch(message);
+      String query = queryMatch?.group(1)?.trim() ?? 'Project';
+      query = query.replaceAll(RegExp(r'^(folder|file|in drive)\s+', caseSensitive: false), '');
+
+      return WorkspaceCommand(
+        intent: WorkspaceIntent.searchDriveFiles,
+        params: {'query': query.isNotEmpty ? query : 'Project'},
+        originalMessage: message,
+      );
+    }
+
+    // 3. Upload to Drive
+    if (_matches(msg, ['upload to drive', 'upload note to drive', 'save to drive', 'create file in drive'])) {
+      final nameMatch = RegExp(r'(?:drive|file|note)[:\s]+([A-Za-z0-9_\-\.\s]+?)(?:[:\s]+with|[:\s]+content|:|$)', caseSensitive: false).firstMatch(message);
+      String filename = nameMatch?.group(1)?.trim() ?? 'Note';
+
+      final contentMatch = RegExp(r'(?:content|with|:)\s+(.+)', caseSensitive: false).firstMatch(message);
+      String content = contentMatch?.group(1)?.trim() ?? message;
+
+      return WorkspaceCommand(
+        intent: WorkspaceIntent.uploadToDrive,
+        params: {
+          'filename': filename,
+          'content': content,
+        },
         originalMessage: message,
       );
     }

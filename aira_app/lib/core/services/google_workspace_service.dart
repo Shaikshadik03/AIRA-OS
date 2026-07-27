@@ -21,7 +21,7 @@ class GoogleWorkspaceService {
 
   // ──────────────────── Auth ────────────────────
 
-  /// Sign in to Google and request Workspace scopes (including Contacts).
+  /// Sign in to Google and request Workspace scopes (including Drive & Contacts).
   Future<bool> signInWithWorkspaceScopes() async {
     try {
       _googleSignIn = GoogleSignIn(
@@ -36,6 +36,7 @@ class GoogleWorkspaceService {
           'https://www.googleapis.com/auth/documents',
           'https://www.googleapis.com/auth/spreadsheets',
           'https://www.googleapis.com/auth/drive.readonly',
+          'https://www.googleapis.com/auth/drive.file',
           'https://www.googleapis.com/auth/contacts.readonly',
         ],
       );
@@ -76,6 +77,122 @@ class GoogleWorkspaceService {
           'Content-Type': 'application/json',
         },
       ));
+
+  // ──────────────────── Google Drive API ────────────────────
+
+  /// List recent files in Google Drive.
+  Future<List<Map<String, dynamic>>> listRecentDriveFiles({int pageSize = 10}) async {
+    _requireConnection();
+    final dio = _buildDio('https://www.googleapis.com/drive/v3');
+
+    try {
+      final resp = await dio.get(
+        '/files',
+        queryParameters: {
+          'pageSize': pageSize,
+          'orderBy': 'modifiedTime desc',
+          'fields': 'files(id, name, mimeType, modifiedTime, webViewLink, size)',
+          'q': 'trashed = false',
+        },
+      );
+
+      final files = resp.data['files'] as List? ?? [];
+      return files.map<Map<String, dynamic>>((f) => {
+        'id': f['id'] ?? '',
+        'name': f['name'] ?? 'Untitled',
+        'mimeType': f['mimeType'] ?? '',
+        'modifiedTime': f['modifiedTime'] ?? '',
+        'link': f['webViewLink'] ?? 'https://drive.google.com',
+        'size': f['size'] != null ? '${((int.tryParse(f['size'].toString()) ?? 0) / 1024).round()} KB' : 'N/A',
+      }).toList();
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Google Drive list failed: $msg');
+    }
+  }
+
+  /// Search Drive for files or folders by keyword/name.
+  Future<List<Map<String, dynamic>>> searchDriveFiles(String keyword) async {
+    _requireConnection();
+    final dio = _buildDio('https://www.googleapis.com/drive/v3');
+
+    try {
+      final cleanKeyword = keyword.replaceAll("'", "\\'");
+      final q = "name contains '$cleanKeyword' and trashed = false";
+      final resp = await dio.get(
+        '/files',
+        queryParameters: {
+          'q': q,
+          'pageSize': 10,
+          'fields': 'files(id, name, mimeType, modifiedTime, webViewLink)',
+        },
+      );
+
+      final files = resp.data['files'] as List? ?? [];
+      return files.map<Map<String, dynamic>>((f) => {
+        'id': f['id'] ?? '',
+        'name': f['name'] ?? 'Untitled',
+        'mimeType': f['mimeType'] ?? '',
+        'link': f['webViewLink'] ?? 'https://drive.google.com',
+        'isFolder': (f['mimeType'] as String? ?? '').contains('folder'),
+      }).toList();
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Google Drive search failed: $msg');
+    }
+  }
+
+  /// Upload a text file/note to Google Drive.
+  Future<Map<String, dynamic>> uploadTextFileToDrive({
+    required String filename,
+    required String content,
+  }) async {
+    _requireConnection();
+
+    final dio = Dio(BaseOptions(
+      baseUrl: 'https://www.googleapis.com/upload/drive/v3',
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 30),
+      headers: {
+        'Authorization': 'Bearer $_accessToken',
+      },
+    ));
+
+    final boundary = '----AiraDriveBoundary${DateTime.now().millisecondsSinceEpoch}';
+
+    final metadataJson = jsonEncode({
+      'name': filename.endsWith('.txt') ? filename : '$filename.txt',
+      'mimeType': 'text/plain',
+    });
+
+    final bodyBytes = <int>[];
+    bodyBytes.addAll(utf8.encode('--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$metadataJson\r\n'));
+    bodyBytes.addAll(utf8.encode('--$boundary\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n$content\r\n'));
+    bodyBytes.addAll(utf8.encode('--$boundary--\r\n'));
+
+    try {
+      final resp = await dio.post(
+        '/files?uploadType=multipart',
+        data: Stream.fromIterable([bodyBytes]),
+        options: Options(
+          headers: {
+            'Content-Type': 'multipart/related; boundary=$boundary',
+            'Content-Length': bodyBytes.length.toString(),
+          },
+        ),
+      );
+
+      final fileId = resp.data['id'] as String;
+      return {
+        'id': fileId,
+        'name': resp.data['name'] ?? filename,
+        'link': 'https://drive.google.com/file/d/$fileId/view',
+      };
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error']?['message'] ?? e.message;
+      throw Exception('Drive upload failed: $msg');
+    }
+  }
 
   // ──────────────────── Google Contacts API ────────────────────
 
