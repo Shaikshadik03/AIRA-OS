@@ -36,9 +36,19 @@ Key traits:
   /// Send a message and get AI response.
   /// [history] is the list of previous messages in OpenAI format:
   /// `[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]`
-  Future<String> chat(String userMessage, List<Map<String, dynamic>> history, {String? base64Image}) async {
+  /// [memoryContext] includes long-term saved memories to inject into system prompt.
+  Future<String> chat(
+    String userMessage,
+    List<Map<String, dynamic>> history, {
+    String? base64Image,
+    String? memoryContext,
+  }) async {
+    final systemContent = (memoryContext != null && memoryContext.isNotEmpty)
+        ? '$_systemPrompt\n$memoryContext'
+        : _systemPrompt;
+
     final messages = <Map<String, dynamic>>[
-      {'role': 'system', 'content': _systemPrompt},
+      {'role': 'system', 'content': systemContent},
     ];
 
     if (base64Image != null) {

@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:aira_app/features/chat/domain/chat_models.dart';
 import 'package:aira_app/features/chat/domain/workspace_intent.dart';
+import 'package:aira_app/features/chat/domain/memory_intent.dart';
 import 'package:aira_app/core/services/groq_service.dart';
 import 'package:aira_app/core/services/supabase_chat_service.dart';
+import 'package:aira_app/core/services/supabase_memory_service.dart';
 import 'package:aira_app/core/services/google_workspace_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -54,6 +56,7 @@ class ChatState {
 class ChatNotifier extends StateNotifier<ChatState> {
   final GroqService _groq = GroqService();
   final SupabaseChatService _supabase = SupabaseChatService();
+  final SupabaseMemoryService _memoryService = SupabaseMemoryService();
   final GoogleWorkspaceService _workspace = GoogleWorkspaceService();
   final _uuid = const Uuid();
   final FlutterTts _tts = FlutterTts();
@@ -82,7 +85,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(isGoogleConnected: success);
 
     final resultMsg = success
-        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"send email to name@gmail.com about [subject] saying [message]"**\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create event [title] on [date] at [time]"**\n- Say **"create a Google Doc called [title]"**\n- Say **"create a sheet called Budget 2026"**\n- Say **"add row to Budget 2026: Groceries, 50, Food"**\n- Say **"show sheet Budget 2026"**'
+        ? '✅ Connected to Google Workspace as **${_workspace.userEmail}**!\n\nYou can now:\n- Say **"send email to Rahul saying [message]"** (remembers contacts!)\n- Say **"show my emails"**\n- Say **"show my calendar"**\n- Say **"create event [title] on [date] at [time]"**\n- Say **"create a Google Doc called [title]"**\n- Say **"create a sheet called Budget 2026"**\n- Say **"add row to Budget 2026: Groceries, 50, Food"**'
         : '❌ Could not connect to Google Workspace. Please try again.';
 
     _addSystemMessage(resultMsg);
@@ -104,11 +107,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  /// Send a message — detects workspace commands, saves to Supabase, gets AI response.
+  /// Send a message — handles memory commands, workspace commands, and AI chat.
   Future<void> sendMessage(String content, {String? base64Image}) async {
     if (content.trim().isEmpty && base64Image == null) return;
 
-    // ── Check if this is a Google Workspace connection request ──
+    // ── Check for Google Workspace connection request ──
     final lower = content.toLowerCase().trim();
     if (lower.contains('connect google') || lower == 'connect workspace' || lower == 'link google') {
       _addUserMessage(content);
@@ -116,7 +119,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return;
     }
 
-    // ── Check for Google Workspace intent ──
+    // ── Check for Memory Intent ──
+    final memCommand = MemoryIntentDetector.detect(content);
+    if (memCommand.isMemoryCommand) {
+      await _handleMemoryCommand(content, memCommand);
+      return;
+    }
+
+    // ── Check for Google Workspace Intent ──
     final wsCommand = WorkspaceIntentDetector.detect(content);
     if (wsCommand.isWorkspaceCommand) {
       await _handleWorkspaceCommand(content, wsCommand);
@@ -127,6 +137,56 @@ class ChatNotifier extends StateNotifier<ChatState> {
     await _sendToAI(content, base64Image: base64Image);
   }
 
+  // ──────────────────── Memory Handlers ────────────────────
+
+  Future<void> _handleMemoryCommand(String content, MemoryCommand command) async {
+    _addUserMessage(content);
+
+    try {
+      String result = '';
+
+      switch (command.intent) {
+        case MemoryIntent.saveMemory:
+          await _memoryService.saveMemory(
+            content: command.content,
+            category: command.category,
+          );
+          result = '🧠 **Memory Saved!**\n\n> I will remember: *"${command.content}"*\n\nThis is now part of my long-term memory across all your chats!';
+          break;
+
+        case MemoryIntent.listMemories:
+          final memories = await _memoryService.listMemories();
+          if (memories.isEmpty) {
+            result = '🧠 **No saved memories yet.**\n\nTell me things like:\n- *"Remember that Rahul\'s email is rahul@gmail.com"*\n- *"Remember that I prefer bullet points"*';
+          } else {
+            result = '🧠 **What I Remember About You:**\n\n';
+            for (int i = 0; i < memories.length; i++) {
+              result += '${i + 1}. ${memories[i]['content']}\n';
+            }
+            result += '\n*Say "clear all memories" to wipe memory.*';
+          }
+          break;
+
+        case MemoryIntent.clearMemories:
+          await _memoryService.clearAllMemories();
+          result = '🧠 **All memories cleared successfully.**';
+          break;
+
+        default:
+          result = '🧠 Memory action completed.';
+      }
+
+      _addSystemMessage(result);
+
+      if (_isVoiceEnabled && result.isNotEmpty) {
+        final clean = result.replaceAll(RegExp(r'[*#_`\[\]>]'), '');
+        await _tts.speak(clean);
+      }
+    } catch (e) {
+      _addSystemMessage('❌ Failed to update memory: ${e.toString().replaceAll('Exception: ', '')}');
+    }
+  }
+
   // ──────────────────── Workspace Handlers ────────────────────
 
   Future<void> _handleWorkspaceCommand(String content, WorkspaceCommand command) async {
@@ -134,7 +194,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     if (!_workspace.isConnected) {
       _addSystemMessage(
-        '🔗 **Google Workspace is not connected.**\n\nTo use Gmail, Calendar, Docs, and Sheets, say **"connect Google Workspace"** first.\n\nI\'ll ask you to sign in to your Google account.',
+        '🔗 **Google Workspace is not connected.**\n\nTo use Gmail, Calendar, Docs, and Sheets, say **"connect Google Workspace"** first.',
       );
       return;
     }
@@ -158,20 +218,31 @@ class ChatNotifier extends StateNotifier<ChatState> {
           break;
 
         case WorkspaceIntent.sendEmail:
-          final to = command.params['to'] as String? ?? '';
+          String to = command.params['to'] as String? ?? '';
           final subject = command.params['subject'] as String? ?? '';
           final body = command.params['body'] as String? ?? '';
+          String memoryNote = '';
+
+          // 🧠 MEMORY LOOKUP: If recipient is a name without @, look up in AI memory!
+          if (to.isNotEmpty && !to.contains('@')) {
+            final foundEmail = await _memoryService.findEmailForName(to);
+            if (foundEmail != null) {
+              memoryNote = '🧠 *Retrieved email for **$to** from AI Memory (`$foundEmail`)*\n\n';
+              to = foundEmail;
+            }
+          }
 
           if (to.isEmpty) {
             result = '❓ Who should I send the email to? Please specify an email address like:\n> *"send email to user@gmail.com asking about tomorrow\'s meeting"*';
           } else if (!to.contains('@')) {
             final emailSub = subject.isNotEmpty ? subject : "the details";
-            result = '📧 I see you want to send an email to **$to** regarding *"$emailSub"*, but I need a valid email address (e.g. `$to@gmail.com`).\n\nPlease try again with the full email address:\n> *"send email to $to@gmail.com about $emailSub"*';
+            result = '📧 I see you want to send an email to **$to** regarding *"$emailSub"*, but I don\'t have their email address saved.\n\nYou can say:\n> *"Remember that $to\'s email is $to@gmail.com"*';
           } else {
             final emailSubject = subject.isNotEmpty ? subject : 'Message from AIRA';
             final emailBody = body.isNotEmpty ? body : content;
             await _workspace.sendEmail(to: to, subject: emailSubject, body: emailBody);
-            result = '✅ **Email sent successfully via Gmail!**\n\n**To:** $to\n**Subject:** $emailSubject\n\n> $emailBody';
+            result = '$memoryNote✅ **Email sent successfully via Gmail!**\n\n**To:** $to\n**Subject:** $emailSubject\n\n> $emailBody';
+
           }
           break;
 
@@ -190,7 +261,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
         case WorkspaceIntent.createEvent:
           final title = command.params['title'] as String? ?? 'New Event';
-          // Default to tomorrow 10am-11am
           final now = DateTime.now();
           final start = DateTime(now.year, now.month, now.day + 1, 10, 0);
           final end = start.add(const Duration(hours: 1));
@@ -205,7 +275,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
           result = '✅ **Google Doc created!**\n\n📄 **${doc['title']}**\n[Open Doc](${doc['link']})';
           break;
 
-        // ── Google Sheets Handlers ──
         case WorkspaceIntent.createSheet:
           final title = command.params['title'] as String? ?? 'New Spreadsheet';
           final sheet = await _workspace.createSheet(title: title);
@@ -251,7 +320,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
           break;
 
         default:
-          result = '🤔 I understood this as a Google Workspace command but I\'m not sure how to handle it yet. Try being more specific.';
+          result = '🤔 I understood this as a Google Workspace command but I\'m not sure how to handle it yet.';
       }
 
       _removeLoadingMessage();
@@ -325,10 +394,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
           .map((m) => <String, dynamic>{'role': m.role == 'user' ? 'user' : 'assistant', 'content': m.content})
           .toList();
 
+      // 🧠 Fetch AI memory context to inject into Groq system prompt
+      final memoryContext = await _memoryService.getMemoriesPromptContext();
+
       final response = await _groq.chat(
         content.trim().isEmpty ? 'Describe this image.' : content.trim(),
         history,
         base64Image: base64Image,
+        memoryContext: memoryContext,
       );
 
       final assistantMsg = ChatMessage(

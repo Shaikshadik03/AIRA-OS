@@ -324,10 +324,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               runSpacing: 8,
               alignment: WrapAlignment.center,
               children: [
-                _suggestionChip('Plan my day', Icons.today_rounded),
+                _suggestionChip('Remember Rahul\'s email 🧠', Icons.psychology_rounded),
                 _suggestionChip('Show my emails 📬', Icons.email_rounded),
                 _suggestionChip('Create sheet Expenses 📊', Icons.table_chart_rounded),
                 _suggestionChip('Show my calendar 📅', Icons.calendar_today_rounded),
+
 
               ],
             ).animate().fadeIn(delay: 600.ms, duration: 400.ms),

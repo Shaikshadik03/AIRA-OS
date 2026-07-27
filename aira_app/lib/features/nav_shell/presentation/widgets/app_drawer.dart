@@ -220,6 +220,16 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
               child: Column(
                 children: [
                   _DrawerItem(
+                    icon: Icons.psychology_rounded,
+                    label: 'My Memories',
+                    color: AiraColors.electricCyan,
+                    onTap: () {
+                      Navigator.pop(context);
+                      ref.read(chatProvider.notifier).sendMessage('show my memories');
+                      context.go('/chat');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.settings_rounded,
                     label: 'Settings',
                     color: AiraColors.textSecondary,
@@ -228,6 +238,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                       context.push('/settings');
                     },
                   ),
+
                   _DrawerItem(
                     icon: Icons.logout_rounded,
                     label: 'Sign Out',
