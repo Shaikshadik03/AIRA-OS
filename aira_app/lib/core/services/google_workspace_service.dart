@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Google Workspace API service.
 /// Handles Gmail, Calendar, Docs, Sheets, Drive, and Google Contacts API calls.
+/// Includes persistent connection state so Google Workspace remains connected across app restarts!
 class GoogleWorkspaceService {
   static final GoogleWorkspaceService _instance = GoogleWorkspaceService._internal();
   factory GoogleWorkspaceService() => _instance;
@@ -19,49 +21,86 @@ class GoogleWorkspaceService {
   // Cache for recently used spreadsheets: name -> spreadsheetId
   final Map<String, String> _sheetCache = {};
 
-  // ──────────────────── Auth ────────────────────
+  GoogleSignIn _getGoogleSignIn() {
+    _googleSignIn ??= GoogleSignIn(
+      serverClientId: _webClientId,
+      scopes: [
+        'email',
+        'profile',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/calendar',
+        'https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/documents',
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive.readonly',
+        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/contacts.readonly',
+      ],
+    );
+    return _googleSignIn!;
+  }
 
-  /// Sign in to Google and request Workspace scopes (including Drive & Contacts).
+  // ──────────────────── Auth & Persistence ────────────────────
+
+  /// Sign in to Google and request Workspace scopes. Saves connection state locally.
   Future<bool> signInWithWorkspaceScopes() async {
     try {
-      _googleSignIn = GoogleSignIn(
-        serverClientId: _webClientId,
-        scopes: [
-          'email',
-          'profile',
-          'https://www.googleapis.com/auth/gmail.send',
-          'https://www.googleapis.com/auth/gmail.readonly',
-          'https://www.googleapis.com/auth/calendar',
-          'https://www.googleapis.com/auth/calendar.events',
-          'https://www.googleapis.com/auth/documents',
-          'https://www.googleapis.com/auth/spreadsheets',
-          'https://www.googleapis.com/auth/drive.readonly',
-          'https://www.googleapis.com/auth/drive.file',
-          'https://www.googleapis.com/auth/contacts.readonly',
-        ],
-      );
+      final googleSignIn = _getGoogleSignIn();
 
-      // Force fresh account selection
-      try { await _googleSignIn!.signOut(); } catch (_) {}
+      // Force fresh account selection prompt
+      try { await googleSignIn.signOut(); } catch (_) {}
 
-      _currentUser = await _googleSignIn!.signIn();
+      _currentUser = await googleSignIn.signIn();
       if (_currentUser == null) return false;
 
       final auth = await _currentUser!.authentication;
       _accessToken = auth.accessToken;
-      return _accessToken != null;
+
+      if (_accessToken != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('workspace_connected', true);
+        await prefs.setString('workspace_user_email', _currentUser!.email);
+        return true;
+      }
+      return false;
     } catch (e) {
       _accessToken = null;
       return false;
     }
   }
 
-  /// Disconnect from Google Workspace.
+  /// Automatically attempt silent sign-in on app startup to restore active connection.
+  Future<bool> trySilentSignIn() async {
+    if (_accessToken != null) return true;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final wasConnected = prefs.getBool('workspace_connected') ?? false;
+      if (!wasConnected) return false;
+
+      final googleSignIn = _getGoogleSignIn();
+      _currentUser = await googleSignIn.signInSilently();
+      if (_currentUser != null) {
+        final auth = await _currentUser!.authentication;
+        _accessToken = auth.accessToken;
+        return _accessToken != null;
+      }
+    } catch (_) {}
+
+    return false;
+  }
+
+  /// Disconnect from Google Workspace and clear local saved state.
   Future<void> signOut() async {
     try { await _googleSignIn?.signOut(); } catch (_) {}
     _accessToken = null;
     _currentUser = null;
     _sheetCache.clear();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('workspace_connected');
+    await prefs.remove('workspace_user_email');
   }
 
   bool get isConnected => _accessToken != null;
@@ -315,7 +354,7 @@ class GoogleWorkspaceService {
     }
   }
 
-  /// Send an email via Gmail API.
+  /// Send an email via Gmail API. Returns true on success or throws clear Exception on failure.
   Future<bool> sendEmail({
     required String to,
     required String subject,
@@ -343,8 +382,11 @@ class GoogleWorkspaceService {
     final encoded = base64Url.encode(utf8.encode(rawEmail)).replaceAll('=', '');
 
     try {
-      await dio.post('/messages/send', data: {'raw': encoded});
-      return true;
+      final resp = await dio.post('/messages/send', data: {'raw': encoded});
+      if (resp.statusCode == 200 || resp.statusCode == 201 || resp.data?['id'] != null) {
+        return true;
+      }
+      throw Exception('Gmail server returned unexpected response: ${resp.data}');
     } on DioException catch (e) {
       final errorData = e.response?.data;
       final msg = errorData is Map ? (errorData['error']?['message'] ?? e.message) : e.message;

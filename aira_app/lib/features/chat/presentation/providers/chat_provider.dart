@@ -64,6 +64,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   ChatNotifier() : super(const ChatState()) {
     _initTts();
+    _initWorkspaceConnection();
+  }
+
+  Future<void> _initWorkspaceConnection() async {
+    final connected = await _workspace.trySilentSignIn();
+    if (connected) {
+      state = state.copyWith(isGoogleConnected: true);
+    }
   }
 
   Future<void> _initTts() async {
@@ -71,6 +79,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     await _tts.setSpeechRate(0.5);
     await _tts.setPitch(1.0);
   }
+
 
   void toggleVoice(bool enabled) {
     _isVoiceEnabled = enabled;
