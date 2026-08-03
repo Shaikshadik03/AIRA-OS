@@ -121,7 +121,7 @@ class MainActivity : FlutterActivity() {
                             "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
                             "display", "brightness" -> Settings.ACTION_DISPLAY_SETTINGS
                             "sound", "volume" -> Settings.ACTION_SOUND_SETTINGS
-                            "battery" -> Settings.ACTION_POWER_USAGE_SUMMARY
+                            "battery" -> Intent.ACTION_POWER_USAGE_SUMMARY
                             "location" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
                             "nfc" -> Settings.ACTION_NFC_SETTINGS
                             "apps" -> Settings.ACTION_APPLICATION_SETTINGS
