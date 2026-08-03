@@ -44,7 +44,6 @@ dependencies:
   image_picker: ^1.2.3
   flutter_local_notifications: ^18.0.0
   timezone: ^0.10.0
-  record: ^5.2.0
 
 
   # Chat & Markdown
