@@ -8,6 +8,7 @@ import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
+import 'package:aira_app/core/services/voice_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -18,7 +19,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _selectedPersonality = 'Executive Mentor 🧠';
-  String _selectedLanguage = 'English 🇺🇸';
 
   @override
   Widget build(BuildContext context) {
@@ -119,8 +119,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           const SizedBox(height: 24),
 
-          // ── Notifications & System ──
-          _sectionTitle('Notifications & System'),
+          // ── Notifications & Voice System ──
+          _sectionTitle('Notifications & Voice System'),
+          _settingsTile(
+            Icons.mic_rounded,
+            'Voice & Wake-Word Control',
+            'Mic permissions & test voice triggers',
+            iconColor: AiraColors.electricCyan,
+            onTap: _showVoiceControlDialog,
+          ),
           _settingsTile(
             Icons.notifications_active_rounded,
             'System Notifications',
@@ -133,12 +140,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             'AI Personality Engine',
             _selectedPersonality,
             onTap: _showPersonalityDialog,
-          ),
-          _settingsTile(
-            Icons.language_rounded,
-            'Voice & Language',
-            _selectedLanguage,
-            onTap: _showLanguageDialog,
           ),
 
           const SizedBox(height: 24),
@@ -248,6 +249,152 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ──────────────────── Dialogs for Working Features ────────────────────
 
+  void _showVoiceControlDialog() async {
+    final voice = VoiceService();
+    final hasPermission = await voice.checkPermission();
+    String testResultText = '';
+    bool isTestingVoice = false;
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AiraColors.cardDark,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(Icons.mic_rounded, color: AiraColors.electricCyan),
+                const SizedBox(width: 10),
+                Text('Voice & Wake-Word Control', style: AiraTypography.h5.copyWith(color: Colors.white)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Microphone Status:', style: AiraTypography.bodySmall.copyWith(color: AiraColors.textMuted)),
+                      Text(
+                        hasPermission ? 'Granted ✓' : 'Permission Required ⚠️',
+                        style: AiraTypography.bodySmall.copyWith(
+                          color: hasPermission ? AiraColors.success : AiraColors.warning,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (!hasPermission)
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final granted = await voice.requestPermission();
+                        setDialogState(() {});
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(granted ? 'Microphone permission granted ✓' : 'Permission denied in Android Settings')),
+                        );
+                      },
+                      icon: const Icon(Icons.security_rounded, size: 16),
+                      label: const Text('Grant Microphone Permission'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AiraColors.warning,
+                        foregroundColor: Colors.black,
+                        minimumSize: const Size(double.infinity, 42),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Test Speech Recognition Engine:',
+                    style: AiraTypography.caption.copyWith(color: AiraColors.textSecondary, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AiraColors.scaffoldDark,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AiraColors.glassBorder),
+                    ),
+                    child: Text(
+                      isTestingVoice
+                          ? 'Listening... Speak "Hey AIRA call Rahul" or any command'
+                          : (testResultText.isNotEmpty ? 'Recognized: "$testResultText"' : 'Tap button below to start live voice test'),
+                      style: AiraTypography.caption.copyWith(
+                        color: isTestingVoice ? AiraColors.electricCyan : AiraColors.textPrimary,
+                        fontStyle: isTestingVoice ? FontStyle.italic : FontStyle.normal,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ElevatedButton.icon(
+                    onPressed: isTestingVoice
+                        ? () async {
+                            await voice.stopListening();
+                            setDialogState(() => isTestingVoice = false);
+                          }
+                        : () async {
+                            setDialogState(() {
+                              isTestingVoice = true;
+                              testResultText = '';
+                            });
+                            final success = await voice.startListening(
+                              onResult: (text, isFinal) {
+                                setDialogState(() {
+                                  testResultText = text;
+                                });
+                              },
+                              onCommandTriggered: (command) {
+                                setDialogState(() {
+                                  isTestingVoice = false;
+                                  testResultText = 'Parsed Trigger: "$command"';
+                                });
+                              },
+                              onError: (err) {
+                                setDialogState(() {
+                                  isTestingVoice = false;
+                                  testResultText = 'Error: $err';
+                                });
+                              },
+                            );
+                            if (!success) {
+                              setDialogState(() => isTestingVoice = false);
+                            }
+                          },
+                    icon: Icon(isTestingVoice ? Icons.stop_rounded : Icons.mic_rounded, size: 16),
+                    label: Text(isTestingVoice ? 'Stop Testing' : 'Start Live Voice Test'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isTestingVoice ? AiraColors.error : AiraColors.electricCyan,
+                      foregroundColor: isTestingVoice ? Colors.white : Colors.black,
+                      minimumSize: const Size(double.infinity, 44),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  voice.stopListening();
+                  Navigator.pop(context);
+                },
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showNotificationTestDialog() {
     showDialog(
       context: context,
@@ -326,42 +473,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('AIRA Personality set to $p')),
-                );
-              },
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  void _showLanguageDialog() {
-    final languages = [
-      'English 🇺🇸',
-      'Hindi 🇮🇳',
-      'Telugu 🇮🇳',
-      'Spanish 🇪🇸',
-      'French 🇫🇷',
-    ];
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AiraColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Select Assistant Language', style: AiraTypography.h5.copyWith(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: languages.map((lang) {
-            final isSelected = _selectedLanguage == lang;
-            return ListTile(
-              title: Text(lang, style: AiraTypography.bodyMedium.copyWith(color: Colors.white)),
-              trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: AiraColors.electricCyan) : null,
-              onTap: () {
-                setState(() => _selectedLanguage = lang);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Language set to $lang')),
                 );
               },
             );
