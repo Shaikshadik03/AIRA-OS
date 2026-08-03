@@ -220,52 +220,14 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
               child: Column(
                 children: [
                   _DrawerItem(
-                    icon: Icons.remove_red_eye_rounded,
-                    label: 'AIRA Vision (Camera AI)',
-                    color: AiraColors.electricCyan,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.push('/vision');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.mic_rounded,
-                    label: 'Meeting Summarizer',
-                    color: AiraColors.purpleLight,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.push('/voice-note');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.picture_in_picture_alt_rounded,
-                    label: 'AIRA Everywhere Overlay',
-                    color: AiraColors.cyanLight,
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.push('/overlay');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.psychology_rounded,
-                    label: 'My Memories',
-                    color: AiraColors.electricCyan,
-                    onTap: () {
-                      Navigator.pop(context);
-                      ref.read(chatProvider.notifier).sendMessage('show my memories');
-                      context.go('/chat');
-                    },
-                  ),
-                  _DrawerItem(
                     icon: Icons.settings_rounded,
                     label: 'Settings',
-                    color: AiraColors.textSecondary,
+                    color: AiraColors.electricCyan,
                     onTap: () {
                       Navigator.pop(context);
                       context.push('/settings');
                     },
                   ),
-
                   _DrawerItem(
                     icon: Icons.logout_rounded,
                     label: 'Sign Out',

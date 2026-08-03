@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -16,32 +17,61 @@ class NotificationService {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    tz.initializeTimeZones();
+    try {
+      tz.initializeTimeZones();
 
-    const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+      const AndroidInitializationSettings androidSettings =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const InitializationSettings initSettings = InitializationSettings(
-      android: androidSettings,
-    );
+      const InitializationSettings initSettings = InitializationSettings(
+        android: androidSettings,
+      );
 
-    await _notificationsPlugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse details) {
-        // Handle notification click if payload present
-      },
-    );
+      await _notificationsPlugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (NotificationResponse details) {
+          // Handle notification tap
+        },
+      );
 
-    // Request permissions on Android 13+
-    if (Platform.isAndroid) {
-      final androidImplementation =
-          _notificationsPlugin.resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
-      await androidImplementation?.requestNotificationsPermission();
-      await androidImplementation?.requestExactAlarmsPermission();
-    }
+      // Create Notification Channels explicitly on Android
+      if (Platform.isAndroid) {
+        final androidImpl = _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
 
-    _initialized = true;
+        if (androidImpl != null) {
+          await androidImpl.createNotificationChannel(const AndroidNotificationChannel(
+            'aira_reminders',
+            'AIRA Reminders',
+            description: 'AIRA OS Assistant Reminders & Notifications',
+            importance: Importance.max,
+            playSound: true,
+            enableVibration: true,
+          ));
+
+          await androidImpl.createNotificationChannel(const AndroidNotificationChannel(
+            'aira_daily',
+            'AIRA Daily Updates',
+            description: 'AIRA Daily News & Agenda Notifications',
+            importance: Importance.max,
+            playSound: true,
+            enableVibration: true,
+          ));
+
+          // Request permissions via AndroidFlutterLocalNotificationsPlugin
+          await androidImpl.requestNotificationsPermission();
+          await androidImpl.requestExactAlarmsPermission();
+        }
+
+        // Also request via permission_handler for Android 13+
+        if (await Permission.notification.isDenied) {
+          await Permission.notification.request();
+        }
+      }
+
+      _initialized = true;
+    } catch (_) {}
   }
 
   NotificationDetails _notificationDetails({String channelId = 'aira_reminders', String channelName = 'AIRA Reminders'}) {
@@ -55,11 +85,22 @@ class NotificationService {
         showWhen: true,
         enableVibration: true,
         playSound: true,
+        icon: '@mipmap/ic_launcher',
       ),
     );
   }
 
-  /// Show instant notification
+  /// Request permissions on-demand
+  Future<bool> requestPermissions() async {
+    await initialize();
+    if (Platform.isAndroid) {
+      final status = await Permission.notification.request();
+      return status.isGranted;
+    }
+    return true;
+  }
+
+  /// Show instant notification immediately
   Future<void> showNotification({
     required int id,
     required String title,
@@ -87,17 +128,32 @@ class NotificationService {
     await initialize();
     final tzScheduledTime = tz.TZDateTime.from(scheduledDate, tz.local);
 
-    await _notificationsPlugin.zonedSchedule(
-      id,
-      title,
-      body,
-      tzScheduledTime,
-      _notificationDetails(),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      payload: payload,
-    );
+    try {
+      await _notificationsPlugin.zonedSchedule(
+        id,
+        title,
+        body,
+        tzScheduledTime,
+        _notificationDetails(),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: payload,
+      );
+    } catch (_) {
+      // Fall back to inexact if exact alarm permission is missing on device
+      await _notificationsPlugin.zonedSchedule(
+        id,
+        title,
+        body,
+        tzScheduledTime,
+        _notificationDetails(),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: payload,
+      );
+    }
   }
 
   /// Schedule daily recurring notification (e.g. 7 AM daily news / agenda)
@@ -125,18 +181,33 @@ class NotificationService {
       scheduledDate = scheduledDate.add(const Duration(days: 1));
     }
 
-    await _notificationsPlugin.zonedSchedule(
-      id,
-      title,
-      body,
-      scheduledDate,
-      _notificationDetails(channelId: 'aira_daily', channelName: 'AIRA Daily Updates'),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.time,
-      payload: payload,
-    );
+    try {
+      await _notificationsPlugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduledDate,
+        _notificationDetails(channelId: 'aira_daily', channelName: 'AIRA Daily Updates'),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: payload,
+      );
+    } catch (_) {
+      await _notificationsPlugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduledDate,
+        _notificationDetails(channelId: 'aira_daily', channelName: 'AIRA Daily Updates'),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: payload,
+      );
+    }
   }
 
   /// Cancel notification by ID
@@ -151,6 +222,7 @@ class NotificationService {
 
   /// Pending notifications
   Future<List<PendingNotificationRequest>> getPendingNotifications() async {
+    await initialize();
     return await _notificationsPlugin.pendingNotificationRequests();
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:aira_app/config/app_config.dart';
+import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/app.dart';
 
 void main() async {
@@ -27,6 +28,9 @@ void main() async {
 
   // Initialize Hive for local chat storage
   await Hive.initFlutter();
+
+  // Initialize Notification Service for local alerts
+  await NotificationService().initialize();
 
   runApp(
     const ProviderScope(
