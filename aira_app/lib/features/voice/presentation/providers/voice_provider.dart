@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:aira_app/core/services/api_service.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 
 // ──────────────────── State ────────────────────
 
@@ -9,6 +10,7 @@ class VoiceState {
   final String transcript;
   final String responseText;
   final bool isLoading;
+  final bool isWakeWordDetected;
   final String? error;
 
   const VoiceState({
@@ -17,6 +19,7 @@ class VoiceState {
     this.transcript = '',
     this.responseText = '',
     this.isLoading = false,
+    this.isWakeWordDetected = false,
     this.error,
   });
 
@@ -26,6 +29,7 @@ class VoiceState {
     String? transcript,
     String? responseText,
     bool? isLoading,
+    bool? isWakeWordDetected,
     String? error,
   }) {
     return VoiceState(
@@ -34,6 +38,7 @@ class VoiceState {
       transcript: transcript ?? this.transcript,
       responseText: responseText ?? this.responseText,
       isLoading: isLoading ?? this.isLoading,
+      isWakeWordDetected: isWakeWordDetected ?? this.isWakeWordDetected,
       error: error,
     );
   }
@@ -42,73 +47,157 @@ class VoiceState {
 // ──────────────────── Notifier ────────────────────
 
 class VoiceNotifier extends StateNotifier<VoiceState> {
-  final ApiService _api = ApiService();
+  final Ref _ref;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isSpeechInitialized = false;
 
-  VoiceNotifier() : super(const VoiceState());
+  VoiceNotifier(this._ref) : super(const VoiceState());
 
-  void startRecording() {
+  /// Initialize SpeechToText engine
+  Future<bool> _initSpeech() async {
+    if (_isSpeechInitialized) return true;
+    try {
+      _isSpeechInitialized = await _speech.initialize(
+        onStatus: (status) {
+          if (status == 'done' || status == 'notListening') {
+            if (state.isRecording) {
+              stopRecordingAndProcess();
+            }
+          }
+        },
+        onError: (errorNotification) {
+          state = state.copyWith(
+            isRecording: false,
+            isLoading: false,
+            error: 'Speech recognition error: ${errorNotification.errorMsg}',
+          );
+        },
+      );
+      return _isSpeechInitialized;
+    } catch (e) {
+      state = state.copyWith(
+        isRecording: false,
+        isLoading: false,
+        error: 'Microphone permission or engine unavailable.',
+      );
+      return false;
+    }
+  }
+
+  /// Start real-time voice recording & listening
+  Future<void> startRecording() async {
+    final available = await _initSpeech();
+    if (!available) {
+      state = state.copyWith(
+        error: 'Speech recognition is not available on this device.',
+      );
+      return;
+    }
+
     state = state.copyWith(
       isRecording: true,
       isSpeaking: false,
-      transcript: 'Listening...',
+      transcript: '',
       responseText: '',
+      isWakeWordDetected: false,
       error: null,
+    );
+
+    await _speech.listen(
+      onResult: (result) {
+        final recognizedText = result.recognizedWords;
+        final lower = recognizedText.toLowerCase();
+
+        bool wakeWord = lower.contains('hey aira') ||
+            lower.contains('hey ira') ||
+            lower.contains('aira') ||
+            lower.contains('ira');
+
+        state = state.copyWith(
+          transcript: recognizedText,
+          isWakeWordDetected: wakeWord,
+        );
+      },
+      listenOptions: stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.confirmation,
+        cancelOnError: false,
+        partialResults: true,
+      ),
     );
   }
 
+  /// Stop listening and dispatch spoken command to AIRA AI & Device Controller
   Future<void> stopRecordingAndProcess() async {
     if (!state.isRecording) return;
-    
+
+    await _speech.stop();
+
+    final spokenText = state.transcript.trim();
+
+    if (spokenText.isEmpty) {
+      state = state.copyWith(
+        isRecording: false,
+        isLoading: false,
+        transcript: 'No speech heard. Try holding the button and speaking.',
+      );
+      return;
+    }
+
+    // Clean off "hey aira" / "aira" wake prefix if present
+    String cleanCommand = spokenText;
+    final lower = cleanCommand.toLowerCase();
+    if (lower.startsWith('hey aira')) {
+      cleanCommand = cleanCommand.substring(8).trim();
+    } else if (lower.startsWith('hey ira')) {
+      cleanCommand = cleanCommand.substring(7).trim();
+    } else if (lower.startsWith('aira')) {
+      cleanCommand = cleanCommand.substring(4).trim();
+    }
+
+    if (cleanCommand.isEmpty) {
+      cleanCommand = spokenText;
+    }
+
     state = state.copyWith(
       isRecording: false,
       isLoading: true,
-      transcript: 'Processing your voice...',
+      transcript: spokenText,
     );
 
     try {
-      // Simulate sending recorded WAV bytes to backend for Whisper transcription
-      // In practice, this would read recorded file bytes.
-      final mockAudioBytes = List<int>.generate(100, (i) => i);
-      
-      // Call backend transcription
-      final transcript = await _api.transcribeAudio(mockAudioBytes, 'recorded_voice.wav');
-      
-      String text = transcript.isNotEmpty ? transcript : "Hello, how can I help you today?";
-      
-      state = state.copyWith(
-        transcript: text,
-        isLoading: true,
+      // Send spoken command directly to AIRA ChatNotifier (handles AI, Workspace, Phone, & Device intents)
+      final chatNotifier = _ref.read(chatProvider.notifier);
+      await chatNotifier.sendMessage(cleanCommand);
+
+      // Get latest system response from ChatNotifier
+      final messages = _ref.read(chatProvider).messages;
+      final lastAssistantMsg = messages.lastWhere(
+        (m) => m.role == 'assistant' && !m.isStreaming,
+        orElse: () => messages.last,
       );
 
-      // Now query AI for response
-      // For simplicity, simulate AI voice assistant reply
-      await Future.delayed(const Duration(seconds: 1));
-      
-      final reply = "I understand you said: '$text'. I am here to help you manage your tasks, check your budgets, and keep track of your memories!";
-      
       state = state.copyWith(
-        responseText: reply,
+        responseText: lastAssistantMsg.content,
         isLoading: false,
         isSpeaking: true,
       );
 
-      // Stop speaking simulation after 4 seconds
+      // Reset speaking indicator after short delay
       Future.delayed(const Duration(seconds: 4), () {
         if (mounted) {
           state = state.copyWith(isSpeaking: false);
         }
       });
-
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        transcript: '',
-        error: 'Voice processing failed. Please try again.',
+        error: 'Failed to process command: $e',
       );
     }
   }
 
   void cancelVoice() {
+    _speech.stop();
     state = const VoiceState();
   }
 }
@@ -116,5 +205,5 @@ class VoiceNotifier extends StateNotifier<VoiceState> {
 // ──────────────────── Provider ────────────────────
 
 final voiceProvider = StateNotifierProvider<VoiceNotifier, VoiceState>((ref) {
-  return VoiceNotifier();
+  return VoiceNotifier(ref);
 });

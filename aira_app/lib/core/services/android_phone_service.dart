@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:aira_app/core/services/google_workspace_service.dart';
@@ -13,8 +14,11 @@ class AndroidPhoneService {
   final GoogleWorkspaceService _workspace = GoogleWorkspaceService();
   final SupabaseMemoryService _memoryService = SupabaseMemoryService();
 
+  static const MethodChannel _channel = MethodChannel('com.aira.os/device_control');
+
   /// Resolve a contact name or raw number input into a valid phone number.
   /// Tier 1: Raw digit / + phone number.
+  /// Tier 1.5: Native Android Device Contacts (ContentResolver).
   /// Tier 2: Google Contacts API search (`phoneNumbers` mask).
   /// Tier 3: Saved AI Memory lookup in Supabase.
   Future<Map<String, String>> resolvePhoneNumber(String recipient) async {
@@ -32,6 +36,29 @@ class AndroidPhoneService {
         'source': 'direct',
       };
     }
+
+    // Tier 1.5: Search Native Device Address Book
+    try {
+      final permStatus = await Permission.contacts.request();
+      if (permStatus.isGranted || permStatus.isLimited) {
+        final List<dynamic>? results = await _channel.invokeListMethod(
+          'searchDeviceContacts',
+          {'query': cleanRecipient},
+        );
+        if (results != null && results.isNotEmpty) {
+          final first = Map<String, dynamic>.from(results.first as Map);
+          final phone = first['phone'] as String? ?? '';
+          final name = first['name'] as String? ?? cleanRecipient;
+          if (phone.isNotEmpty) {
+            return {
+              'name': name,
+              'phone': phone,
+              'source': 'Device Contacts',
+            };
+          }
+        }
+      }
+    } catch (_) {}
 
     // Tier 2: Search Google Contacts API
     if (_workspace.isConnected) {

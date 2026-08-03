@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import android.provider.AlarmClock
+import android.provider.ContactsContract
 import android.provider.Settings
 import android.view.KeyEvent
 import io.flutter.embedding.android.FlutterActivity
@@ -334,6 +335,35 @@ class MainActivity : FlutterActivity() {
                             "totalStorageGB" to totalStorage,
                             "availStorageMB" to availStorage
                         ))
+                    }
+
+                    // ── Search Native Android Contacts ──
+                    "searchDeviceContacts" -> {
+                        val query = (call.argument<String>("query") ?: "").lowercase().trim()
+                        val contactsList = mutableListOf<Map<String, String>>()
+                        if (query.isNotEmpty()) {
+                            val cr = contentResolver
+                            val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+                            val projection = arrayOf(
+                                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                                ContactsContract.CommonDataKinds.Phone.NUMBER
+                            )
+                            val selection = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?"
+                            val selectionArgs = arrayOf("%$query%")
+                            val cursor = cr.query(uri, projection, selection, selectionArgs, null)
+                            cursor?.use {
+                                val nameIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                                val numIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                                while (it.moveToNext()) {
+                                    val name = if (nameIdx >= 0) it.getString(nameIdx) else ""
+                                    val number = if (numIdx >= 0) it.getString(numIdx) else ""
+                                    if (name.isNotEmpty() && number.isNotEmpty()) {
+                                        contactsList.add(mapOf("name" to name, "phone" to number))
+                                    }
+                                }
+                            }
+                        }
+                        result.success(contactsList)
                     }
 
                     else -> result.notImplemented()

@@ -73,6 +73,33 @@ class _VoiceAssistantPanelState extends ConsumerState<VoiceAssistantPanel>
                 ),
               ),
               const SizedBox(height: 40),
+              // Wake Word Detected Badge
+              if (state.isWakeWordDetected) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AiraColors.electricCyan.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AiraColors.electricCyan, width: 1.5),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.bolt_rounded, size: 16, color: AiraColors.electricCyan),
+                      const SizedBox(width: 6),
+                      Text(
+                        'WAKE WORD DETECTED: HEY AIRA',
+                        style: AiraTypography.overline.copyWith(
+                          color: AiraColors.electricCyan,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               // AI transcription log text
               if (state.transcript.isNotEmpty) ...[
                 Text(
