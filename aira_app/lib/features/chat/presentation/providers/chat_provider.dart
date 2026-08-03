@@ -210,8 +210,59 @@ class ChatNotifier extends StateNotifier<ChatState> {
           final seconds = command.params['seconds'] as int? ?? 60;
           final msg = command.params['message'] as String? ?? 'AIRA Timer';
           await _deviceService.setTimer(seconds: seconds, message: msg);
-          final minStr = '${seconds ~/ 60} minutes';
-          result = '⏱️ **Setting Timer for $minStr...**\n\n- **Label:** "$msg"\n\n> Launching Android Clock Timer.';
+          final hrs = seconds ~/ 3600;
+          final mins = (seconds % 3600) ~/ 60;
+          final secs = seconds % 60;
+          final parts = <String>[];
+          if (hrs > 0) parts.add('$hrs hour${hrs == 1 ? '' : 's'}');
+          if (mins > 0) parts.add('$mins minute${mins == 1 ? '' : 's'}');
+          if (secs > 0 && hrs == 0) parts.add('$secs second${secs == 1 ? '' : 's'}');
+          final timeStr = parts.join(' ');
+          result = '⏱️ **Setting Timer for $timeStr...**\n\n- **Label:** "$msg"\n\n> Launching Android Clock Timer.';
+          break;
+
+        case DeviceIntent.adjustVolume:
+          final direction = command.params['direction'] as String? ?? 'up';
+          final stream = command.params['stream'] as String? ?? 'media';
+          final volRes = await _deviceService.adjustVolume(direction: direction, stream: stream);
+          final curVol = volRes['currentVolume'] ?? '?';
+          final maxVol = volRes['maxVolume'] ?? '?';
+          final dirLabel = {'up': '🔊 Volume Up', 'down': '🔉 Volume Down', 'mute': '🔇 Muted', 'unmute': '🔊 Unmuted', 'max': '🔊 Max Volume', 'min': '🔇 Min Volume'}[direction] ?? '🔊 Volume Changed';
+          result = '$dirLabel\n\n- **Stream:** ${stream.toUpperCase()}\n- **Level:** $curVol / $maxVol';
+          break;
+
+        case DeviceIntent.controlMedia:
+          final action = command.params['action'] as String? ?? 'play_pause';
+          await _deviceService.controlMedia(action: action);
+          final actionLabel = {'play_pause': '⏯️ Play/Pause toggled', 'play': '▶️ Resuming playback', 'pause': '⏸️ Playback paused', 'next': '⏭️ Skipped to next track', 'previous': '⏮️ Went to previous track', 'stop': '⏹️ Playback stopped'}[action] ?? '🎵 Media command sent';
+          result = '$actionLabel\n\n> Media key dispatched to Android AudioManager.';
+          break;
+
+        case DeviceIntent.copyToClipboard:
+          final text = command.params['text'] as String? ?? '';
+          if (text.isEmpty) {
+            result = '📋 What text should I copy to clipboard? Say:\n> *"Copy this to clipboard: [your text]"*';
+          } else {
+            await _deviceService.copyToClipboard(text: text);
+            result = '📋 **Copied to Clipboard!**\n\n> "$text"';
+          }
+          break;
+
+        case DeviceIntent.getDeviceInfo:
+          final info = await _deviceService.getDeviceInfo();
+          final manufacturer = info['manufacturer'] ?? 'Unknown';
+          final model = info['model'] ?? 'Unknown';
+          final version = info['androidVersion'] ?? 'Unknown';
+          final sdk = info['sdkVersion'] ?? '?';
+          final battery = info['batteryLevel'] ?? '?';
+          final charging = info['isCharging'] == true ? '⚡ Charging' : '🔋 Discharging';
+          final totalGB = info['totalStorageGB'] ?? '?';
+          final availMB = info['availStorageMB'] ?? '?';
+          result = '📱 **Device Information**\n\n'
+              '- **Model:** $manufacturer $model\n'
+              '- **Android:** $version (SDK $sdk)\n'
+              '- **Battery:** $battery% — $charging\n'
+              '- **Storage:** ${totalGB}GB total · ${availMB}MB available';
           break;
 
         default:

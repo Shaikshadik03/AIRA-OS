@@ -1,12 +1,20 @@
 package com.airaos.aira_app
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.os.BatteryManager
 import android.os.Build
+import android.os.Environment
+import android.os.StatFs
 import android.provider.AlarmClock
 import android.provider.Settings
+import android.view.KeyEvent
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -14,36 +22,124 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.aira.os/device_control"
 
+    // Comprehensive popular apps package dictionary (60+ apps)
+    private val popularApps = mapOf(
+        // Social & Communication
+        "whatsapp" to "com.whatsapp",
+        "telegram" to "org.telegram.messenger",
+        "instagram" to "com.instagram.android",
+        "twitter" to "com.twitter.android",
+        "x" to "com.twitter.android",
+        "facebook" to "com.facebook.katana",
+        "snapchat" to "com.snapchat.android",
+        "linkedin" to "com.linkedin.android",
+        "pinterest" to "com.pinterest",
+        "reddit" to "com.reddit.frontpage",
+        "discord" to "com.discord",
+        "signal" to "org.thoughtcrime.securesms",
+        "skype" to "com.skype.raider",
+        // Google Apps
+        "gmail" to "com.google.android.gm",
+        "maps" to "com.google.android.apps.maps",
+        "google maps" to "com.google.android.apps.maps",
+        "youtube" to "com.google.android.youtube",
+        "chrome" to "com.android.chrome",
+        "meet" to "com.google.android.apps.meetings",
+        "google meet" to "com.google.android.apps.meetings",
+        "drive" to "com.google.android.apps.docs",
+        "google drive" to "com.google.android.apps.docs",
+        "docs" to "com.google.android.apps.docs.editors.docs",
+        "sheets" to "com.google.android.apps.docs.editors.sheets",
+        "slides" to "com.google.android.apps.docs.editors.slides",
+        "photos" to "com.google.android.apps.photos",
+        "keep" to "com.google.android.apps.keep",
+        "google keep" to "com.google.android.apps.keep",
+        "translate" to "com.google.android.apps.translate",
+        "news" to "com.google.android.apps.magazines",
+        "podcasts" to "com.google.android.apps.podcasts",
+        // Streaming & Entertainment
+        "spotify" to "com.spotify.music",
+        "netflix" to "com.netflix.mediaclient",
+        "amazon prime" to "com.amazon.avod.thirdpartyclient",
+        "prime video" to "com.amazon.avod.thirdpartyclient",
+        "hotstar" to "in.startv.hotstar",
+        "disney" to "in.startv.hotstar",
+        "youtube music" to "com.google.android.apps.youtube.music",
+        "gaana" to "com.gaana",
+        "jio saavn" to "com.jio.media.jiobeats",
+        "saavn" to "com.jio.media.jiobeats",
+        "vlc" to "org.videolan.vlc",
+        "mx player" to "com.mxtech.videoplayer.ad",
+        // Shopping & Finance
+        "amazon" to "in.amazon.mShop.android.shopping",
+        "flipkart" to "com.flipkart.android",
+        "myntra" to "com.myntra.android",
+        "swiggy" to "in.swiggy.android",
+        "zomato" to "com.application.zomato",
+        "phonepe" to "com.phonepe.app",
+        "paytm" to "net.one97.paytm",
+        "gpay" to "com.google.android.apps.nbu.paisa.user",
+        "google pay" to "com.google.android.apps.nbu.paisa.user",
+        "cred" to "com.dreamplug.androidapp",
+        // Productivity & Utilities
+        "calculator" to "com.google.android.calculator",
+        "clock" to "com.google.android.deskclock",
+        "calendar" to "com.google.android.calendar",
+        "camera" to "com.android.camera",
+        "settings" to "com.android.settings",
+        "files" to "com.google.android.apps.nbu.files",
+        "file manager" to "com.google.android.apps.nbu.files",
+        "phone" to "com.google.android.dialer",
+        "contacts" to "com.google.android.contacts",
+        "messages" to "com.google.android.apps.messaging",
+        "gallery" to "com.sec.android.gallery3d",
+        "notes" to "com.google.android.keep",
+        "maps" to "com.google.android.apps.maps",
+        // Travel & Navigation
+        "uber" to "com.ubercab",
+        "ola" to "com.olacabs.customer",
+        "rapido" to "com.rapido.passenger",
+        // Misc
+        "zoom" to "us.zoom.videomeetings",
+        "teams" to "com.microsoft.teams",
+        "microsoft teams" to "com.microsoft.teams",
+        "outlook" to "com.microsoft.office.outlook",
+        "word" to "com.microsoft.office.word",
+        "excel" to "com.microsoft.office.excel",
+        "truecaller" to "com.truecaller"
+    )
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
+
+                    // ── Flashlight ──
                     "toggleFlashlight" -> {
                         val enable = call.argument<Boolean>("enable") ?: false
                         val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
                         val cameraId = cameraManager.cameraIdList.firstOrNull { id ->
                             try {
                                 val char = cameraManager.getCameraCharacteristics(id)
-                                char.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-                            } catch (e: Exception) {
-                                false
-                            }
+                                char.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                            } catch (e: Exception) { false }
                         } ?: cameraManager.cameraIdList.firstOrNull()
 
                         if (cameraId != null) {
                             cameraManager.setTorchMode(cameraId, enable)
                             result.success(mapOf("success" to true, "enabled" to enable))
                         } else {
-                            result.error("NO_FLASH", "Flashlight hardware is not available on this device.", null)
+                            result.error("NO_FLASH", "Flashlight hardware not available on this device.", null)
                         }
                     }
 
+                    // ── App Launcher (60+ apps) ──
                     "launchApp" -> {
                         val query = (call.argument<String>("query") ?: "").lowercase().trim()
                         if (query.isEmpty()) {
-                            result.error("INVALID_QUERY", "App name query cannot be empty.", null)
+                            result.error("INVALID_QUERY", "App name cannot be empty.", null)
                             return@setMethodCallHandler
                         }
 
@@ -51,47 +147,33 @@ class MainActivity : FlutterActivity() {
                         var targetPackage: String? = null
                         var targetLabel: String? = null
 
-                        // Popular Package Map
-                        val popularApps = mapOf(
-                            "whatsapp" to "com.whatsapp",
-                            "spotify" to "com.spotify.music",
-                            "youtube" to "com.google.android.youtube",
-                            "maps" to "com.google.android.apps.maps",
-                            "google maps" to "com.google.android.apps.maps",
-                            "chrome" to "com.android.chrome",
-                            "instagram" to "com.instagram.android",
-                            "twitter" to "com.twitter.android",
-                            "x" to "com.twitter.android",
-                            "telegram" to "org.telegram.messenger",
-                            "gmail" to "com.google.android.gm",
-                            "camera" to "com.android.camera",
-                            "calculator" to "com.google.android.calculator",
-                            "clock" to "com.google.android.deskclock",
-                            "settings" to "com.android.settings",
-                            "photos" to "com.google.android.apps.photos",
-                            "gallery" to "com.sec.android.gallery3d",
-                            "phone" to "com.google.android.dialer",
-                            "messages" to "com.google.android.apps.messaging"
-                        )
-
-                        // 1. Check direct popular app dictionary match
+                        // 1. Direct dictionary lookup
                         val mappedPkg = popularApps[query]
-                        if (mappedPkg != null) {
-                            val intent = pm.getLaunchIntentForPackage(mappedPkg)
-                            if (intent != null) {
-                                targetPackage = mappedPkg
-                                targetLabel = query.capitalize()
+                        if (mappedPkg != null && pm.getLaunchIntentForPackage(mappedPkg) != null) {
+                            targetPackage = mappedPkg
+                            targetLabel = query.replaceFirstChar { it.uppercase() }
+                        }
+
+                        // 2. Partial dictionary match
+                        if (targetPackage == null) {
+                            for ((key, pkg) in popularApps) {
+                                if (key.contains(query) || query.contains(key)) {
+                                    if (pm.getLaunchIntentForPackage(pkg) != null) {
+                                        targetPackage = pkg
+                                        targetLabel = key.replaceFirstChar { it.uppercase() }
+                                        break
+                                    }
+                                }
                             }
                         }
 
-                        // 2. Search installed applications
+                        // 3. Search all installed apps
                         if (targetPackage == null) {
                             val installed = pm.getInstalledApplications(0)
                             for (app in installed) {
                                 val label = app.loadLabel(pm).toString()
                                 if (label.lowercase().contains(query) || app.packageName.lowercase().contains(query)) {
-                                    val intent = pm.getLaunchIntentForPackage(app.packageName)
-                                    if (intent != null) {
+                                    if (pm.getLaunchIntentForPackage(app.packageName) != null) {
                                         targetPackage = app.packageName
                                         targetLabel = label
                                         break
@@ -101,19 +183,16 @@ class MainActivity : FlutterActivity() {
                         }
 
                         if (targetPackage != null) {
-                            val launchIntent = pm.getLaunchIntentForPackage(targetPackage)
-                            if (launchIntent != null) {
-                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                startActivity(launchIntent)
-                                result.success(mapOf("success" to true, "appName" to (targetLabel ?: query), "packageName" to targetPackage))
-                            } else {
-                                result.error("LAUNCH_FAILED", "Could not create launch intent for $targetPackage", null)
-                            }
+                            val launchIntent = pm.getLaunchIntentForPackage(targetPackage)!!
+                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(launchIntent)
+                            result.success(mapOf("success" to true, "appName" to (targetLabel ?: query), "packageName" to targetPackage))
                         } else {
-                            result.error("APP_NOT_FOUND", "Could not find an installed app matching \"$query\".", null)
+                            result.error("APP_NOT_FOUND", "No installed app found matching \"$query\".", null)
                         }
                     }
 
+                    // ── System Settings ──
                     "openSettings" -> {
                         val type = (call.argument<String>("type") ?: "default").lowercase().trim()
                         val action = when (type) {
@@ -125,6 +204,10 @@ class MainActivity : FlutterActivity() {
                             "location" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
                             "nfc" -> Settings.ACTION_NFC_SETTINGS
                             "apps" -> Settings.ACTION_APPLICATION_SETTINGS
+                            "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
+                            "developer" -> Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS
+                            "storage" -> Settings.ACTION_INTERNAL_STORAGE_SETTINGS
+                            "network" -> Settings.ACTION_WIRELESS_SETTINGS
                             else -> Settings.ACTION_SETTINGS
                         }
                         val intent = Intent(action)
@@ -133,22 +216,19 @@ class MainActivity : FlutterActivity() {
                         result.success(mapOf("success" to true, "setting" to type))
                     }
 
+                    // ── Battery Status ──
                     "getBatteryStatus" -> {
                         val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
                         val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-                        val isCharging = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            bm.isCharging
-                        } else {
-                            false
-                        }
+                        val isCharging = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) bm.isCharging else false
                         result.success(mapOf("level" to level, "isCharging" to isCharging))
                     }
 
+                    // ── Set Alarm ──
                     "setAlarm" -> {
                         val hour = call.argument<Int>("hour") ?: 7
                         val minute = call.argument<Int>("minute") ?: 0
                         val message = call.argument<String>("message") ?: "AIRA Alarm"
-
                         val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
                             putExtra(AlarmClock.EXTRA_HOUR, hour)
                             putExtra(AlarmClock.EXTRA_MINUTES, minute)
@@ -160,10 +240,10 @@ class MainActivity : FlutterActivity() {
                         result.success(mapOf("success" to true, "hour" to hour, "minute" to minute, "message" to message))
                     }
 
+                    // ── Set Timer ──
                     "setTimer" -> {
                         val seconds = call.argument<Int>("seconds") ?: 60
                         val message = call.argument<String>("message") ?: "AIRA Timer"
-
                         val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
                             putExtra(AlarmClock.EXTRA_LENGTH, seconds)
                             putExtra(AlarmClock.EXTRA_MESSAGE, message)
@@ -172,6 +252,88 @@ class MainActivity : FlutterActivity() {
                         }
                         startActivity(intent)
                         result.success(mapOf("success" to true, "seconds" to seconds, "message" to message))
+                    }
+
+                    // ── Volume Control ──
+                    "adjustVolume" -> {
+                        val direction = call.argument<String>("direction") ?: "up"
+                        val streamType = call.argument<String>("stream") ?: "media"
+                        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+                        val stream = when (streamType) {
+                            "ring" -> AudioManager.STREAM_RING
+                            "alarm" -> AudioManager.STREAM_ALARM
+                            "notification" -> AudioManager.STREAM_NOTIFICATION
+                            else -> AudioManager.STREAM_MUSIC
+                        }
+
+                        when (direction) {
+                            "up" -> am.adjustStreamVolume(stream, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+                            "down" -> am.adjustStreamVolume(stream, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
+                            "mute" -> am.adjustStreamVolume(stream, AudioManager.ADJUST_MUTE, AudioManager.FLAG_SHOW_UI)
+                            "unmute" -> am.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, AudioManager.FLAG_SHOW_UI)
+                            "max" -> am.setStreamVolume(stream, am.getStreamMaxVolume(stream), AudioManager.FLAG_SHOW_UI)
+                            "min" -> am.setStreamVolume(stream, 0, AudioManager.FLAG_SHOW_UI)
+                        }
+
+                        val currentVol = am.getStreamVolume(stream)
+                        val maxVol = am.getStreamMaxVolume(stream)
+                        result.success(mapOf("success" to true, "currentVolume" to currentVol, "maxVolume" to maxVol, "stream" to streamType))
+                    }
+
+                    // ── Media Playback Control ──
+                    "controlMedia" -> {
+                        val action = call.argument<String>("action") ?: "play_pause"
+                        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+                        val keyCode = when (action) {
+                            "play_pause" -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                            "play" -> KeyEvent.KEYCODE_MEDIA_PLAY
+                            "pause" -> KeyEvent.KEYCODE_MEDIA_PAUSE
+                            "next" -> KeyEvent.KEYCODE_MEDIA_NEXT
+                            "previous" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                            "stop" -> KeyEvent.KEYCODE_MEDIA_STOP
+                            else -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                        }
+
+                        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                        result.success(mapOf("success" to true, "action" to action))
+                    }
+
+                    // ── Copy to Clipboard ──
+                    "copyToClipboard" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("AIRA", text)
+                        clipboard.setPrimaryClip(clip)
+                        result.success(mapOf("success" to true, "copied" to text.take(50)))
+                    }
+
+                    // ── Device Info ──
+                    "getDeviceInfo" -> {
+                        val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                        val batteryLevel = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                        val isCharging = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) bm.isCharging else false
+
+                        val stat = StatFs(Environment.getDataDirectory().path)
+                        val blockSize = stat.blockSizeLong
+                        val totalBlocks = stat.blockCountLong
+                        val availBlocks = stat.availableBlocksLong
+                        val totalStorage = (totalBlocks * blockSize) / (1024 * 1024 * 1024)
+                        val availStorage = (availBlocks * blockSize) / (1024 * 1024)
+
+                        result.success(mapOf(
+                            "manufacturer" to Build.MANUFACTURER,
+                            "model" to Build.MODEL,
+                            "androidVersion" to Build.VERSION.RELEASE,
+                            "sdkVersion" to Build.VERSION.SDK_INT,
+                            "brand" to Build.BRAND,
+                            "batteryLevel" to batteryLevel,
+                            "isCharging" to isCharging,
+                            "totalStorageGB" to totalStorage,
+                            "availStorageMB" to availStorage
+                        ))
                     }
 
                     else -> result.notImplemented()
