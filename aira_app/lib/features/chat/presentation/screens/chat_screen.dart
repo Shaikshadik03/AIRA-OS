@@ -5,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
+import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
@@ -27,7 +27,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
   
-  final stt.SpeechToText _speech = stt.SpeechToText();
+  final VoiceService _voiceService = VoiceService();
   bool _isListening = false;
 
   @override
@@ -37,24 +37,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _initSpeech() async {
-    await _speech.initialize();
-    setState(() {});
+    await _voiceService.initialize();
+    if (mounted) setState(() {});
   }
 
   void _listen() async {
     if (!_isListening) {
-      bool available = await _speech.initialize();
-      if (available) {
-        setState(() => _isListening = true);
-        _speech.listen(
-          onResult: (val) => setState(() {
-            _textController.text = val.recognizedWords;
-          }),
-        );
-      }
+      setState(() => _isListening = true);
+      await _voiceService.startListening(
+        onResult: (text, isFinal) {
+          if (mounted) {
+            setState(() {
+              _textController.text = text;
+            });
+          }
+        },
+        onCommandTriggered: (cleanCommand) {
+          if (mounted) {
+            setState(() {
+              _isListening = false;
+              _textController.text = cleanCommand;
+            });
+            _sendMessage();
+          }
+        },
+      );
     } else {
-      setState(() => _isListening = false);
-      _speech.stop();
+      await _voiceService.stopListening();
+      if (mounted) setState(() => _isListening = false);
     }
   }
 
@@ -560,6 +570,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (_isListening)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AiraColors.electricCyan.withValues(alpha: 0.15),
+                  AiraColors.purple.withValues(alpha: 0.15),
+                ],
+              ),
+              border: Border(top: BorderSide(color: AiraColors.electricCyan.withValues(alpha: 0.4))),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AiraColors.electricCyan,
+                  ),
+                ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(0.8, 0.8), end: const Offset(1.3, 1.3), duration: 600.ms),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Listening for "Hey AIRA"... Speak your command',
+                    style: AiraTypography.caption.copyWith(
+                      color: AiraColors.electricCyan,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _listen,
+                  child: const Icon(Icons.close_rounded, size: 18, color: AiraColors.electricCyan),
+                ),
+              ],
+            ),
+          ),
         if (_selectedImage != null)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
