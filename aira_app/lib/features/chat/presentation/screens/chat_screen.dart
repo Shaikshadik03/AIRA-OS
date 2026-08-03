@@ -11,6 +11,7 @@ import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:go_router/go_router.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -610,6 +611,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 icon: const Icon(Icons.attach_file_rounded, color: AiraColors.textMuted, size: 22),
                 tooltip: 'Attach photo',
                 onPressed: _pickImage,
+              ),
+              // AIRA Vision (camera AI) button
+              IconButton(
+                icon: const Icon(Icons.remove_red_eye_rounded, color: AiraColors.electricCyan, size: 22),
+                tooltip: 'AIRA Vision — analyze with camera',
+                onPressed: () => context.push('/vision'),
               ),
               // Text field
               Expanded(
