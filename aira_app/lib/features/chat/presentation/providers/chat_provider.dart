@@ -3,11 +3,13 @@ import 'package:aira_app/features/chat/domain/chat_models.dart';
 import 'package:aira_app/features/chat/domain/workspace_intent.dart';
 import 'package:aira_app/features/chat/domain/memory_intent.dart';
 import 'package:aira_app/features/chat/domain/phone_intent.dart';
+import 'package:aira_app/features/chat/domain/device_intent.dart';
 import 'package:aira_app/core/services/groq_service.dart';
 import 'package:aira_app/core/services/supabase_chat_service.dart';
 import 'package:aira_app/core/services/supabase_memory_service.dart';
 import 'package:aira_app/core/services/google_workspace_service.dart';
 import 'package:aira_app/core/services/android_phone_service.dart';
+import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -57,6 +59,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final SupabaseMemoryService _memoryService = SupabaseMemoryService();
   final GoogleWorkspaceService _workspace = GoogleWorkspaceService();
   final AndroidPhoneService _phoneService = AndroidPhoneService();
+  final AndroidDeviceService _deviceService = AndroidDeviceService();
   final _uuid = const Uuid();
   final FlutterTts _tts = FlutterTts();
   bool _isVoiceEnabled = true;
@@ -122,26 +125,114 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return;
     }
 
+    // ── Check for Device Control Intent (Milestone 4) ──
+    final deviceCommand = DeviceIntentDetector.detect(content);
+    if (deviceCommand.isDeviceCommand) {
+      await _handleDeviceCommand(content, deviceCommand);
+      return;
+    }
+
+    // ── Check for Phone / SMS Intent (Milestone 3) ──
     final phoneCommand = PhoneIntentDetector.detect(content);
     if (phoneCommand.isPhoneCommand) {
       await _handlePhoneCommand(content, phoneCommand);
       return;
     }
 
+    // ── Check for Memory Intent ──
     final memCommand = MemoryIntentDetector.detect(content);
     if (memCommand.isMemoryCommand) {
       await _handleMemoryCommand(content, memCommand);
       return;
     }
 
+    // ── Check for Google Workspace Intent ──
     final wsCommand = WorkspaceIntentDetector.detect(content);
     if (wsCommand.isWorkspaceCommand) {
       await _handleWorkspaceCommand(content, wsCommand);
       return;
     }
 
+    // ── Normal AI chat flow ──
     await _sendToAI(content, base64Image: base64Image);
   }
+
+  // ──────────────────── Device Control Handlers (Milestone 4) ────────────────────
+
+  Future<void> _handleDeviceCommand(String content, DeviceCommand command) async {
+    _addUserMessage(content);
+    _addLoadingMessage('Processing device action...');
+
+    try {
+      String result = '';
+
+      switch (command.intent) {
+        case DeviceIntent.toggleFlashlight:
+          final enable = command.params['enable'] as bool? ?? true;
+          await _deviceService.toggleFlashlight(enable: enable);
+          result = enable
+              ? '🔦 **Flashlight Turned ON**\n\n> Android LED torch is active.'
+              : '🔦 **Flashlight Turned OFF**\n\n> Android LED torch disabled.';
+          break;
+
+        case DeviceIntent.launchApp:
+          final appName = command.params['appName'] as String? ?? 'App';
+          final res = await _deviceService.launchApp(appName: appName);
+          final launchedLabel = res['appName'] ?? appName;
+          final pkg = res['packageName'] != null ? ' (`${res['packageName']}`)' : '';
+          result = '🚀 **Opening $launchedLabel...**$pkg\n\n> Launching app via Android OS.';
+          break;
+
+        case DeviceIntent.openSettings:
+          final type = command.params['settingType'] as String? ?? 'default';
+          await _deviceService.openSettings(settingType: type);
+          result = '⚙️ **Opening ${type.toUpperCase()} Settings...**\n\n> Launching Android System Settings.';
+          break;
+
+        case DeviceIntent.getBatteryStatus:
+          final bat = await _deviceService.getBatteryStatus();
+          final level = bat['level'] ?? 0;
+          final isCharging = bat['isCharging'] == true;
+          final statusStr = isCharging ? '⚡ Charging' : '🔋 Discharging';
+          result = '🔋 **Battery Status:**\n\n- **Level:** $level%\n- **Status:** $statusStr';
+          break;
+
+        case DeviceIntent.setAlarm:
+          final hour = command.params['hour'] as int? ?? 7;
+          final minute = command.params['minute'] as int? ?? 0;
+          final msg = command.params['message'] as String? ?? 'AIRA Alarm';
+          await _deviceService.setAlarm(hour: hour, minute: minute, message: msg);
+          final timeFormatted = '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+          result = '⏰ **Setting Alarm for $timeFormatted...**\n\n- **Label:** "$msg"\n\n> Launching Android Alarm Clock.';
+          break;
+
+        case DeviceIntent.setTimer:
+          final seconds = command.params['seconds'] as int? ?? 60;
+          final msg = command.params['message'] as String? ?? 'AIRA Timer';
+          await _deviceService.setTimer(seconds: seconds, message: msg);
+          final minStr = '${seconds ~/ 60} minutes';
+          result = '⏱️ **Setting Timer for $minStr...**\n\n- **Label:** "$msg"\n\n> Launching Android Clock Timer.';
+          break;
+
+        default:
+          result = '📱 Device command executed.';
+      }
+
+      _removeLoadingMessage();
+      _addSystemMessage(result);
+
+      if (_isVoiceEnabled && result.isNotEmpty) {
+        final clean = result.replaceAll(RegExp(r'[*#_`\[\]>]'), '');
+        await _tts.speak(clean);
+      }
+    } catch (e) {
+      _removeLoadingMessage();
+      final cleanErr = e.toString().replaceAll('Exception: ', '');
+      _addSystemMessage('❌ **Device Control Action Failed**\n\n$cleanErr');
+    }
+  }
+
+  // ──────────────────── Phone & SMS Handlers (Milestone 3) ────────────────────
 
   Future<void> _handlePhoneCommand(String content, PhoneCommand command) async {
     _addUserMessage(content);
@@ -195,6 +286,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
+  // ──────────────────── Memory Handlers ────────────────────
+
   Future<void> _handleMemoryCommand(String content, MemoryCommand command) async {
     _addUserMessage(content);
 
@@ -242,6 +335,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage('Failed to update memory: ${e.toString().replaceAll('Exception: ', '')}');
     }
   }
+
+  // ──────────────────── Workspace Handlers ────────────────────
 
   Future<void> _handleWorkspaceCommand(String content, WorkspaceCommand command) async {
     _addUserMessage(content);
@@ -465,6 +560,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage('Workspace Action Failed\n\n$cleanErr');
     }
   }
+
+  // ──────────────────── AI Chat ────────────────────
 
   Future<void> _sendToAI(String content, {String? base64Image}) async {
     String? convId = state.activeConversationId;

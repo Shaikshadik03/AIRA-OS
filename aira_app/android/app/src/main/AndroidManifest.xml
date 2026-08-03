@@ -4,11 +4,14 @@
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <!-- Native Android Phone & SMS Control Permissions -->
+    <!-- Native Android Phone, SMS & Device Control Permissions -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FLASHLIGHT" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <application
         android:label="aira_app"
         android:name="${applicationName}"
@@ -41,8 +44,12 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-    <!-- Queries for tel, sms, and text actions -->
+    <!-- Queries for tel, sms, launcher apps and text actions -->
     <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
@@ -61,4 +68,5 @@
         </intent>
     </queries>
 </manifest>
+
 
