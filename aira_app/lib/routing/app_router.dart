@@ -10,6 +10,8 @@ import 'package:aira_app/features/planner/presentation/screens/planner_screen.da
 import 'package:aira_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:aira_app/features/voice/presentation/screens/voice_assistant_panel.dart';
 import 'package:aira_app/features/vision/presentation/screens/vision_screen.dart';
+import 'package:aira_app/features/voice_notes/presentation/screens/voice_note_screen.dart';
+import 'package:aira_app/features/overlay/presentation/screens/overlay_settings_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -115,6 +117,32 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => CustomTransitionPage(
         key: state.pageKey,
         child: const AiraVisionScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/voice-note',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const VoiceNoteScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/overlay',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const OverlaySettingsScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
           position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)

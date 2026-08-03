@@ -4,6 +4,10 @@ import 'package:aira_app/features/chat/domain/workspace_intent.dart';
 import 'package:aira_app/features/chat/domain/memory_intent.dart';
 import 'package:aira_app/features/chat/domain/phone_intent.dart';
 import 'package:aira_app/features/chat/domain/device_intent.dart';
+import 'package:aira_app/features/chat/domain/notification_intent.dart';
+import 'package:aira_app/features/chat/domain/routine_intent.dart';
+import 'package:aira_app/core/services/notification_service.dart';
+import 'package:aira_app/core/services/routine_service.dart';
 import 'package:aira_app/core/services/groq_service.dart';
 import 'package:aira_app/core/services/supabase_chat_service.dart';
 import 'package:aira_app/core/services/supabase_memory_service.dart';
@@ -60,6 +64,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final GoogleWorkspaceService _workspace = GoogleWorkspaceService();
   final AndroidPhoneService _phoneService = AndroidPhoneService();
   final AndroidDeviceService _deviceService = AndroidDeviceService();
+  final NotificationService _notificationService = NotificationService();
+  final RoutineService _routineService = RoutineService();
   final _uuid = const Uuid();
   final FlutterTts _tts = FlutterTts();
   bool _isVoiceEnabled = true;
@@ -129,6 +135,20 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final deviceCommand = DeviceIntentDetector.detect(content);
     if (deviceCommand.isDeviceCommand) {
       await _handleDeviceCommand(content, deviceCommand);
+      return;
+    }
+
+    // ── Check for Smart Routine Intent (Milestone 6 - Feature 3) ──
+    final routineCommand = RoutineIntentDetector.detect(content);
+    if (routineCommand.isRoutineCommand) {
+      await _handleRoutineCommand(content, routineCommand);
+      return;
+    }
+
+    // ── Check for Notification / Reminder Intent (Milestone 6 - Feature 2) ──
+    final notifCommand = NotificationIntentDetector.detect(content);
+    if (notifCommand.isNotificationCommand) {
+      await _handleNotificationCommand(content, notifCommand);
       return;
     }
 
@@ -280,6 +300,108 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _removeLoadingMessage();
       final cleanErr = e.toString().replaceAll('Exception: ', '');
       _addSystemMessage('❌ **Device Control Action Failed**\n\n$cleanErr');
+    }
+  }
+
+  // ──────────────────── Smart Routine Handlers (Milestone 6 - Feature 3) ────────────────────
+
+  Future<void> _handleRoutineCommand(String content, RoutineCommand command) async {
+    _addUserMessage(content);
+    _addLoadingMessage('Executing ${command.name} automation...');
+
+    try {
+      final res = await _routineService.executeRoutine(command.type);
+
+      _removeLoadingMessage();
+      _addSystemMessage(res.summaryMarkdown);
+
+      if (_isVoiceEnabled && res.spokenText.isNotEmpty) {
+        await _tts.speak(res.spokenText);
+      }
+    } catch (e) {
+      _removeLoadingMessage();
+      _addSystemMessage('❌ **Routine Execution Failed:** ${e.toString().replaceAll('Exception: ', '')}');
+    }
+  }
+
+  // ──────────────────── Notification & Reminder Handlers (Milestone 6 - Feature 2) ────────────────────
+
+  Future<void> _handleNotificationCommand(String content, NotificationCommand command) async {
+    _addUserMessage(content);
+
+    try {
+      String result = '';
+      final notifId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+      switch (command.intent) {
+        case NotificationIntentType.scheduleReminder:
+          if (command.scheduledDate != null) {
+            await _notificationService.scheduleNotification(
+              id: notifId,
+              title: command.title,
+              body: command.body,
+              scheduledDate: command.scheduledDate!,
+            );
+
+            final formattedDate =
+                '${command.scheduledDate!.day}/${command.scheduledDate!.month} at ${command.scheduledDate!.hour.toString().padLeft(2, '0')}:${command.scheduledDate!.minute.toString().padLeft(2, '0')}';
+
+            result = '🔔 **Reminder Scheduled!**\n\n'
+                '- **Content:** "${command.body}"\n'
+                '- **Time:** $formattedDate\n\n'
+                '> AIRA will push a high-priority system notification to your phone at the exact time.';
+          } else {
+            result = 'Please specify a time for your reminder (e.g., *"remind me at 2 AM to check server"*).';
+          }
+          break;
+
+        case NotificationIntentType.scheduleDailyAlert:
+          final h = command.hour ?? 7;
+          final m = command.minute ?? 0;
+          await _notificationService.scheduleDailyNotification(
+            id: notifId,
+            title: command.title,
+            body: 'Daily AIRA alert: Top news & agenda ready!',
+            hour: h,
+            minute: m,
+          );
+
+          final timeStr = '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+          result = '🌅 **Daily Alert Scheduled!**\n\n'
+              '- **Time:** Every day at $timeStr\n'
+              '- **Action:** AIRA will deliver your top news and daily agenda.\n\n'
+              '> Recurring daily background task initialized.';
+          break;
+
+        case NotificationIntentType.cancelAllReminders:
+          await _notificationService.cancelAll();
+          result = '🗑️ **All Pending Reminders Cancelled**';
+          break;
+
+        case NotificationIntentType.listReminders:
+          final pending = await _notificationService.getPendingNotifications();
+          if (pending.isEmpty) {
+            result = '🔔 **No Active Reminders**\n\nSay *"remind me at 9 AM to call Rahul"* to set one.';
+          } else {
+            result = '📋 **Active Scheduled Reminders (${pending.length}):**\n\n';
+            for (final p in pending) {
+              result += '- **[${p.title}]** ${p.body}\n';
+            }
+          }
+          break;
+
+        default:
+          result = 'Notification command executed.';
+      }
+
+      _addSystemMessage(result);
+
+      if (_isVoiceEnabled && result.isNotEmpty) {
+        final clean = result.replaceAll(RegExp(r'[*#_`\[\]>]'), '');
+        await _tts.speak(clean);
+      }
+    } catch (e) {
+      _addSystemMessage('❌ **Failed to schedule notification:** ${e.toString().replaceAll('Exception: ', '')}');
     }
   }
 

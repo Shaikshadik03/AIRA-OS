@@ -337,6 +337,48 @@ class MainActivity : FlutterActivity() {
                         ))
                     }
 
+                    // ── Floating Overlay ──
+                    "canDrawOverlays" -> {
+                        val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            Settings.canDrawOverlays(this)
+                        } else {
+                            true
+                        }
+                        result.success(canDraw)
+                    }
+
+                    "requestOverlayPermission" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:$packageName")
+                            )
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                        }
+                        result.success(true)
+                    }
+
+                    "startOverlay" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                            result.error("NO_PERMISSION", "Overlay permission not granted.", null)
+                        } else {
+                            val intent = Intent(this, OverlayService::class.java)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(intent)
+                            } else {
+                                startService(intent)
+                            }
+                            result.success(true)
+                        }
+                    }
+
+                    "stopOverlay" -> {
+                        val intent = Intent(this, OverlayService::class.java)
+                        stopService(intent)
+                        result.success(true)
+                    }
+
                     // ── Search Native Android Contacts ──
                     "searchDeviceContacts" -> {
                         val query = (call.argument<String>("query") ?: "").lowercase().trim()
