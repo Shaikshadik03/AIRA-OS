@@ -54,6 +54,40 @@ Key traits:
 
     final conversationHistory = history ?? [];
 
+    // ── IMAGE VISION ROUTING ──
+    // Groq decommissioned vision preview models. Route vision requests to OpenRouter (gpt-4o-mini) or Gemini first.
+    if (base64Image != null && base64Image.isNotEmpty) {
+      try {
+        debugPrint('[LLM VISION] Attempting Primary Vision Provider: OPENROUTER (gpt-4o-mini)...');
+        final result = await _callOpenRouter(
+          userMessage: userMessage,
+          history: conversationHistory,
+          systemPrompt: fullSystemPrompt,
+          base64Image: base64Image,
+        );
+        _lastUsedProvider = LlmProvider.openRouter;
+        debugPrint('[LLM VISION] ✅ Image Analyzed via OPENROUTER');
+        return result;
+      } catch (e) {
+        debugPrint('[LLM VISION] ⚠️ OpenRouter Vision Failed ($e). Retrying on Gemini...');
+        try {
+          final result = await _callGemini(
+            userMessage: userMessage,
+            history: conversationHistory,
+            systemPrompt: fullSystemPrompt,
+            base64Image: base64Image,
+          );
+          _lastUsedProvider = LlmProvider.gemini;
+          debugPrint('[LLM VISION] ✅ Image Analyzed via GEMINI');
+          return result;
+        } catch (gemErr) {
+          debugPrint('[LLM VISION] ❌ All Vision Providers Failed: $gemErr');
+          throw Exception('Could not process image ($gemErr). Please try again.');
+        }
+      }
+    }
+
+    // ── TEXT CHAT ROUTING (Groq -> Gemini -> OpenRouter) ──
     // ── STEP 1: Try Primary Provider (Groq) ──
     if (!forceGroqFail) {
       try {
@@ -211,8 +245,12 @@ Key traits:
       base64Image: base64Image,
     );
 
+    final model = (base64Image != null && base64Image.isNotEmpty)
+        ? 'openai/gpt-4o-mini'
+        : AppConfig.openRouterModel;
+
     final resp = await dio.post('/chat/completions', data: {
-      'model': AppConfig.openRouterModel,
+      'model': model,
       'messages': messages,
       'temperature': 0.7,
       'max_tokens': 4096,
