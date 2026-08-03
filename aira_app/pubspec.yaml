@@ -40,7 +40,9 @@ dependencies:
   dio: ^5.7.0
   connectivity_plus: ^6.1.4
   url_launcher: ^6.3.1
+  permission_handler: ^11.3.1
   image_picker: ^1.2.3
+
 
   # Chat & Markdown
   flutter_markdown: ^0.7.7

@@ -235,9 +235,82 @@ class GoogleWorkspaceService {
 
   // ──────────────────── Google Contacts API ────────────────────
 
+  /// Search Google Contacts for a person by name and return their phone number & display name.
+  Future<Map<String, String>?> searchGoogleContactPhone(String nameQuery) async {
+    _requireConnection();
+    final lowerQuery = nameQuery.toLowerCase().trim();
+    if (lowerQuery.isEmpty) return null;
+
+    final dio = _buildDio('https://people.googleapis.com/v1');
+
+    // 1. Try searchContacts endpoint with phoneNumbers mask
+    try {
+      final resp = await dio.get(
+        '/people:searchContacts',
+        queryParameters: {
+          'query': nameQuery,
+          'readMask': 'names,phoneNumbers',
+          'pageSize': 5,
+        },
+      );
+
+      final results = resp.data['results'] as List? ?? [];
+      for (final r in results) {
+        final person = r['person'] as Map<String, dynamic>?;
+        if (person != null) {
+          final phones = person['phoneNumbers'] as List? ?? [];
+          final names = person['names'] as List? ?? [];
+          final displayName = names.isNotEmpty ? (names.first['displayName'] ?? nameQuery) : nameQuery;
+
+          if (phones.isNotEmpty) {
+            final phone = phones.first['value'] as String?;
+            if (phone != null && phone.isNotEmpty) {
+              return {
+                'name': displayName as String,
+                'phone': phone,
+              };
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback: Connections list
+    try {
+      final resp = await dio.get(
+        '/people/me/connections',
+        queryParameters: {
+          'personFields': 'names,phoneNumbers',
+          'pageSize': 100,
+        },
+      );
+
+      final connections = resp.data['connections'] as List? ?? [];
+      for (final c in connections) {
+        final names = c['names'] as List? ?? [];
+        final phones = c['phoneNumbers'] as List? ?? [];
+
+        if (phones.isNotEmpty) {
+          final displayName = names.isNotEmpty ? (names.first['displayName'] as String? ?? '') : '';
+          final phone = phones.first['value'] as String? ?? '';
+
+          if (displayName.toLowerCase().contains(lowerQuery) && phone.isNotEmpty) {
+            return {
+              'name': displayName.isNotEmpty ? displayName : nameQuery,
+              'phone': phone,
+            };
+          }
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
   /// Search Google Contacts for a person by name and return their email address & display name.
   /// Uses Google People API (v1).
   Future<Map<String, String>?> searchGoogleContactEmail(String nameQuery) async {
+
     _requireConnection();
     final lowerQuery = nameQuery.toLowerCase().trim();
     if (lowerQuery.isEmpty) return null;
