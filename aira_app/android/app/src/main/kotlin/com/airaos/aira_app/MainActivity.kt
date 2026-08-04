@@ -143,6 +143,26 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
 
+                    // ── Overlay Service (Siri / Bixby style system-wide voice bar) ──
+                    "startOverlayService" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:$packageName")
+                            )
+                            startActivity(intent)
+                            result.success(mapOf("success" to false, "permissionRequested" to true))
+                        } else {
+                            val intent = Intent(this, OverlayService::class.java)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(intent)
+                            } else {
+                                startService(intent)
+                            }
+                            result.success(mapOf("success" to true))
+                        }
+                    }
+
                     // ── Flashlight ──
                     "toggleFlashlight" -> {
                         val enable = call.argument<Boolean>("enable") ?: false

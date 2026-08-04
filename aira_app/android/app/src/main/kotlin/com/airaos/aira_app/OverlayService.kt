@@ -8,26 +8,29 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 
 class OverlayService : Service() {
     private var windowManager: WindowManager? = null
-    private var floatingBubble: FrameLayout? = null
+    private var siriCapsuleView: LinearLayout? = null
+    private var statusTextView: TextView? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         startForegroundService()
-        showFloatingBubble()
+        showSiriStyleOverlay()
     }
 
     private fun startForegroundService() {
@@ -35,7 +38,7 @@ class OverlayService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "AIRA Everywhere Overlay",
+                "AIRA Everywhere Assistant",
                 NotificationManager.IMPORTANCE_LOW
             )
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -44,14 +47,14 @@ class OverlayService : Service() {
 
         val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, channelId)
-                .setContentTitle("AIRA Everywhere Active")
-                .setContentText("Tap floating bubble to access AIRA anytime")
+                .setContentTitle("AIRA Voice Assistant Active")
+                .setContentText("Say 'Hey AIRA' anytime from any app screen")
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .build()
         } else {
             Notification.Builder(this)
-                .setContentTitle("AIRA Everywhere Active")
-                .setContentText("Tap floating bubble to access AIRA anytime")
+                .setContentTitle("AIRA Voice Assistant Active")
+                .setContentText("Say 'Hey AIRA' anytime from any app screen")
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .build()
         }
@@ -59,19 +62,40 @@ class OverlayService : Service() {
         startForeground(99, notification)
     }
 
-    private fun showFloatingBubble() {
+    private fun showSiriStyleOverlay() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-        floatingBubble = FrameLayout(this)
+        // Glassmorphism Capsule Layout (Siri / Bixby style)
+        siriCapsuleView = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(36, 20, 48, 20)
 
-        val icon = ImageView(this).apply {
-            setImageResource(android.R.drawable.ic_btn_speak_now)
-            setColorFilter(Color.parseColor("#00E5FF"))
-            setBackgroundColor(Color.parseColor("#111827"))
-            setPadding(24, 24, 24, 24)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 60f
+                setColor(Color.parseColor("#EE0F172A")) // Dark translucent slate
+                setStroke(3, Color.parseColor("#00E5FF")) // Electric Cyan border
+            }
         }
 
-        floatingBubble?.addView(icon)
+        // Glowing Orb Icon
+        val micIcon = ImageView(this).apply {
+            setImageResource(android.R.drawable.ic_btn_speak_now)
+            setColorFilter(Color.parseColor("#00E5FF"))
+            setPadding(0, 0, 16, 0)
+        }
+
+        // Text status
+        statusTextView = TextView(this).apply {
+            text = "🎙️ AIRA Assistant — Say \"Hey AIRA...\""
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+
+        siriCapsuleView?.addView(micIcon)
+        siriCapsuleView?.addView(statusTextView)
 
         val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -87,60 +111,28 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 50
-            y = 300
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = 120
         }
 
-        // Dragging & tap handling
-        floatingBubble?.setOnTouchListener(object : View.OnTouchListener {
-            private var initialX = 0
-            private var initialY = 0
-            private var initialTouchX = 0f
-            private var initialTouchY = 0f
-
-            override fun onTouch(v: View?, event: MotionEvent): Boolean {
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        initialX = params.x
-                        initialY = params.y
-                        initialTouchX = event.rawX
-                        initialTouchY = event.rawY
-                        return true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        params.x = initialX + (event.rawX - initialTouchX).toInt()
-                        params.y = initialY + (event.rawY - initialTouchY).toInt()
-                        windowManager?.updateViewLayout(floatingBubble, params)
-                        return true
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        val diffX = Math.abs(event.rawX - initialTouchX)
-                        val diffY = Math.abs(event.rawY - initialTouchY)
-                        if (diffX < 10 && diffY < 10) {
-                            // Tap event -> Launch AIRA app
-                            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-                            launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            startActivity(launchIntent)
-                        }
-                        return true
-                    }
-                }
-                return false
-            }
-        })
+        // Tap to open full AIRA app
+        siriCapsuleView?.setOnClickListener {
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(launchIntent)
+        }
 
         try {
-            windowManager?.addView(floatingBubble, params)
+            windowManager?.addView(siriCapsuleView, params)
         } catch (e: Exception) {
-            Toast.makeText(this, "Could not display AIRA bubble: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Enable 'Display Over Other Apps' permission for AIRA Siri overlay", Toast.LENGTH_LONG).show()
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        if (floatingBubble != null && windowManager != null) {
-            windowManager?.removeView(floatingBubble)
+        if (siriCapsuleView != null && windowManager != null) {
+            windowManager?.removeView(siriCapsuleView)
         }
     }
 }

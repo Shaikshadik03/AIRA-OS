@@ -21,6 +21,18 @@ class AndroidDeviceService {
 
   static const MethodChannel _channel = MethodChannel('com.aira.os/device_control');
 
+  // ── Siri / Bixby Floating Overlay ─────────────────────────────────────────
+
+  /// Start system-wide Siri/Bixby floating overlay bar (appears on top of any app).
+  Future<Map<String, dynamic>> startOverlayService() async {
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>('startOverlayService');
+      return result ?? {'success': true};
+    } on PlatformException catch (e) {
+      throw Exception('Overlay Error: ${e.message ?? e.code}');
+    }
+  }
+
   // ── Flashlight ──────────────────────────────────────────────────────────────
 
   /// Toggle device flashlight / torch LED on or off.

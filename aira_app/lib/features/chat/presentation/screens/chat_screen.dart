@@ -9,6 +9,7 @@ import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/core/theme/theme_provider.dart';
 import 'package:aira_app/core/services/voice_service.dart';
+import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
@@ -276,6 +277,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     }
                   },
                 );
+                AndroidDeviceService().startOverlayService();
               }
             },
           ),
@@ -445,6 +447,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             }
                           },
                         );
+                        AndroidDeviceService().startOverlayService();
                       }
                     },
                     style: ElevatedButton.styleFrom(
