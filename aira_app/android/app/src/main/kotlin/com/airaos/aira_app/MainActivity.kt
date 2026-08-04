@@ -540,6 +540,9 @@ class MainActivity : FlutterActivity() {
                                     eventSink?.success("wake_word_detected")
                                 }
                             }
+                        } else {
+                            // Ultra low battery optimization: Put thread to sleep when quiet
+                            Thread.sleep(80)
                         }
                     }
                 }
