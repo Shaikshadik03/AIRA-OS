@@ -7,6 +7,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
+import 'package:aira_app/core/theme/theme_provider.dart';
 import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart';
@@ -231,11 +232,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ),
           ),
+          IconButton(
+            icon: Icon(
+              ref.watch(themeProvider) == ThemeMode.light ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+              color: ref.watch(themeProvider) == ThemeMode.light ? AiraColors.purpleLight : AiraColors.amber,
+            ),
+            tooltip: 'Switch Theme',
+            onPressed: () {
+              final current = ref.read(themeProvider);
+              final next = current == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+              ref.read(themeProvider.notifier).setThemeMode(next);
+            },
+          ),
           if (chatState.messages.isNotEmpty)
             IconButton(
               icon: Icon(
                 ref.read(chatProvider.notifier).isVoiceEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
-                color: AiraColors.textSecondary,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
               ),
               onPressed: () {
                 final notifier = ref.read(chatProvider.notifier);
@@ -245,12 +258,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           if (chatState.messages.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.add_rounded, color: AiraColors.textSecondary),
+              icon: Icon(Icons.add_rounded, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
               tooltip: 'New Chat',
               onPressed: () => ref.read(chatProvider.notifier).clearChat(),
             ),
         ],
-
       ),
       body: Column(
         children: [
@@ -293,6 +305,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ──────────────────── Empty State ────────────────────
 
   Widget _buildEmptyState() {
+    final theme = Theme.of(context);
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -324,7 +338,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             const SizedBox(height: 24),
             Text(
               'How can I help you?',
-              style: AiraTypography.h3.copyWith(color: AiraColors.textSecondary),
+              style: AiraTypography.h3.copyWith(color: theme.colorScheme.onSurface),
             ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
             const SizedBox(height: 8),
             Text(
@@ -360,6 +374,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _suggestionChip(String label, [IconData? icon]) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return GestureDetector(
       onTap: () {
         _textController.text = label.replaceAll(RegExp(r'[📬📅]'), '').trim();
@@ -368,20 +385,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: AiraColors.surfaceDark,
+          color: theme.cardColor,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AiraColors.glassBorder),
+          border: Border.all(color: isDark ? AiraColors.glassBorder : Colors.black12),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 14, color: AiraColors.electricCyan),
+              Icon(icon, size: 14, color: theme.colorScheme.primary),
               const SizedBox(width: 6),
             ],
             Text(
               label,
-              style: AiraTypography.caption.copyWith(color: AiraColors.textSecondary),
+              style: AiraTypography.caption.copyWith(color: theme.colorScheme.onSurface),
             ),
           ],
         ),
@@ -412,6 +429,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildUserBubble(String content, String? base64Image) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -423,7 +443,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: AiraColors.surfaceDark,
+                color: isDark ? AiraColors.surfaceDark : const Color(0xFFE5E7EB),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(18),
                   topRight: Radius.circular(18),
@@ -451,7 +471,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   Text(
                     content,
                     style: AiraTypography.bodyMedium.copyWith(
-                      color: AiraColors.textPrimary,
+                      color: theme.colorScheme.onSurface,
                       height: 1.5,
                     ),
                   ),
