@@ -134,15 +134,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     });
 
+    final theme = Theme.of(context);
+
     return Scaffold(
-      backgroundColor: AiraColors.scaffoldDark,
+      backgroundColor: theme.scaffoldBackgroundColor,
       drawer: const AppDrawer(),
       appBar: AppBar(
-        backgroundColor: AiraColors.cardDark,
+        backgroundColor: theme.cardColor,
         surfaceTintColor: Colors.transparent,
         leading: Builder(
           builder: (context) => IconButton(
-            icon: const Icon(Icons.menu_rounded, color: AiraColors.textPrimary),
+            icon: Icon(Icons.menu_rounded, color: theme.colorScheme.onSurface),
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
@@ -463,6 +465,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildAssistantBubble(String content) {
+    final theme = Theme.of(context);
+    final textPrimary = theme.colorScheme.onSurface;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -486,32 +491,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               data: content,
               styleSheet: MarkdownStyleSheet(
                 p: AiraTypography.bodyMedium.copyWith(
-                  color: AiraColors.textPrimary,
+                  color: textPrimary,
                   height: 1.6,
                 ),
-                h1: AiraTypography.h3.copyWith(color: AiraColors.textPrimary),
-                h2: AiraTypography.h4.copyWith(color: AiraColors.textPrimary),
-                h3: AiraTypography.h5.copyWith(color: AiraColors.textPrimary),
+                h1: AiraTypography.h3.copyWith(color: textPrimary),
+                h2: AiraTypography.h4.copyWith(color: textPrimary),
+                h3: AiraTypography.h5.copyWith(color: textPrimary),
                 strong: AiraTypography.bodyMedium.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: AiraColors.textPrimary,
+                  color: textPrimary,
                 ),
                 em: AiraTypography.bodyMedium.copyWith(
                   fontStyle: FontStyle.italic,
-                  color: AiraColors.textSecondary,
+                  color: textPrimary.withValues(alpha: 0.7),
                 ),
                 code: AiraTypography.bodySmall.copyWith(
-                  color: AiraColors.electricCyan,
-                  backgroundColor: AiraColors.scaffoldDark,
+                  color: theme.colorScheme.primary,
+                  backgroundColor: theme.cardColor,
                   fontFamily: 'monospace',
                 ),
                 codeblockDecoration: BoxDecoration(
-                  color: AiraColors.scaffoldDark,
+                  color: theme.cardColor,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AiraColors.glassBorder),
+                  border: Border.all(color: theme.brightness == Brightness.dark ? AiraColors.glassBorder : Colors.black12),
                 ),
                 codeblockPadding: const EdgeInsets.all(12),
-                listBullet: AiraTypography.bodyMedium.copyWith(color: AiraColors.electricCyan),
+                listBullet: AiraTypography.bodyMedium.copyWith(color: theme.colorScheme.primary),
               ),
             ),
           ),
@@ -567,6 +572,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ──────────────────── Input Bar ────────────────────
 
   Widget _buildInputBar(bool isSending) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -651,8 +659,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         Container(
           padding: EdgeInsets.fromLTRB(12, 8, 12, MediaQuery.of(context).padding.bottom + 8),
           decoration: BoxDecoration(
-            color: AiraColors.cardDark,
-            border: Border(top: BorderSide(color: AiraColors.glassBorder)),
+            color: theme.cardColor,
+            border: Border(top: BorderSide(color: isDark ? AiraColors.glassBorder : Colors.black12)),
           ),
           child: Row(
             children: [

@@ -9,67 +9,112 @@ class VoiceService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isInitialized = false;
   bool _isListening = false;
+  String _lastError = '';
 
   bool get isListening => _isListening;
   bool get isInitialized => _isInitialized;
+  String get lastError => _lastError;
+
+  /// Check microphone permission status
+  Future<bool> checkPermission() async {
+    final status = await Permission.microphone.status;
+    return status.isGranted;
+  }
+
+  /// Request microphone permission
+  Future<bool> requestPermission() async {
+    final status = await Permission.microphone.request();
+    return status.isGranted;
+  }
 
   /// Initialize speech engine with microphone permission check
-  Future<bool> initialize() async {
-    if (_isInitialized) return true;
-
+  Future<bool> initialize({Function(String error)? onErrorCallback}) async {
+    _lastError = '';
+    
     // Check microphone permission
-    final micStatus = await Permission.microphone.request();
-    if (!micStatus.isGranted) {
-      return false;
+    bool hasPermission = await checkPermission();
+    if (!hasPermission) {
+      hasPermission = await requestPermission();
+      if (!hasPermission) {
+        _lastError = 'Microphone permission denied';
+        onErrorCallback?.call(_lastError);
+        return false;
+      }
     }
 
-    _isInitialized = await _speech.initialize(
-      onError: (error) {
-        _isListening = false;
-      },
-      onStatus: (status) {
-        if (status == 'done' || status == 'notListening') {
+    try {
+      _isInitialized = await _speech.initialize(
+        onError: (errorNotification) {
           _isListening = false;
-        }
-      },
-    );
+          _lastError = errorNotification.errorMsg;
+          onErrorCallback?.call(_lastError);
+        },
+        onStatus: (status) {
+          if (status == 'done' || status == 'notListening') {
+            _isListening = false;
+          }
+        },
+        debugLogging: true,
+      );
+
+      if (!_isInitialized) {
+        _lastError = 'Speech Recognition service unavailable on this device';
+        onErrorCallback?.call(_lastError);
+      }
+    } catch (e) {
+      _isInitialized = false;
+      _lastError = 'Initialization failed: $e';
+      onErrorCallback?.call(_lastError);
+    }
 
     return _isInitialized;
   }
 
   /// Start listening for voice commands / Hey AIRA wake word
-  Future<void> startListening({
+  Future<bool> startListening({
     required Function(String text, bool isFinal) onResult,
     required Function(String cleanCommand) onCommandTriggered,
+    Function(String error)? onError,
   }) async {
-    final available = await initialize();
-    if (!available) return;
+    final available = await initialize(onErrorCallback: onError);
+    if (!available) {
+      onError?.call(_lastError.isNotEmpty ? _lastError : 'Speech recognition not available');
+      return false;
+    }
 
     _isListening = true;
 
-    await _speech.listen(
-      onResult: (result) {
-        final recognizedWords = result.recognizedWords.trim();
-        onResult(recognizedWords, result.finalResult);
+    try {
+      await _speech.listen(
+        onResult: (result) {
+          final recognizedWords = result.recognizedWords.trim();
+          onResult(recognizedWords, result.finalResult);
 
-        // Check if wake word or complete final result
-        if (recognizedWords.isNotEmpty) {
-          final cleanCommand = parseWakeWordCommand(recognizedWords);
-          if (result.finalResult || isWakeWord(recognizedWords)) {
-            _speech.stop();
-            _isListening = false;
-            onCommandTriggered(cleanCommand);
+          // Check if wake word or complete final result
+          if (recognizedWords.isNotEmpty) {
+            final cleanCommand = parseWakeWordCommand(recognizedWords);
+            if (result.finalResult || isWakeWord(recognizedWords)) {
+              _speech.stop();
+              _isListening = false;
+              onCommandTriggered(cleanCommand);
+            }
           }
-        }
-      },
-      listenOptions: stt.SpeechListenOptions(
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 3),
-        partialResults: true,
-        cancelOnError: false,
-        listenMode: stt.ListenMode.dictation,
-      ),
-    );
+        },
+        listenOptions: stt.SpeechListenOptions(
+          listenFor: const Duration(seconds: 30),
+          pauseFor: const Duration(seconds: 3),
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: stt.ListenMode.dictation,
+        ),
+      );
+      return true;
+    } catch (e) {
+      _isListening = false;
+      _lastError = 'Listen error: $e';
+      onError?.call(_lastError);
+      return false;
+    }
   }
 
   /// Stop listening

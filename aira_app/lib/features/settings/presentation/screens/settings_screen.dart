@@ -9,6 +9,7 @@ import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart
 import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/core/services/voice_service.dart';
+import 'package:aira_app/core/theme/theme_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -25,6 +26,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final authState = ref.watch(authProvider);
     final user = ref.watch(currentUserProvider);
     final isAuthenticated = authState == AuthStatus.authenticated;
+    final currentThemeMode = ref.watch(themeProvider);
 
     return Scaffold(
       backgroundColor: AiraColors.scaffoldDark,
@@ -119,8 +121,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           const SizedBox(height: 24),
 
-          // ── Notifications & Voice System ──
-          _sectionTitle('Notifications & Voice System'),
+          // ── System & Appearance ──
+          _sectionTitle('System & Appearance'),
+          _settingsTile(
+            Icons.palette_outlined,
+            'Appearance & Theme',
+            _themeLabel(currentThemeMode),
+            iconColor: AiraColors.purpleLight,
+            onTap: _showThemeDialog,
+          ),
           _settingsTile(
             Icons.mic_rounded,
             'Voice & Wake-Word Control',
@@ -247,7 +256,69 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  // ──────────────────── Dialogs for Working Features ────────────────────
+  // ──────────────────── Dialogs ────────────────────
+
+  String _themeLabel(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'Light Mode ☀️';
+      case ThemeMode.dark:
+        return 'Dark Mode 🌙';
+      case ThemeMode.system:
+        return 'System Default 📱';
+    }
+  }
+
+  void _showThemeDialog() {
+    final currentMode = ref.read(themeProvider);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AiraColors.cardDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.palette_rounded, color: AiraColors.purpleLight),
+            const SizedBox(width: 10),
+            Text('Appearance & Theme', style: AiraTypography.h5.copyWith(color: Colors.white)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.light_mode_rounded, color: AiraColors.amber),
+              title: Text('Light Mode ☀️', style: AiraTypography.bodyMedium.copyWith(color: Colors.white)),
+              trailing: currentMode == ThemeMode.light ? const Icon(Icons.check_circle_rounded, color: AiraColors.electricCyan) : null,
+              onTap: () {
+                ref.read(themeProvider.notifier).setThemeMode(ThemeMode.light);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.dark_mode_rounded, color: AiraColors.purpleLight),
+              title: Text('Dark Mode 🌙', style: AiraTypography.bodyMedium.copyWith(color: Colors.white)),
+              trailing: currentMode == ThemeMode.dark ? const Icon(Icons.check_circle_rounded, color: AiraColors.electricCyan) : null,
+              onTap: () {
+                ref.read(themeProvider.notifier).setThemeMode(ThemeMode.dark);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.brightness_auto_rounded, color: AiraColors.electricCyan),
+              title: Text('System Default 📱', style: AiraTypography.bodyMedium.copyWith(color: Colors.white)),
+              trailing: currentMode == ThemeMode.system ? const Icon(Icons.check_circle_rounded, color: AiraColors.electricCyan) : null,
+              onTap: () {
+                ref.read(themeProvider.notifier).setThemeMode(ThemeMode.system);
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _showVoiceControlDialog() async {
     final voice = VoiceService();
