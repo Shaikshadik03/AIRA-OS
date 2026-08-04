@@ -30,6 +30,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   
   final VoiceService _voiceService = VoiceService();
   bool _isListening = false;
+  bool _isHandsFreeActive = false;
 
   @override
   void initState() {
@@ -242,6 +243,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               final current = ref.read(themeProvider);
               final next = current == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
               ref.read(themeProvider.notifier).setThemeMode(next);
+            },
+          ),
+          IconButton(
+            icon: Icon(
+              _isHandsFreeActive ? Icons.graphic_eq_rounded : Icons.mic_none_rounded,
+              color: _isHandsFreeActive ? AiraColors.success : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+            tooltip: _isHandsFreeActive ? 'Hands-Free "Hey AIRA" Active' : 'Enable Hands-Free "Hey AIRA"',
+            onPressed: () async {
+              if (_isHandsFreeActive) {
+                await _voiceService.stopPassiveWakeWordLoop();
+                setState(() => _isHandsFreeActive = false);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Hands-Free "Hey AIRA" Wake-Word Disabled')),
+                  );
+                }
+              } else {
+                setState(() => _isHandsFreeActive = true);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('🟢 Hands-Free "Hey AIRA" Listening Active! Speak "Hey AIRA..." anytime.')),
+                  );
+                }
+                _voiceService.startPassiveWakeWordLoop(
+                  onWakeWordDetected: (_) {},
+                  onCommandTriggered: (command) {
+                    if (command.isNotEmpty) {
+                      _textController.text = command;
+                      _sendMessage();
+                    }
+                  },
+                );
+              }
             },
           ),
           if (chatState.messages.isNotEmpty)
@@ -598,6 +633,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (_isHandsFreeActive && !_isListening)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: AiraColors.success.withValues(alpha: 0.1),
+            child: Row(
+              children: [
+                const Icon(Icons.graphic_eq_rounded, size: 16, color: AiraColors.success),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '🟢 Hands-Free "Hey AIRA" Active — Speak "Hey AIRA..." anytime',
+                    style: AiraTypography.caption.copyWith(color: AiraColors.success, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (_isListening)
           Container(
             width: double.infinity,

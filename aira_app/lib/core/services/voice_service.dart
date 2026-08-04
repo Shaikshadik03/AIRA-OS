@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
@@ -9,10 +10,12 @@ class VoiceService {
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isInitialized = false;
   bool _isListening = false;
+  bool _isPassiveWakeWordActive = false;
   String _lastError = '';
 
   bool get isListening => _isListening;
   bool get isInitialized => _isInitialized;
+  bool get isPassiveWakeWordActive => _isPassiveWakeWordActive;
   String get lastError => _lastError;
 
   /// Check microphone permission status
@@ -94,6 +97,7 @@ class VoiceService {
           if (recognizedWords.isNotEmpty) {
             final cleanCommand = parseWakeWordCommand(recognizedWords);
             if (result.finalResult || isWakeWord(recognizedWords)) {
+              HapticFeedback.mediumImpact();
               _speech.stop();
               _isListening = false;
               onCommandTriggered(cleanCommand);
@@ -115,6 +119,42 @@ class VoiceService {
       onError?.call(_lastError);
       return false;
     }
+  }
+
+  /// Start Continuous Passive Hands-Free "Hey AIRA" Listening Loop (Siri Style)
+  Future<void> startPassiveWakeWordLoop({
+    required Function(String recognizedText) onWakeWordDetected,
+    required Function(String cleanCommand) onCommandTriggered,
+  }) async {
+    _isPassiveWakeWordActive = true;
+
+    while (_isPassiveWakeWordActive) {
+      if (!_isListening) {
+        final started = await startListening(
+          onResult: (text, isFinal) {
+            if (isWakeWord(text)) {
+              onWakeWordDetected(text);
+            }
+          },
+          onCommandTriggered: (command) {
+            if (command.isNotEmpty) {
+              onCommandTriggered(command);
+            }
+          },
+          onError: (_) {},
+        );
+        if (!started) {
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      }
+      await Future.delayed(const Duration(seconds: 1));
+    }
+  }
+
+  /// Stop passive wake-word loop
+  Future<void> stopPassiveWakeWordLoop() async {
+    _isPassiveWakeWordActive = false;
+    await stopListening();
   }
 
   /// Stop listening
