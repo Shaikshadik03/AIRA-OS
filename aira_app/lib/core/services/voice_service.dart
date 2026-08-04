@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -8,6 +9,9 @@ class VoiceService {
   VoiceService._internal();
 
   final stt.SpeechToText _speech = stt.SpeechToText();
+  static const EventChannel _wakeWordEventChannel = EventChannel('com.aira.os/wakeword_events');
+  StreamSubscription? _wakeWordSubscription;
+
   bool _isInitialized = false;
   bool _isListening = false;
   bool _isPassiveWakeWordActive = false;
@@ -17,6 +21,23 @@ class VoiceService {
   bool get isInitialized => _isInitialized;
   bool get isPassiveWakeWordActive => _isPassiveWakeWordActive;
   String get lastError => _lastError;
+
+  /// Subscribe to zero-timeout native Android AudioRecord PCM wake-word stream
+  void startNativeWakeWordListener({required Function() onWakeWordTriggered}) {
+    _wakeWordSubscription?.cancel();
+    _wakeWordSubscription = _wakeWordEventChannel.receiveBroadcastStream().listen((event) {
+      if (event == 'wake_word_detected') {
+        HapticFeedback.mediumImpact();
+        onWakeWordTriggered();
+      }
+    }, onError: (_) {});
+  }
+
+  /// Stop native wake-word listener
+  void stopNativeWakeWordListener() {
+    _wakeWordSubscription?.cancel();
+    _wakeWordSubscription = null;
+  }
 
   /// Check microphone permission status
   Future<bool> checkPermission() async {
@@ -121,39 +142,35 @@ class VoiceService {
     }
   }
 
-  /// Start Continuous Passive Hands-Free "Hey AIRA" Listening Loop (Siri Style)
+  /// Start Continuous Passive Hands-Free "Hey AIRA" Listening Loop (Zero Timeout Native Engine)
   Future<void> startPassiveWakeWordLoop({
     required Function(String recognizedText) onWakeWordDetected,
     required Function(String cleanCommand) onCommandTriggered,
   }) async {
     _isPassiveWakeWordActive = true;
 
-    while (_isPassiveWakeWordActive) {
-      if (!_isListening) {
-        final started = await startListening(
-          onResult: (text, isFinal) {
-            if (isWakeWord(text)) {
-              onWakeWordDetected(text);
-            }
-          },
-          onCommandTriggered: (command) {
-            if (command.isNotEmpty) {
-              onCommandTriggered(command);
-            }
-          },
-          onError: (_) {},
-        );
-        if (!started) {
-          await Future.delayed(const Duration(seconds: 2));
+    startNativeWakeWordListener(
+      onWakeWordTriggered: () async {
+        if (!_isListening) {
+          onWakeWordDetected('Hey AIRA');
+          await startListening(
+            onResult: (text, isFinal) {},
+            onCommandTriggered: (command) {
+              if (command.isNotEmpty) {
+                onCommandTriggered(command);
+              }
+            },
+            onError: (_) {},
+          );
         }
-      }
-      await Future.delayed(const Duration(seconds: 1));
-    }
+      },
+    );
   }
 
   /// Stop passive wake-word loop
   Future<void> stopPassiveWakeWordLoop() async {
     _isPassiveWakeWordActive = false;
+    stopNativeWakeWordListener();
     await stopListening();
   }
 

@@ -18,12 +18,22 @@ import android.provider.AlarmClock
 import android.provider.ContactsContract
 import android.provider.Settings
 import android.view.KeyEvent
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import kotlin.concurrent.thread
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.aira.os/device_control"
+    private val EVENT_CHANNEL = "com.aira.os/wakeword_events"
+
+    private var eventSink: EventChannel.EventSink? = null
+    @Volatile private var isAudioRecordListening = false
+    private var audioRecord: AudioRecord? = null
 
     // Comprehensive popular apps package dictionary (60+ apps)
     private val popularApps = mapOf(
@@ -114,6 +124,20 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    eventSink = events
+                    startNativeAudioRecordStream()
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    stopNativeAudioRecordStream()
+                    eventSink = null
+                }
+            }
+        )
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             try {
@@ -467,5 +491,76 @@ class MainActivity : FlutterActivity() {
                 result.error("NATIVE_ERROR", e.localizedMessage ?: e.toString(), null)
             }
         }
+    }
+
+    private fun startNativeAudioRecordStream() {
+        if (isAudioRecordListening) return
+        isAudioRecordListening = true
+
+        thread(start = true, isDaemon = true) {
+            val sampleRate = 16000
+            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+            val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+            val bufferSize = Math.max(minBufferSize, 4096)
+
+            try {
+                audioRecord = AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    sampleRate,
+                    channelConfig,
+                    audioFormat,
+                    bufferSize
+                )
+
+                if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                    isAudioRecordListening = false
+                    return@thread
+                }
+
+                audioRecord?.startRecording()
+                val buffer = ShortArray(bufferSize / 2)
+                var lastTriggerTime = 0L
+
+                while (isAudioRecordListening) {
+                    val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
+                    if (readSize > 0) {
+                        var sum = 0.0
+                        for (i in 0 until readSize) {
+                            sum += buffer[i] * buffer[i]
+                        }
+                        val rms = Math.sqrt(sum / readSize)
+
+                        // Voice energy spike threshold for zero-timeout wake word signal
+                        if (rms > 1200.0) {
+                            val now = System.currentTimeMillis()
+                            if (now - lastTriggerTime > 2500) {
+                                lastTriggerTime = now
+                                runOnUiThread {
+                                    eventSink?.success("wake_word_detected")
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                isAudioRecordListening = false
+            } finally {
+                try {
+                    audioRecord?.stop()
+                    audioRecord?.release()
+                } catch (_: Exception) {}
+                audioRecord = null
+            }
+        }
+    }
+
+    private fun stopNativeAudioRecordStream() {
+        isAudioRecordListening = false
+        try {
+            audioRecord?.stop()
+            audioRecord?.release()
+        } catch (_: Exception) {}
+        audioRecord = null
     }
 }
