@@ -4,6 +4,7 @@ enum DeviceIntent {
   none,
   toggleFlashlight,
   launchApp,
+  searchInApp,
   openSettings,
   getBatteryStatus,
   setAlarm,
@@ -35,6 +36,10 @@ class DeviceCommand {
       case DeviceIntent.launchApp:
         final appName = params['appName'] as String? ?? 'App';
         return 'Open $appName';
+      case DeviceIntent.searchInApp:
+        final appName = params['appName'] as String? ?? 'App';
+        final query = params['query'] as String? ?? '';
+        return 'Search "$query" on $appName';
       case DeviceIntent.openSettings:
         final type = params['settingType'] as String? ?? 'system';
         return 'Open $type settings';
@@ -73,6 +78,12 @@ class DeviceIntentDetector {
   static DeviceCommand detect(String message) {
     final msg = message.trim();
     final lower = msg.toLowerCase();
+
+    // ── 0. Deep-Link Search in App ─────────────────────────────────────────────
+    final searchInAppCommand = _detectSearchInApp(msg, lower);
+    if (searchInAppCommand != null) {
+      return searchInAppCommand;
+    }
 
     // ── 1. Flashlight / Torch ──────────────────────────────────────────────────
     if (_matchesFlashlight(lower)) {
@@ -393,5 +404,45 @@ class DeviceIntentDetector {
       return true;
     }
     return false;
+  }
+
+  static DeviceCommand? _detectSearchInApp(String msg, String lower) {
+    // Pattern 1: open/launch/start <app> (and|to) (search|play|find|look for) <query>
+    final pattern1 = RegExp(
+      r'^(?:open|launch|start)\s+([A-Za-z0-9\s]+?)\s+(?:and|to)\s+(?:search|play|find|look\s+for)\s+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(msg);
+
+    if (pattern1 != null) {
+      final app = pattern1.group(1)!.trim();
+      final query = pattern1.group(2)!.trim();
+      if (app.isNotEmpty && query.isNotEmpty) {
+        return DeviceCommand(
+          intent: DeviceIntent.searchInApp,
+          params: {'appName': app, 'query': query},
+          originalMessage: msg,
+        );
+      }
+    }
+
+    // Pattern 2: (search|play|find|look for) <query> (on|in|using) <app>
+    final pattern2 = RegExp(
+      r'^(?:search|play|find|look\s+for)\s+(.+?)\s+(?:on|in|using)\s+([A-Za-z0-9\s]+)$',
+      caseSensitive: false,
+    ).firstMatch(msg);
+
+    if (pattern2 != null) {
+      final query = pattern2.group(1)!.trim();
+      final app = pattern2.group(2)!.trim();
+      if (app.isNotEmpty && query.isNotEmpty) {
+        return DeviceCommand(
+          intent: DeviceIntent.searchInApp,
+          params: {'appName': app, 'query': query},
+          originalMessage: msg,
+        );
+      }
+    }
+
+    return null;
   }
 }

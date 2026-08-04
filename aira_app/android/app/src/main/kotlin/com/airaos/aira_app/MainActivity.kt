@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import java.net.URLEncoder
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
@@ -190,6 +192,57 @@ class MainActivity : FlutterActivity() {
                             result.success(mapOf("success" to true, "appName" to (targetLabel ?: query), "packageName" to targetPackage))
                         } else {
                             result.error("APP_NOT_FOUND", "No installed app found matching \"$query\".", null)
+                        }
+                    }
+
+                    // ── Deep-Link App Search ──
+                    "searchInApp" -> {
+                        val appName = (call.argument<String>("appName") ?: "").lowercase().trim()
+                        val searchQuery = (call.argument<String>("searchQuery") ?: "").trim()
+                        val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
+
+                        val intent = when {
+                            appName.contains("youtube") -> {
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery")).apply {
+                                    setPackage("com.google.android.youtube")
+                                }
+                            }
+                            appName.contains("spotify") -> {
+                                Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:$encodedQuery")).apply {
+                                    setPackage("com.spotify.music")
+                                }
+                            }
+                            appName.contains("map") -> {
+                                Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=$encodedQuery")).apply {
+                                    setPackage("com.google.android.apps.maps")
+                                }
+                            }
+                            appName.contains("chrome") || appName.contains("google") || appName.contains("browser") -> {
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$encodedQuery"))
+                            }
+                            appName.contains("amazon") -> {
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.amazon.in/s?k=$encodedQuery")).apply {
+                                    setPackage("in.amazon.mShop.android.shopping")
+                                }
+                            }
+                            appName.contains("play store") || appName.contains("store") -> {
+                                Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=$encodedQuery"))
+                            }
+                            else -> {
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$encodedQuery"))
+                            }
+                        }
+
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        try {
+                            startActivity(intent)
+                            result.success(mapOf("success" to true, "appName" to appName, "searchQuery" to searchQuery))
+                        } catch (e: Exception) {
+                            val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$encodedQuery")).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(fallbackIntent)
+                            result.success(mapOf("success" to true, "appName" to appName, "searchQuery" to searchQuery, "fallback" to true))
                         }
                     }
 

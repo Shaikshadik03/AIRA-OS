@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 /// Capabilities:
 /// - Flashlight toggle
 /// - App Launcher (60+ popular apps)
+/// - Deep-Link App Search (YouTube, Spotify, Maps, Google/Chrome, Amazon, Play Store)
 /// - System Settings shortcuts
 /// - Battery status
 /// - Alarm & Timer creation
@@ -52,6 +53,31 @@ class AndroidDeviceService {
       return result ?? {'success': true, 'appName': cleanName};
     } on PlatformException catch (e) {
       throw Exception(e.message ?? 'Could not launch "$cleanName".');
+    }
+  }
+
+  /// Launch an installed application directly with a pre-filled search query.
+  /// (e.g. YouTube "trending songs", Spotify "Taylor Swift", Google Maps "nearest pizza")
+  Future<Map<String, dynamic>> searchInApp({
+    required String appName,
+    required String searchQuery,
+  }) async {
+    final cleanApp = appName.trim();
+    final cleanQuery = searchQuery.trim();
+    if (cleanApp.isEmpty || cleanQuery.isEmpty) {
+      throw Exception('App name and search query are required.');
+    }
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>(
+        'searchInApp',
+        {
+          'appName': cleanApp.toLowerCase(),
+          'searchQuery': cleanQuery,
+        },
+      );
+      return result ?? {'success': true, 'appName': cleanApp, 'searchQuery': cleanQuery};
+    } on PlatformException catch (e) {
+      throw Exception(e.message ?? 'Could not search "$cleanQuery" in $cleanApp.');
     }
   }
 

@@ -203,6 +203,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
           result = '🚀 **Opening $launchedLabel...**$pkg\n\n> Launching app via Android OS.';
           break;
 
+        case DeviceIntent.searchInApp:
+          final appName = command.params['appName'] as String? ?? 'YouTube';
+          final searchQuery = command.params['query'] as String? ?? '';
+          await _deviceService.searchInApp(appName: appName, searchQuery: searchQuery);
+          final capitalApp = appName.substring(0, 1).toUpperCase() + appName.substring(1);
+          result = '🔍 **Opening $capitalApp...**\n\n> Searching for: "$searchQuery"';
+          break;
+
         case DeviceIntent.openSettings:
           final type = command.params['settingType'] as String? ?? 'default';
           await _deviceService.openSettings(settingType: type);
