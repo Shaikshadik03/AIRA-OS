@@ -375,12 +375,90 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               'How can I help you?',
               style: AiraTypography.h3.copyWith(color: theme.colorScheme.onSurface),
             ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
-            const SizedBox(height: 8),
-            Text(
-              'Ask me anything — I\'m powered by Llama 3.3',
-              style: AiraTypography.bodySmall.copyWith(color: AiraColors.textMuted),
+            const SizedBox(height: 16),
+            // Glowing Hands-Free Voice card
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AiraColors.electricCyan.withValues(alpha: 0.12),
+                    AiraColors.purple.withValues(alpha: 0.12),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _isHandsFreeActive ? AiraColors.success : AiraColors.electricCyan.withValues(alpha: 0.4),
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _isHandsFreeActive ? AiraColors.success.withValues(alpha: 0.2) : AiraColors.electricCyan.withValues(alpha: 0.2),
+                    ),
+                    child: Icon(
+                      _isHandsFreeActive ? Icons.graphic_eq_rounded : Icons.mic_rounded,
+                      color: _isHandsFreeActive ? AiraColors.success : AiraColors.electricCyan,
+                      size: 22,
+                    ),
+                  ).animate(onPlay: (c) => _isHandsFreeActive ? c.repeat(reverse: true) : c.stop())
+                   .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 800.ms),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _isHandsFreeActive ? '🟢 "Hey AIRA" Active' : '🎙️ Hands-Free "Hey AIRA"',
+                          style: AiraTypography.bodySmall.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: _isHandsFreeActive ? AiraColors.success : theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        Text(
+                          _isHandsFreeActive
+                              ? 'Say "Hey AIRA open youtube..."'
+                              : 'Tap to listen for "Hey AIRA" hands-free',
+                          style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      if (_isHandsFreeActive) {
+                        await _voiceService.stopPassiveWakeWordLoop();
+                        setState(() => _isHandsFreeActive = false);
+                      } else {
+                        setState(() => _isHandsFreeActive = true);
+                        _voiceService.startPassiveWakeWordLoop(
+                          onWakeWordDetected: (_) {},
+                          onCommandTriggered: (command) {
+                            if (command.isNotEmpty) {
+                              _textController.text = command;
+                              _sendMessage();
+                            }
+                          },
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isHandsFreeActive ? AiraColors.error : AiraColors.electricCyan,
+                      foregroundColor: _isHandsFreeActive ? Colors.white : Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: Text(_isHandsFreeActive ? 'Stop' : 'Enable'),
+                  ),
+                ],
+              ),
             ).animate().fadeIn(delay: 400.ms, duration: 400.ms),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             Wrap(
               spacing: 8,
               runSpacing: 8,
