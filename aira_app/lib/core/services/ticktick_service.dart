@@ -68,6 +68,25 @@ class TickTickService {
 
     // Otherwise set directly as access token
     await setAccessToken(cleanInput);
+
+    // Verify token by calling API
+    final isValid = await testConnection();
+    if (!isValid) {
+      await disconnect();
+      throw Exception('Invalid TickTick Access Token or Code. Connection test failed.');
+    }
+  }
+
+  /// Test connection with TickTick API
+  Future<bool> testConnection() async {
+    await initialize();
+    if (!isConnected) return false;
+    try {
+      final response = await _dio.get('/project', options: _authOptions);
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Exchange OAuth authorization code for Access Token
