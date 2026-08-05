@@ -11,6 +11,7 @@ import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/core/services/ticktick_service.dart';
 import 'package:aira_app/core/theme/theme_provider.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -333,6 +334,71 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  void _openTickTickOAuthWebView() {
+    final ticktick = TickTickService();
+    late final WebViewController controller;
+
+    controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (NavigationRequest request) async {
+            if (request.url.startsWith('https://localhost') || request.url.contains('code=')) {
+              try {
+                await ticktick.parseAndAuthenticate(request.url);
+                if (mounted) {
+                  Navigator.pop(context); // Close webview
+                  Navigator.pop(context); // Close settings dialog
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('🟢 TickTick Connected Successfully!')),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('TickTick Auth Error: $e')),
+                  );
+                }
+              }
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(ticktick.authorizationUrl));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AiraColors.cardDark,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.85,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: AiraColors.glassBorder)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('TickTick Authorization', style: AiraTypography.h3.copyWith(color: Colors.white)),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(child: WebViewWidget(controller: controller)),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showTickTickDialog() async {
     final ticktick = TickTickService();
     await ticktick.initialize();
@@ -363,11 +429,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Text(
                 ticktick.isConnected
                     ? '🟢 TickTick is currently Connected to AIRA OS.'
-                    : 'Connect your TickTick account directly with Email & Password (No OAuth or web links needed!).',
+                    : 'Connect your TickTick account using 1-Tap Auto Connect, Account Login, or API Token.',
                 style: AiraTypography.bodySmall.copyWith(color: AiraColors.textSecondary),
               ),
               const SizedBox(height: 16),
               if (!ticktick.isConnected) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _openTickTickOAuthWebView,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AiraColors.electricCyan,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.auto_awesome_rounded, color: Colors.black),
+                    label: const Text(
+                      '⚡ 1-Tap Auto Connect (Web)',
+                      style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
