@@ -26,7 +26,7 @@ class TickTickService {
 
   /// Get 1-Click OAuth Authorization URL
   String get authorizationUrl =>
-      'https://ticktick.com/oauth/authorize?client_id=$clientId&scope=tasks:write%20tasks:read&redirect_uri=${Uri.encodeComponent(redirectUri)}&response_type=code';
+      'https://ticktick.com/oauth/authorize?client_id=$clientId&scope=tasks:write%20tasks:read&redirect_uri=$redirectUri&response_type=code';
 
   /// Load persisted TickTick Access Token
   Future<void> initialize() async {
