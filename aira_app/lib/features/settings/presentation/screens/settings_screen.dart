@@ -9,6 +9,7 @@ import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart
 import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/core/services/voice_service.dart';
+import 'package:aira_app/core/services/ticktick_service.dart';
 import 'package:aira_app/core/theme/theme_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -117,6 +118,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ref.read(chatProvider.notifier).sendMessage('show my memories');
               context.go('/chat');
             },
+          ),
+
+          const SizedBox(height: 24),
+
+          // ── Integrations & Apps ──
+          _sectionTitle('Integrations & Apps'),
+          _settingsTile(
+            Icons.check_circle_outline_rounded,
+            'TickTick Integration',
+            'Sync & manage TickTick tasks with AIRA',
+            iconColor: AiraColors.success,
+            onTap: _showTickTickDialog,
           ),
 
           const SizedBox(height: 24),
@@ -316,6 +329,99 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showTickTickDialog() async {
+    final ticktick = TickTickService();
+    await ticktick.initialize();
+    final tokenController = TextEditingController();
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AiraColors.cardDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.check_circle_outline_rounded, color: AiraColors.success),
+            const SizedBox(width: 10),
+            Text('TickTick Integration', style: AiraTypography.h3.copyWith(color: Colors.white)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              ticktick.isConnected
+                  ? '🟢 TickTick is currently Connected to AIRA OS.'
+                  : 'Connect TickTick with your Open API Access Token to sync tasks, create to-dos, and manage projects.',
+              style: AiraTypography.bodySmall.copyWith(color: AiraColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            if (!ticktick.isConnected) ...[
+              TextField(
+                controller: tokenController,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'TickTick API Access Token',
+                  labelStyle: const TextStyle(color: AiraColors.textMuted),
+                  hintText: 'Paste token from developer.ticktick.com',
+                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
+                  filled: true,
+                  fillColor: AiraColors.surfaceDark,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Get your token at developer.ticktick.com/manage',
+                style: AiraTypography.caption.copyWith(color: AiraColors.electricCyan),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: AiraColors.textMuted)),
+          ),
+          if (ticktick.isConnected)
+            ElevatedButton(
+              onPressed: () async {
+                await ticktick.disconnect();
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('TickTick Disconnected')),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AiraColors.error),
+              child: const Text('Disconnect', style: TextStyle(color: Colors.white)),
+            )
+          else
+            ElevatedButton(
+              onPressed: () async {
+                final token = tokenController.text.trim();
+                if (token.isNotEmpty) {
+                  await ticktick.setAccessToken(token);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('🟢 TickTick Connected Successfully!')),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AiraColors.success),
+              child: const Text('Save & Connect', style: TextStyle(color: Colors.black)),
+            ),
+        ],
       ),
     );
   }
