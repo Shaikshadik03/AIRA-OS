@@ -10,7 +10,6 @@ import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/core/services/ticktick_service.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:aira_app/core/theme/theme_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -337,110 +336,186 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void _showTickTickDialog() async {
     final ticktick = TickTickService();
     await ticktick.initialize();
+    final usernameController = TextEditingController();
+    final passwordController = TextEditingController();
     final tokenController = TextEditingController();
+    bool isLoginTab = true;
 
     if (!mounted) return;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AiraColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.check_circle_outline_rounded, color: AiraColors.success),
-            const SizedBox(width: 10),
-            Text('TickTick Integration', style: AiraTypography.h3.copyWith(color: Colors.white)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              ticktick.isConnected
-                  ? '🟢 TickTick is currently Connected to AIRA OS.'
-                  : 'Connect TickTick with your Open API Access Token to sync tasks, create to-dos, and manage projects.',
-              style: AiraTypography.bodySmall.copyWith(color: AiraColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            if (!ticktick.isConnected) ...[
-              TextField(
-                controller: tokenController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'TickTick API Access Token',
-                  labelStyle: const TextStyle(color: AiraColors.textMuted),
-                  hintText: 'Paste token from developer.ticktick.com',
-                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.3)),
-                  filled: true,
-                  fillColor: AiraColors.surfaceDark,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AiraColors.cardDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.check_circle_outline_rounded, color: AiraColors.success),
+              const SizedBox(width: 10),
+              Text('TickTick Integration', style: AiraTypography.h3.copyWith(color: Colors.white)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                ticktick.isConnected
+                    ? '🟢 TickTick is currently Connected to AIRA OS.'
+                    : 'Connect your TickTick account directly with Email & Password (No OAuth or web links needed!).',
+                style: AiraTypography.bodySmall.copyWith(color: AiraColors.textSecondary),
               ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
+              const SizedBox(height: 16),
+              if (!ticktick.isConnected) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('Account Login'),
+                        selected: isLoginTab,
+                        onSelected: (val) => setDialogState(() => isLoginTab = true),
+                        selectedColor: AiraColors.electricCyan.withValues(alpha: 0.2),
+                        labelStyle: TextStyle(
+                          color: isLoginTab ? AiraColors.electricCyan : AiraColors.textMuted,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('API Token'),
+                        selected: !isLoginTab,
+                        onSelected: (val) => setDialogState(() => isLoginTab = false),
+                        selectedColor: AiraColors.purpleLight.withValues(alpha: 0.2),
+                        labelStyle: TextStyle(
+                          color: !isLoginTab ? AiraColors.purpleLight : AiraColors.textMuted,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (isLoginTab) ...[
+                  TextField(
+                    controller: usernameController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'TickTick Email / Username',
+                      labelStyle: const TextStyle(color: AiraColors.textMuted),
+                      prefixIcon: const Icon(Icons.email_outlined, color: AiraColors.textMuted),
+                      filled: true,
+                      fillColor: AiraColors.surfaceDark,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'TickTick Password',
+                      labelStyle: const TextStyle(color: AiraColors.textMuted),
+                      prefixIcon: const Icon(Icons.lock_outline, color: AiraColors.textMuted),
+                      filled: true,
+                      fillColor: AiraColors.surfaceDark,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ] else ...[
+                  TextField(
+                    controller: tokenController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'TickTick API Access Token',
+                      labelStyle: const TextStyle(color: AiraColors.textMuted),
+                      hintText: 'Paste token from TickTick web settings',
+                      filled: true,
+                      fillColor: AiraColors.surfaceDark,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: AiraColors.textMuted)),
+            ),
+            if (ticktick.isConnected)
+              ElevatedButton(
                 onPressed: () async {
-                  final uri = Uri.parse(ticktick.authorizationUrl);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  await ticktick.disconnect();
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('TickTick Disconnected')),
+                    );
                   }
                 },
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: AiraColors.electricCyan),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: const Icon(Icons.open_in_new_rounded, size: 16, color: AiraColors.electricCyan),
-                label: const Text('1-Tap Authorize TickTick', style: TextStyle(color: AiraColors.electricCyan)),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: AiraColors.textMuted)),
-          ),
-          if (ticktick.isConnected)
-            ElevatedButton(
-              onPressed: () async {
-                await ticktick.disconnect();
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('TickTick Disconnected')),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: AiraColors.error),
-              child: const Text('Disconnect', style: TextStyle(color: Colors.white)),
-            )
-          else
-            ElevatedButton(
-              onPressed: () async {
-                final token = tokenController.text.trim();
-                if (token.isNotEmpty) {
-                  try {
-                    await ticktick.parseAndAuthenticate(token);
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('🟢 TickTick Connected Successfully!')),
-                      );
+                style: ElevatedButton.styleFrom(backgroundColor: AiraColors.error),
+                child: const Text('Disconnect', style: TextStyle(color: Colors.white)),
+              )
+            else
+              ElevatedButton(
+                onPressed: () async {
+                  if (isLoginTab) {
+                    final u = usernameController.text.trim();
+                    final p = passwordController.text.trim();
+                    if (u.isNotEmpty && p.isNotEmpty) {
+                      try {
+                        final success = await ticktick.loginWithCredentials(username: u, password: p);
+                        if (context.mounted) {
+                          if (success) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('🟢 TickTick Logged In & Connected!')),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('TickTick Login Failed: Invalid Credentials')),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('$e')),
+                          );
+                        }
+                      }
                     }
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('TickTick Connect Error: $e')),
-                      );
+                  } else {
+                    final token = tokenController.text.trim();
+                    if (token.isNotEmpty) {
+                      try {
+                        await ticktick.parseAndAuthenticate(token);
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('🟢 TickTick Connected Successfully!')),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('$e')),
+                          );
+                        }
+                      }
                     }
                   }
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: AiraColors.success),
-              child: const Text('Save & Connect', style: TextStyle(color: Colors.black)),
-            ),
-        ],
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AiraColors.success),
+                child: Text(isLoginTab ? 'Log In & Connect' : 'Save & Connect', style: const TextStyle(color: Colors.black)),
+              ),
+          ],
+        ),
       ),
     );
   }

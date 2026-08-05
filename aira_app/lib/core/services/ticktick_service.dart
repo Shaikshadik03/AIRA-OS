@@ -39,6 +39,40 @@ class TickTickService {
     await _storage.write(key: _tokenKey, value: _accessToken);
   }
 
+  /// Direct Login with TickTick Account Credentials (No OAuth Required!)
+  Future<bool> loginWithCredentials({
+    required String username,
+    required String password,
+  }) async {
+    try {
+      final response = await Dio().post(
+        'https://api.ticktick.com/api/v2/user/signon',
+        data: {
+          'username': username.trim(),
+          'password': password,
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'x-device': '{"platform":"web","os":"android"}',
+          },
+        ),
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        final token = (data['token'] ?? data['token_id'] ?? data['sid'] ?? '') as String;
+        if (token.isNotEmpty) {
+          await setAccessToken(token);
+          return true;
+        }
+      }
+      return false;
+    } on DioException catch (e) {
+      throw Exception('TickTick Account Login Error: ${e.message}');
+    }
+  }
+
   /// Smart Parser: Accepts raw token, authorization code, or full redirect URL
   Future<void> parseAndAuthenticate(String input) async {
     final cleanInput = input.trim();
