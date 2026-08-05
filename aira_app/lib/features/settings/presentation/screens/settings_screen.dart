@@ -420,12 +420,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onPressed: () async {
                 final token = tokenController.text.trim();
                 if (token.isNotEmpty) {
-                  await ticktick.setAccessToken(token);
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('🟢 TickTick Connected Successfully!')),
-                    );
+                  try {
+                    await ticktick.parseAndAuthenticate(token);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('🟢 TickTick Connected Successfully!')),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('TickTick Connect Error: $e')),
+                      );
+                    }
                   }
                 }
               },

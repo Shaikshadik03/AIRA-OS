@@ -39,6 +39,37 @@ class TickTickService {
     await _storage.write(key: _tokenKey, value: _accessToken);
   }
 
+  /// Smart Parser: Accepts raw token, authorization code, or full redirect URL
+  Future<void> parseAndAuthenticate(String input) async {
+    final cleanInput = input.trim();
+    if (cleanInput.isEmpty) {
+      throw Exception('Input cannot be empty');
+    }
+
+    // Check if full URL containing code=XXXXX
+    if (cleanInput.contains('code=')) {
+      final uri = Uri.parse(cleanInput);
+      final code = uri.queryParameters['code'];
+      if (code != null && code.isNotEmpty) {
+        await exchangeCodeForToken(code);
+        return;
+      }
+    }
+
+    // Check if input looks like an auth code vs raw token
+    if (cleanInput.length < 50 && !cleanInput.startsWith('http')) {
+      try {
+        await exchangeCodeForToken(cleanInput);
+        return;
+      } catch (_) {
+        // Fallback to setting as token if exchange fails
+      }
+    }
+
+    // Otherwise set directly as access token
+    await setAccessToken(cleanInput);
+  }
+
   /// Exchange OAuth authorization code for Access Token
   Future<String> exchangeCodeForToken(String code) async {
     try {
@@ -56,7 +87,10 @@ class TickTickService {
         }),
       );
 
-      final token = response.data['access_token'] as String;
+      final token = (response.data['access_token'] ?? '') as String;
+      if (token.isEmpty) {
+        throw Exception('No access token returned from TickTick');
+      }
       await setAccessToken(token);
       return token;
     } on DioException catch (e) {
