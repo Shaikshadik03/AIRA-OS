@@ -71,6 +71,9 @@ class NotificationService {
       }
 
       _initialized = true;
+
+      // Automatically schedule 7 AM Morning Briefing and 10 PM Night Check-in
+      await scheduleDaily7AmAnd10PmNotifications();
     } catch (_) {}
   }
 
@@ -224,5 +227,26 @@ class NotificationService {
   Future<List<PendingNotificationRequest>> getPendingNotifications() async {
     await initialize();
     return await _notificationsPlugin.pendingNotificationRequests();
+  }
+
+  /// Automatically schedule 7:00 AM Morning Briefing and 10:00 PM Night Check-in notifications
+  Future<void> scheduleDaily7AmAnd10PmNotifications() async {
+    await scheduleDailyNotification(
+      id: 700,
+      title: '🌅 AIRA Morning Briefing (7:00 AM)',
+      body: 'Good morning! Tap to view your daily schedule, tasks, and agenda briefing.',
+      hour: 7,
+      minute: 0,
+      payload: 'morning_briefing',
+    );
+
+    await scheduleDailyNotification(
+      id: 2200,
+      title: '🌙 AIRA Evening Check-in (10:00 PM)',
+      body: 'Good evening! Time to review your completed tasks & prepare for tomorrow.',
+      hour: 22,
+      minute: 0,
+      payload: 'evening_checkin',
+    );
   }
 }
