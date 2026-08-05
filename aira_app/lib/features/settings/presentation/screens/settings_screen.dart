@@ -10,6 +10,7 @@ import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/core/services/ticktick_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:aira_app/core/theme/theme_provider.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -377,10 +378,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Get your token at developer.ticktick.com/manage',
-                style: AiraTypography.caption.copyWith(color: AiraColors.electricCyan),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final uri = Uri.parse(ticktick.authorizationUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AiraColors.electricCyan),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.open_in_new_rounded, size: 16, color: AiraColors.electricCyan),
+                label: const Text('1-Tap Authorize TickTick', style: TextStyle(color: AiraColors.electricCyan)),
               ),
             ],
           ],

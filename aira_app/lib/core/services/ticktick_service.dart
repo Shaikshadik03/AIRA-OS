@@ -8,6 +8,10 @@ class TickTickService {
   factory TickTickService() => _instance;
   TickTickService._internal();
 
+  static const String clientId = 'Bu1phZur846CAvv76E';
+  static const String clientSecret = 'HV2IIr5V0PINcNy05mgd7ad9892UEeUL';
+  static const String redirectUri = 'https://localhost';
+
   final Dio _dio = Dio(BaseOptions(
     baseUrl: 'https://api.ticktick.com/open/v1',
     connectTimeout: const Duration(seconds: 5),
@@ -20,6 +24,10 @@ class TickTickService {
 
   bool get isConnected => _accessToken != null && _accessToken!.isNotEmpty;
 
+  /// Get 1-Click OAuth Authorization URL
+  String get authorizationUrl =>
+      'https://ticktick.com/oauth/authorize?client_id=$clientId&scope=tasks:write%20tasks:read&redirect_uri=${Uri.encodeComponent(redirectUri)}&response_type=code';
+
   /// Load persisted TickTick Access Token
   Future<void> initialize() async {
     _accessToken = await _storage.read(key: _tokenKey);
@@ -29,6 +37,31 @@ class TickTickService {
   Future<void> setAccessToken(String token) async {
     _accessToken = token.trim();
     await _storage.write(key: _tokenKey, value: _accessToken);
+  }
+
+  /// Exchange OAuth authorization code for Access Token
+  Future<String> exchangeCodeForToken(String code) async {
+    try {
+      final response = await Dio().post(
+        'https://ticktick.com/oauth/token',
+        data: {
+          'client_id': clientId,
+          'client_secret': clientSecret,
+          'code': code.trim(),
+          'grant_type': 'authorization_code',
+          'redirect_uri': redirectUri,
+        },
+        options: Options(headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        }),
+      );
+
+      final token = response.data['access_token'] as String;
+      await setAccessToken(token);
+      return token;
+    } on DioException catch (e) {
+      throw Exception('OAuth Exchange Error: ${e.message}');
+    }
   }
 
   /// Disconnect TickTick
