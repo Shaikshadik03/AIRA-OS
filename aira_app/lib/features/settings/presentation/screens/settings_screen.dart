@@ -343,20 +343,45 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (NavigationRequest request) async {
-            if (request.url.startsWith('https://localhost') || request.url.contains('code=')) {
+            final url = request.url;
+            // Intercept redirect to https://localhost (our registered redirect_uri)
+            if (url.startsWith('https://localhost')) {
               try {
-                await ticktick.parseAndAuthenticate(request.url);
+                await ticktick.parseAndAuthenticate(url);
                 if (mounted) {
                   Navigator.pop(context); // Close webview
                   Navigator.pop(context); // Close settings dialog
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('🟢 TickTick Connected Successfully!')),
+                    const SnackBar(
+                      content: Text('🟢 TickTick Connected Successfully!'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 3),
+                    ),
                   );
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('TickTick Auth Error: $e')),
+                  Navigator.pop(context); // Close webview even on error
+                  // Show detailed error so user can see what went wrong
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: AiraColors.cardDark,
+                      title: const Text('TickTick OAuth Error', style: TextStyle(color: Colors.redAccent)),
+                      content: SingleChildScrollView(
+                        child: Text(
+                          '$e\n\n'
+                          'BACKUP: Go to ticktick.com → avatar → Settings → Account → API Token → copy it → paste in API Token tab.',
+                          style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('OK', style: TextStyle(color: AiraColors.electricCyan)),
+                        ),
+                      ],
+                    ),
                   );
                 }
               }
@@ -512,10 +537,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   TextField(
                     controller: tokenController,
                     style: const TextStyle(color: Colors.white),
+                    maxLines: 2,
                     decoration: InputDecoration(
-                      labelText: 'TickTick API Access Token',
+                      labelText: 'TickTick API Token',
                       labelStyle: const TextStyle(color: AiraColors.textMuted),
-                      hintText: 'Paste token from TickTick web settings',
+                      hintText: 'ticktick.com → avatar → Settings → Account → API Token',
+                      hintStyle: const TextStyle(color: AiraColors.textMuted, fontSize: 12),
                       filled: true,
                       fillColor: AiraColors.surfaceDark,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
