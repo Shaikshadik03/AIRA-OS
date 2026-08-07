@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -230,23 +231,30 @@ class NotificationService {
   }
 
   /// Automatically schedule 7:00 AM Morning Briefing and 10:00 PM Night Check-in notifications
+  /// Uses native Android AlarmManager (survives Doze mode + phone restarts)
   Future<void> scheduleDaily7AmAnd10PmNotifications() async {
-    await scheduleDailyNotification(
-      id: 700,
-      title: '🌅 AIRA Morning Briefing (7:00 AM)',
-      body: 'Good morning! Tap to view your daily schedule, tasks, and agenda briefing.',
-      hour: 7,
-      minute: 0,
-      payload: 'morning_briefing',
-    );
-
-    await scheduleDailyNotification(
-      id: 2200,
-      title: '🌙 AIRA Evening Check-in (10:00 PM)',
-      body: 'Good evening! Time to review your completed tasks & prepare for tomorrow.',
-      hour: 22,
-      minute: 0,
-      payload: 'evening_checkin',
-    );
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = MethodChannel('com.aira.os/device_control');
+      await channel.invokeMethod('scheduleDailyBriefings');
+    } catch (e) {
+      // Fallback to flutter_local_notifications if native call fails
+      await scheduleDailyNotification(
+        id: 700,
+        title: '☀️ AIRA Morning Briefing (7:00 AM)',
+        body: 'Good morning! Tap to view your daily schedule, tasks, and agenda briefing.',
+        hour: 7,
+        minute: 0,
+        payload: 'morning_briefing',
+      );
+      await scheduleDailyNotification(
+        id: 2200,
+        title: '🌙 AIRA Evening Check-in (10:00 PM)',
+        body: 'Good evening! Time to review your completed tasks & prepare for tomorrow.',
+        hour: 22,
+        minute: 0,
+        payload: 'evening_checkin',
+      );
+    }
   }
 }

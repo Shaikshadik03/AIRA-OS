@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -11,6 +12,12 @@ class TickTickService {
   static const String clientId = 'Bu1phZur846CAvv76E';
   static const String clientSecret = 'HV2IIr5V0PINcNy05mgd7ad9892UEeUL';
   static const String redirectUri = 'https://localhost';
+
+  /// Basic Auth header: base64(clientId:clientSecret)
+  static String get _basicAuth {
+    final credentials = base64Encode(utf8.encode('$clientId:$clientSecret'));
+    return 'Basic $credentials';
+  }
 
   final Dio _dio = Dio(BaseOptions(
     baseUrl: 'https://api.ticktick.com/open/v1',
@@ -46,7 +53,7 @@ class TickTickService {
   }) async {
     try {
       final response = await Dio().post(
-        'https://api.ticktick.com/api/v2/user/signon',
+        'https://api.ticktick.com/api/v2/user/signon?wc=true&remember=true',
         data: {
           'username': username.trim(),
           'password': password,
@@ -54,22 +61,38 @@ class TickTickService {
         options: Options(
           headers: {
             'Content-Type': 'application/json',
-            'x-device': '{"platform":"web","os":"android"}',
+            'x-device': '{"platform":"web","os":"android","deviceId":"aira-os","language":"en"}',
+            'User-Agent': 'Mozilla/5.0 TickTick/Android',
           },
         ),
       );
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data as Map<String, dynamic>;
-        final token = (data['token'] ?? data['token_id'] ?? data['sid'] ?? '') as String;
+        // TickTick signon returns token in multiple possible fields
+        final token = (data['token'] ?? data['token_id'] ?? data['access_token'] ?? '') as String;
         if (token.isNotEmpty) {
           await setAccessToken(token);
           return true;
         }
+        // Also check for userId/sessionId which acts as auth token
+        final userId = data['userId']?.toString() ?? '';
+        if (userId.isNotEmpty) {
+          // Use token from inboxId or other fields
+          final anyToken = data.values.whereType<String>().firstWhere(
+            (v) => v.length > 20,
+            orElse: () => '',
+          );
+          if (anyToken.isNotEmpty) {
+            await setAccessToken(anyToken);
+            return true;
+          }
+        }
       }
       return false;
     } on DioException catch (e) {
-      throw Exception('TickTick Account Login Error: ${e.message}');
+      final body = e.response?.data?.toString() ?? '';
+      throw Exception('TickTick Login Error: ${e.message}. $body');
     }
   }
 
@@ -124,30 +147,35 @@ class TickTickService {
   }
 
   /// Exchange OAuth authorization code for Access Token
+  /// TickTick requires Basic Auth: Authorization: Basic base64(clientId:clientSecret)
   Future<String> exchangeCodeForToken(String code) async {
     try {
       final response = await Dio().post(
         'https://ticktick.com/oauth/token',
-        data: {
-          'client_id': clientId,
-          'client_secret': clientSecret,
-          'code': code.trim(),
-          'grant_type': 'authorization_code',
-          'redirect_uri': redirectUri,
-        },
-        options: Options(headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        }),
+        data: 'code=${Uri.encodeComponent(code.trim())}'
+            '&grant_type=authorization_code'
+            '&redirect_uri=${Uri.encodeComponent(redirectUri)}',
+        options: Options(
+          headers: {
+            'Authorization': _basicAuth,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        ),
       );
 
-      final token = (response.data['access_token'] ?? '') as String;
+      if (response.data == null) {
+        throw Exception('Empty response from TickTick token endpoint');
+      }
+      final data = response.data;
+      final token = (data is Map ? (data['access_token'] ?? '') : '') as String;
       if (token.isEmpty) {
-        throw Exception('No access token returned from TickTick');
+        throw Exception('No access_token in TickTick response: $data');
       }
       await setAccessToken(token);
       return token;
     } on DioException catch (e) {
-      throw Exception('OAuth Exchange Error: ${e.message}');
+      final errorBody = e.response?.data?.toString() ?? '';
+      throw Exception('OAuth Exchange Error: ${e.message}. Body: $errorBody');
     }
   }
 

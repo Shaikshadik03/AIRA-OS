@@ -21,6 +21,10 @@ import android.view.KeyEvent
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -34,6 +38,10 @@ class MainActivity : FlutterActivity() {
     private var eventSink: EventChannel.EventSink? = null
     @Volatile private var isAudioRecordListening = false
     private var audioRecord: AudioRecord? = null
+
+    // SpeechRecognizer for real "Hey AIRA" wake word detection
+    private var speechRecognizer: SpeechRecognizer? = null
+    @Volatile private var isSpeechWakeWordActive = false
 
     // Comprehensive popular apps package dictionary (60+ apps)
     private val popularApps = mapOf(
@@ -505,6 +513,41 @@ class MainActivity : FlutterActivity() {
                         result.success(contactsList)
                     }
 
+                    // ── Native Daily Alarm Scheduling ──
+                    "scheduleNativeDailyAlarm" -> {
+                        val notifId = call.argument<Int>("id") ?: 0
+                        val title = call.argument<String>("title") ?: "AIRA"
+                        val body = call.argument<String>("body") ?: ""
+                        val hour = call.argument<Int>("hour") ?: 7
+                        val minute = call.argument<Int>("minute") ?: 0
+                        AlarmReceiver.scheduleDaily(this, notifId, title, body, hour, minute)
+                        result.success(true)
+                    }
+
+                    "cancelNativeAlarm" -> {
+                        val notifId = call.argument<Int>("id") ?: 0
+                        AlarmReceiver.cancel(this, notifId)
+                        result.success(true)
+                    }
+
+                    "scheduleDailyBriefings" -> {
+                        // Schedule 7 AM Morning Briefing
+                        AlarmReceiver.scheduleDaily(
+                            this, 700,
+                            "☀️ AIRA Morning Briefing",
+                            "Good morning! Open AIRA for your daily schedule, tasks, and agenda.",
+                            7, 0
+                        )
+                        // Schedule 10 PM Evening Check-in
+                        AlarmReceiver.scheduleDaily(
+                            this, 2200,
+                            "🌙 AIRA Evening Check-in",
+                            "Good evening! Review your completed tasks and plan for tomorrow.",
+                            22, 0
+                        )
+                        result.success(true)
+                    }
+
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {
@@ -514,72 +557,139 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startNativeAudioRecordStream() {
-        if (isAudioRecordListening) return
+        // Use SpeechRecognizer for actual "Hey AIRA" detection
+        if (isSpeechWakeWordActive) return
+        isSpeechWakeWordActive = true
         isAudioRecordListening = true
+        runOnUiThread {
+            startSpeechWakeWordLoop()
+        }
+    }
 
+    private fun startSpeechWakeWordLoop() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            // Fallback: PCM energy threshold (old behavior) if STT not available
+            startPcmFallbackLoop()
+            return
+        }
+        speechRecognizer?.destroy()
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onError(error: Int) {
+                // On any error, restart listener after short delay (keep the loop alive)
+                if (isSpeechWakeWordActive) {
+                    android.os.Handler(mainLooper).postDelayed({
+                        if (isSpeechWakeWordActive) startSpeechWakeWordLoop()
+                    }, 1000)
+                }
+            }
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val recognized = matches?.firstOrNull()?.lowercase() ?: ""
+                // Check for "hey aira" or just "aira" variations
+                val isWakeWord = recognized.contains("aira") ||
+                    recognized.contains("ira") && recognized.contains("hey") ||
+                    recognized.contains("era") ||
+                    recognized.startsWith("ok aira") ||
+                    recognized.startsWith("hello aira")
+                if (isWakeWord && isSpeechWakeWordActive) {
+                    eventSink?.success("wake_word_detected")
+                }
+                // Keep the loop going
+                if (isSpeechWakeWordActive) {
+                    android.os.Handler(mainLooper).postDelayed({
+                        if (isSpeechWakeWordActive) startSpeechWakeWordLoop()
+                    }, 300)
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val recognized = matches?.firstOrNull()?.lowercase() ?: ""
+                if ((recognized.contains("aira") || recognized.contains("hey ira")) && isSpeechWakeWordActive) {
+                    eventSink?.success("wake_word_detected")
+                }
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+        }
+        try {
+            speechRecognizer?.startListening(intent)
+        } catch (e: Exception) {
+            if (isSpeechWakeWordActive) {
+                android.os.Handler(mainLooper).postDelayed({
+                    if (isSpeechWakeWordActive) startSpeechWakeWordLoop()
+                }, 2000)
+            }
+        }
+    }
+
+    /// PCM energy fallback (only used if device has no STT engine)
+    private fun startPcmFallbackLoop() {
         thread(start = true, isDaemon = true) {
             val sampleRate = 16000
             val channelConfig = AudioFormat.CHANNEL_IN_MONO
             val audioFormat = AudioFormat.ENCODING_PCM_16BIT
             val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
             val bufferSize = Math.max(minBufferSize, 4096)
-
             try {
                 audioRecord = AudioRecord(
                     MediaRecorder.AudioSource.MIC,
-                    sampleRate,
-                    channelConfig,
-                    audioFormat,
-                    bufferSize
+                    sampleRate, channelConfig, audioFormat, bufferSize
                 )
-
                 if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                    isAudioRecordListening = false
-                    return@thread
+                    isAudioRecordListening = false; return@thread
                 }
-
                 audioRecord?.startRecording()
                 val buffer = ShortArray(bufferSize / 2)
                 var lastTriggerTime = 0L
-
                 while (isAudioRecordListening) {
                     val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (readSize > 0) {
                         var sum = 0.0
-                        for (i in 0 until readSize) {
-                            sum += buffer[i] * buffer[i]
-                        }
+                        for (i in 0 until readSize) sum += buffer[i] * buffer[i].toLong()
                         val rms = Math.sqrt(sum / readSize)
-
-                        // Voice energy spike threshold for zero-timeout wake word signal
-                        if (rms > 1200.0) {
+                        if (rms > 2000.0) {
                             val now = System.currentTimeMillis()
-                            if (now - lastTriggerTime > 2500) {
+                            if (now - lastTriggerTime > 3000) {
                                 lastTriggerTime = now
-                                runOnUiThread {
-                                    eventSink?.success("wake_word_detected")
-                                }
+                                runOnUiThread { eventSink?.success("wake_word_detected") }
                             }
                         } else {
-                            // Ultra low battery optimization: Put thread to sleep when quiet
-                            Thread.sleep(80)
+                            Thread.sleep(100)
                         }
                     }
                 }
             } catch (e: Exception) {
                 isAudioRecordListening = false
             } finally {
-                try {
-                    audioRecord?.stop()
-                    audioRecord?.release()
-                } catch (_: Exception) {}
+                try { audioRecord?.stop(); audioRecord?.release() } catch (_: Exception) {}
                 audioRecord = null
             }
         }
     }
 
     private fun stopNativeAudioRecordStream() {
+        isSpeechWakeWordActive = false
         isAudioRecordListening = false
+        runOnUiThread {
+            speechRecognizer?.stopListening()
+            speechRecognizer?.destroy()
+            speechRecognizer = null
+        }
         try {
             audioRecord?.stop()
             audioRecord?.release()
