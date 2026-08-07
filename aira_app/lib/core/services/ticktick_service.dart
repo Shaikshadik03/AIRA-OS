@@ -3,11 +3,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Direct TickTick Open API Integration Service for AIRA OS.
 /// Endpoints: https://api.ticktick.com/open/v1
-///
-/// TickTick OAuth docs: credentials go in POST body as form fields.
-/// Token endpoint: POST https://ticktick.com/oauth/token
-///   Content-Type: application/x-www-form-urlencoded
-///   Body: client_id, client_secret, code, grant_type, redirect_uri, scope
 class TickTickService {
   static final TickTickService _instance = TickTickService._internal();
   factory TickTickService() => _instance;
@@ -27,33 +22,23 @@ class TickTickService {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   static const String _tokenKey = 'ticktick_access_token';
   String? _accessToken;
-
-  /// Last error message for debugging
   String lastError = '';
 
   bool get isConnected => _accessToken != null && _accessToken!.isNotEmpty;
 
   /// OAuth Authorization URL
-  String get authorizationUrl {
-    final params = {
-      'client_id': clientId,
-      'scope': scope,
-      'redirect_uri': redirectUri,
-      'response_type': 'code',
-      'state': 'aira_os_auth',
-    };
-    final query = params.entries
-        .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
-        .join('&');
-    return 'https://ticktick.com/oauth/authorize?$query';
-  }
+  String get authorizationUrl =>
+      'https://ticktick.com/oauth/authorize'
+      '?client_id=${Uri.encodeComponent(clientId)}'
+      '&scope=${Uri.encodeComponent(scope)}'
+      '&redirect_uri=${Uri.encodeComponent(redirectUri)}'
+      '&response_type=code'
+      '&state=aira_os_auth';
 
-  /// Load persisted TickTick Access Token
   Future<void> initialize() async {
     _accessToken = await _storage.read(key: _tokenKey);
   }
 
-  /// Save TickTick Access Token
   Future<void> setAccessToken(String token) async {
     _accessToken = token.trim();
     await _storage.write(key: _tokenKey, value: _accessToken);
@@ -99,36 +84,34 @@ class TickTickService {
     }
   }
 
-  /// Exchange OAuth authorization code for Access Token
-  ///
-  /// TickTick docs: send client_id, client_secret in POST body
-  /// Content-Type: application/x-www-form-urlencoded
+  /// Exchange OAuth authorization code for Access Token.
+  /// Uses RAW string body to guarantee correct form encoding.
   Future<String> exchangeCodeForToken(String code) async {
     lastError = '';
-    try {
-      // Build form data exactly as TickTick expects
-      final formData = {
-        'client_id': clientId,
-        'client_secret': clientSecret,
-        'code': code.trim(),
-        'grant_type': 'authorization_code',
-        'redirect_uri': redirectUri,
-        'scope': scope,
-      };
+    final trimmedCode = code.trim();
 
+    // Build URL-encoded body as raw string — no Dio encoding ambiguity
+    final body = 'client_id=${Uri.encodeComponent(clientId)}'
+        '&client_secret=${Uri.encodeComponent(clientSecret)}'
+        '&code=${Uri.encodeComponent(trimmedCode)}'
+        '&grant_type=authorization_code'
+        '&redirect_uri=${Uri.encodeComponent(redirectUri)}'
+        '&scope=${Uri.encodeComponent(scope)}';
+
+    try {
       final response = await Dio().post(
         'https://ticktick.com/oauth/token',
-        data: formData,
+        data: body,
         options: Options(
-          contentType: 'application/x-www-form-urlencoded',
           headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
             'Accept': 'application/json',
           },
         ),
       );
 
       if (response.data == null) {
-        lastError = 'Empty response from TickTick token endpoint';
+        lastError = 'Empty response from TickTick';
         throw Exception(lastError);
       }
 
@@ -139,34 +122,26 @@ class TickTickService {
       }
 
       if (token.isEmpty) {
-        lastError = 'No access_token in response. Response: $data';
+        lastError = 'No access_token in response: $data';
         throw Exception(lastError);
       }
 
       await setAccessToken(token);
       return token;
     } on DioException catch (e) {
-      final statusCode = e.response?.statusCode ?? 'unknown';
+      final statusCode = e.response?.statusCode ?? 'N/A';
       final responseBody = e.response?.data?.toString() ?? 'no body';
-      lastError = 'OAuth token exchange failed.\n'
-          'Status: $statusCode\n'
-          'Response: $responseBody\n'
-          'Error: ${e.message}';
+      lastError = 'Token exchange failed (HTTP $statusCode): $responseBody';
       throw Exception(lastError);
-    } catch (e) {
-      if (lastError.isEmpty) lastError = e.toString();
-      rethrow;
     }
   }
 
-  /// Smart Parser: Accepts raw token, authorization code, or full redirect URL
+  /// Smart Parser: Accepts raw token, auth code, or redirect URL
   Future<void> parseAndAuthenticate(String input) async {
     final cleanInput = input.trim();
-    if (cleanInput.isEmpty) {
-      throw Exception('Input cannot be empty');
-    }
+    if (cleanInput.isEmpty) throw Exception('Input cannot be empty');
 
-    // Check if full URL containing code=XXXXX
+    // Full URL with code=XXXXX
     if (cleanInput.contains('code=')) {
       final uri = Uri.parse(cleanInput);
       final code = uri.queryParameters['code'];
@@ -176,28 +151,25 @@ class TickTickService {
       }
     }
 
-    // Check if input looks like a short auth code (not a long token)
+    // Short string → try as auth code first
     if (cleanInput.length < 50 && !cleanInput.startsWith('http')) {
       try {
         await exchangeCodeForToken(cleanInput);
         return;
       } catch (_) {
-        // If code exchange fails, try setting as raw token below
+        // Fall through to try as raw token
       }
     }
 
-    // Otherwise treat as direct access token / API token
+    // Treat as direct API token / access token
     await setAccessToken(cleanInput);
-
-    // Verify token works
     final isValid = await testConnection();
     if (!isValid) {
       await disconnect();
-      throw Exception('Token verification failed. The token does not work with TickTick API.');
+      throw Exception('Token verification failed — does not work with TickTick API.');
     }
   }
 
-  /// Test connection with TickTick API
   Future<bool> testConnection() async {
     await initialize();
     if (!isConnected) return false;
@@ -205,12 +177,11 @@ class TickTickService {
       final response = await _dio.get('/project', options: _authOptions);
       return response.statusCode == 200;
     } catch (e) {
-      lastError = 'Connection test failed: $e';
+      lastError = 'Connection test: $e';
       return false;
     }
   }
 
-  /// Disconnect TickTick
   Future<void> disconnect() async {
     _accessToken = null;
     await _storage.delete(key: _tokenKey);
@@ -218,7 +189,7 @@ class TickTickService {
 
   Options get _authOptions {
     if (!isConnected) {
-      throw Exception('TickTick is not connected. Please connect in Settings.');
+      throw Exception('TickTick not connected. Go to Settings to connect.');
     }
     return Options(headers: {
       'Authorization': 'Bearer $_accessToken',
@@ -226,7 +197,6 @@ class TickTickService {
     });
   }
 
-  /// Fetch user project / task lists
   Future<List<Map<String, dynamic>>> getProjects() async {
     await initialize();
     try {
@@ -240,12 +210,11 @@ class TickTickService {
     }
   }
 
-  /// Create a task in TickTick
   Future<Map<String, dynamic>> createTask({
     required String title,
     String? content,
     DateTime? dueDate,
-    int priority = 0, // 0: None, 1: Low, 3: Medium, 5: High
+    int priority = 0,
     String? projectId,
   }) async {
     await initialize();
@@ -259,20 +228,13 @@ class TickTickService {
       if (dueDate != null) {
         data['dueDate'] = dueDate.toUtc().toIso8601String().replaceFirst('Z', '+0000');
       }
-
-      final response = await _dio.post(
-        '/task',
-        data: data,
-        options: _authOptions,
-      );
-
+      final response = await _dio.post('/task', data: data, options: _authOptions);
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw Exception('TickTick Create Task Error: ${e.message}');
     }
   }
 
-  /// Complete a task in TickTick
   Future<bool> completeTask({
     required String taskId,
     required String projectId,

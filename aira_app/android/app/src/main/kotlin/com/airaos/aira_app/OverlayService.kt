@@ -19,114 +19,141 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 
+/**
+ * AIRA Floating Overlay Service — Senior Architecture
+ *
+ * Shows a Siri/Bixby-style floating capsule on screen.
+ * TWO MODES:
+ *   1. TAP MODE (default, reliable): Tap capsule → listen for command → open AIRA
+ *   2. HANDS-FREE MODE (optional): Continuous SpeechRecognizer loop for "Hey AIRA"
+ *
+ * SpeechRecognizer runs on main thread (required by Android).
+ * Foreground service with MICROPHONE type for Android 14+.
+ */
 class OverlayService : Service() {
     private var windowManager: WindowManager? = null
-    private var siriCapsuleView: LinearLayout? = null
-    private var statusTextView: TextView? = null
+    private var capsuleView: LinearLayout? = null
+    private var statusText: TextView? = null
+    private var micIcon: ImageView? = null
 
-    // Wake word detection
     private var speechRecognizer: SpeechRecognizer? = null
-    @Volatile private var isWakeWordActive = false
+    @Volatile private var isListening = false
+    @Volatile private var isHandsFreeMode = false
     private val handler = Handler(Looper.getMainLooper())
+
+    // Drag support
+    private var initialX = 0
+    private var initialY = 0
+    private var initialTouchX = 0f
+    private var initialTouchY = 0f
+    private var isDragging = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        startForegroundService()
-        showSiriStyleOverlay()
-        startWakeWordDetection()
+        setupForegroundNotification()
+        createOverlayCapsule()
     }
 
-    private fun startForegroundService() {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Check if hands-free mode requested
+        val mode = intent?.getStringExtra("mode") ?: "tap"
+        if (mode == "handsfree") {
+            isHandsFreeMode = true
+            startHandsFreeListening()
+        }
+        return START_STICKY
+    }
+
+    // ─── Foreground Notification ───
+
+    private fun setupForegroundNotification() {
         val channelId = "aira_overlay_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "AIRA Everywhere Assistant",
+                "AIRA Assistant",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "AIRA voice assistant listening for 'Hey AIRA'"
+                description = "AIRA floating assistant"
+                setShowBadge(false)
             }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .createNotificationChannel(channel)
         }
 
-        // Tap notification → open AIRA app
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, channelId)
-                .setContentTitle("AIRA Voice Assistant Active")
-                .setContentText("Say 'Hey AIRA' anytime from any screen")
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .build()
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setContentTitle("AIRA Voice Assistant Active")
-                .setContentText("Say 'Hey AIRA' anytime from any screen")
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .build()
-        }
+        }.apply {
+            setContentTitle("AIRA Active")
+            setContentText("Tap the floating button to talk to AIRA")
+            setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            setContentIntent(pendingIntent)
+            setOngoing(true)
+        }.build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // Android 14+ requires specifying foreground service type
-            startForeground(99, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            startForeground(99, notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
             startForeground(99, notification)
         }
     }
 
-    private fun showSiriStyleOverlay() {
+    // ─── Overlay Capsule UI ───
+
+    private fun createOverlayCapsule() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-        // Glassmorphism Capsule Layout (Siri / Bixby style)
-        siriCapsuleView = LinearLayout(this).apply {
+        capsuleView = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(36, 20, 48, 20)
-
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = 60f
-                setColor(Color.parseColor("#EE0F172A")) // Dark translucent slate
-                setStroke(3, Color.parseColor("#00E5FF")) // Electric Cyan border
+                setColor(Color.parseColor("#EE0F172A"))
+                setStroke(3, Color.parseColor("#00E5FF"))
+            }
+            elevation = 12f
+        }
+
+        micIcon = ImageView(this).apply {
+            setImageResource(android.R.drawable.ic_btn_speak_now)
+            setColorFilter(Color.parseColor("#00E5FF"))
+            val size = (28 * resources.displayMetrics.density).toInt()
+            layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                rightMargin = (12 * resources.displayMetrics.density).toInt()
             }
         }
 
-        // Glowing Orb Icon
-        val micIcon = ImageView(this).apply {
-            setImageResource(android.R.drawable.ic_btn_speak_now)
-            setColorFilter(Color.parseColor("#00E5FF"))
-            setPadding(0, 0, 16, 0)
-        }
-
-        // Text status
-        statusTextView = TextView(this).apply {
-            text = "\uD83C\uDF10 AIRA \u2022 Say \"Hey AIRA...\""
+        statusText = TextView(this).apply {
+            text = "AIRA • Tap to speak"
             setTextColor(Color.WHITE)
             textSize = 14f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             maxLines = 1
         }
 
-        siriCapsuleView?.addView(micIcon)
-        siriCapsuleView?.addView(statusTextView)
+        capsuleView?.addView(micIcon)
+        capsuleView?.addView(statusText)
 
         val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -143,46 +170,169 @@ class OverlayService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            y = 120
+            y = 140
         }
 
-        // Tap to open full AIRA app
-        siriCapsuleView?.setOnClickListener {
-            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-            launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(launchIntent)
+        // Touch handler: drag + tap
+        capsuleView?.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initialX = params.x
+                    initialY = params.y
+                    initialTouchX = event.rawX
+                    initialTouchY = event.rawY
+                    isDragging = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - initialTouchX
+                    val dy = event.rawY - initialTouchY
+                    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) isDragging = true
+                    if (isDragging) {
+                        params.x = initialX + dx.toInt()
+                        params.y = initialY - dy.toInt()
+                        try { windowManager?.updateViewLayout(capsuleView, params) } catch (_: Exception) {}
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!isDragging) {
+                        // TAP → Start listening
+                        onCapsuleTapped()
+                    }
+                    true
+                }
+                else -> false
+            }
         }
 
         try {
-            windowManager?.addView(siriCapsuleView, params)
+            windowManager?.addView(capsuleView, params)
         } catch (e: Exception) {
-            // Permission not granted
+            // SYSTEM_ALERT_WINDOW permission not granted
         }
     }
 
-    // ── Real "Hey AIRA" Wake Word Detection ──
-    // Uses Android's built-in SpeechRecognizer in a continuous loop.
-    // Runs inside the foreground service so it works even when app is in background.
+    // ─── Tap-to-Speak (Primary Mode) ───
 
-    private fun startWakeWordDetection() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            updateStatus("STT unavailable on device")
+    private fun onCapsuleTapped() {
+        if (isListening) {
+            // Already listening — stop
+            stopListening()
+            updateUI("AIRA • Tap to speak", "#00E5FF", false)
             return
         }
-        isWakeWordActive = true
-        startListeningLoop()
+        startOneShot()
     }
 
-    private fun startListeningLoop() {
-        if (!isWakeWordActive) return
+    private fun startOneShot() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            updateUI("No speech engine!", "#FF4444", false)
+            handler.postDelayed({
+                updateUI("AIRA • Tap to speak", "#00E5FF", false)
+            }, 2000)
+            return
+        }
 
-        // Destroy previous instance
+        isListening = true
+        updateUI("Listening...", "#00FF88", true)
+
+        // Pulse animation on the border
+        capsuleView?.post {
+            (capsuleView?.background as? GradientDrawable)?.setStroke(4, Color.parseColor("#00FF88"))
+        }
+
         speechRecognizer?.destroy()
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
-                updateStatus("\uD83C\uDF10 AIRA \u2022 Listening...")
+                updateUI("Speak now...", "#00FF88", true)
+            }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {
+                updateUI("Processing...", "#FFD700", true)
+            }
+
+            override fun onError(error: Int) {
+                isListening = false
+                val msg = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH -> "Didn't catch that"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech heard"
+                    SpeechRecognizer.ERROR_AUDIO -> "Mic error"
+                    SpeechRecognizer.ERROR_NETWORK -> "Network error"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Mic permission needed"
+                    else -> "Error ($error)"
+                }
+                updateUI(msg, "#FF4444", false)
+                handler.postDelayed({
+                    if (!isListening) updateUI("AIRA • Tap to speak", "#00E5FF", false)
+                }, 2000)
+            }
+
+            override fun onResults(results: Bundle?) {
+                isListening = false
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val heard = matches?.firstOrNull() ?: ""
+                if (heard.isNotEmpty()) {
+                    updateUI("\"$heard\"", "#00FF88", false)
+                    openAiraWithCommand(heard)
+                } else {
+                    updateUI("Didn't catch that", "#FF4444", false)
+                }
+                handler.postDelayed({
+                    if (!isListening) updateUI("AIRA • Tap to speak", "#00E5FF", false)
+                }, 3000)
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val partial = matches?.firstOrNull() ?: ""
+                if (partial.isNotEmpty()) {
+                    updateUI("\"$partial\"", "#00FF88", true)
+                }
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+        }
+
+        try {
+            speechRecognizer?.startListening(intent)
+        } catch (e: Exception) {
+            isListening = false
+            updateUI("Speech engine error", "#FF4444", false)
+        }
+    }
+
+    // ─── Hands-Free Mode (Optional — "Hey AIRA" loop) ───
+
+    private fun startHandsFreeListening() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            updateUI("STT unavailable", "#FF4444", false)
+            return
+        }
+        isHandsFreeMode = true
+        loopListen()
+    }
+
+    private fun loopListen() {
+        if (!isHandsFreeMode) return
+        isListening = true
+
+        speechRecognizer?.destroy()
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                updateUI("AIRA • Say 'Hey AIRA'", "#00E5FF", true)
             }
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
@@ -190,45 +340,28 @@ class OverlayService : Service() {
             override fun onEndOfSpeech() {}
 
             override fun onError(error: Int) {
-                // Common errors:
-                // 6 = ERROR_SPEECH_TIMEOUT (no speech detected)
-                // 7 = ERROR_NO_MATCH
-                // 8 = ERROR_RECOGNIZER_BUSY
-                // Just restart the loop after a short delay
-                val delay = when (error) {
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 2000L
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 500L
-                    SpeechRecognizer.ERROR_NO_MATCH -> 500L
-                    else -> 1000L
-                }
-                updateStatus("\uD83C\uDF10 AIRA \u2022 Say \"Hey AIRA...\"")
-                handler.postDelayed({
-                    if (isWakeWordActive) startListeningLoop()
-                }, delay)
+                isListening = false
+                val delay = if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 2000L else 800L
+                handler.postDelayed({ if (isHandsFreeMode) loopListen() }, delay)
             }
 
             override fun onResults(results: Bundle?) {
+                isListening = false
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val recognized = matches?.firstOrNull()?.lowercase() ?: ""
-
-                if (isWakeWord(recognized)) {
-                    onWakeWordDetected(recognized)
+                val heard = matches?.firstOrNull()?.lowercase() ?: ""
+                if (isWakeWord(heard)) {
+                    updateUI("⚡ AIRA Activated!", "#00FF88", false)
+                    openAiraWithCommand(heard)
                 }
-
-                // Continue listening loop
-                handler.postDelayed({
-                    if (isWakeWordActive) startListeningLoop()
-                }, 300)
+                handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 500)
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val recognized = matches?.firstOrNull()?.lowercase() ?: ""
-                if (recognized.isNotEmpty()) {
-                    updateStatus("\uD83C\uDF99\uFE0F $recognized")
-                }
-                if (isWakeWord(recognized)) {
-                    onWakeWordDetected(recognized)
+                val heard = matches?.firstOrNull()?.lowercase() ?: ""
+                if (isWakeWord(heard)) {
+                    updateUI("⚡ AIRA Activated!", "#00FF88", false)
+                    openAiraWithCommand(heard)
                 }
             }
 
@@ -240,73 +373,62 @@ class OverlayService : Service() {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
-
         try {
             speechRecognizer?.startListening(intent)
         } catch (e: Exception) {
-            // Retry after delay
-            handler.postDelayed({
-                if (isWakeWordActive) startListeningLoop()
-            }, 2000)
+            handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 2000)
         }
     }
 
     private fun isWakeWord(text: String): Boolean {
-        val lower = text.lowercase().trim()
-        return lower.contains("aira") ||
-            (lower.contains("ira") && (lower.contains("hey") || lower.contains("hi"))) ||
-            lower.contains("era") && lower.contains("hey") ||
-            lower.startsWith("ok aira") ||
-            lower.startsWith("hello aira")
+        val t = text.lowercase()
+        return t.contains("aira") || t.contains("ara") ||
+            (t.contains("ira") && (t.contains("hey") || t.contains("hi")))
     }
 
-    private fun onWakeWordDetected(recognized: String) {
-        updateStatus("\u26A1 AIRA Activated!")
+    // ─── Helpers ───
 
-        // Flash the capsule border green briefly
-        siriCapsuleView?.post {
-            (siriCapsuleView?.background as? GradientDrawable)?.setStroke(4, Color.parseColor("#00FF88"))
-            handler.postDelayed({
-                (siriCapsuleView?.background as? GradientDrawable)?.setStroke(3, Color.parseColor("#00E5FF"))
-            }, 1500)
+    private fun openAiraWithCommand(command: String) {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra("voice_command", command)
         }
-
-        // Open AIRA app
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-        launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        launchIntent?.putExtra("wake_word_command", recognized)
-        try {
-            startActivity(launchIntent)
-        } catch (_: Exception) {}
+        try { startActivity(launchIntent) } catch (_: Exception) {}
     }
 
-    private fun updateStatus(text: String) {
+    private fun updateUI(text: String, borderColor: String, pulsing: Boolean) {
         handler.post {
-            statusTextView?.text = text
+            statusText?.text = text
+            (capsuleView?.background as? GradientDrawable)?.setStroke(
+                if (pulsing) 4 else 3,
+                Color.parseColor(borderColor)
+            )
+            micIcon?.setColorFilter(Color.parseColor(borderColor))
         }
     }
 
-    private fun stopWakeWordDetection() {
-        isWakeWordActive = false
-        handler.removeCallbacksAndMessages(null)
+    private fun stopListening() {
+        isListening = false
         try {
             speechRecognizer?.stopListening()
-            speechRecognizer?.destroy()
+            speechRecognizer?.cancel()
         } catch (_: Exception) {}
-        speechRecognizer = null
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        stopWakeWordDetection()
-        if (siriCapsuleView != null && windowManager != null) {
-            try {
-                windowManager?.removeView(siriCapsuleView)
-            } catch (_: Exception) {}
-        }
+        isHandsFreeMode = false
+        isListening = false
+        handler.removeCallbacksAndMessages(null)
+        try {
+            speechRecognizer?.destroy()
+            speechRecognizer = null
+        } catch (_: Exception) {}
+        try {
+            if (capsuleView != null) windowManager?.removeView(capsuleView)
+        } catch (_: Exception) {}
     }
 }
