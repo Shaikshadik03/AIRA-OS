@@ -1,5 +1,6 @@
 package com.airaos.aira_app
 
+import android.app.AlarmManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -530,6 +531,38 @@ class MainActivity : FlutterActivity() {
                         val body = call.argument<String>("body") ?: ""
                         val timestampMs = (call.argument<Number>("timestampMs") ?: System.currentTimeMillis()).toLong()
                         AlarmReceiver.scheduleOneTime(this, notifId, title, body, timestampMs)
+                        result.success(true)
+                    }
+
+                    "requestExactAlarmPermission" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                            if (!alarmManager.canScheduleExactAlarms()) {
+                                val intent = Intent(
+                                    Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                    Uri.parse("package:$packageName")
+                                )
+                                startActivity(intent)
+                                result.success(false)
+                                return@setMethodCallHandler
+                            }
+                        }
+                        result.success(true)
+                    }
+
+                    "requestIgnoreBatteryOptimizations" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                                val intent = Intent(
+                                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    Uri.parse("package:$packageName")
+                                )
+                                startActivity(intent)
+                                result.success(false)
+                                return@setMethodCallHandler
+                            }
+                        }
                         result.success(true)
                     }
 

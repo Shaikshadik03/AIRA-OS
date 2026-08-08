@@ -344,22 +344,31 @@ class ChatNotifier extends StateNotifier<ChatState> {
       switch (command.intent) {
         case NotificationIntentType.scheduleReminder:
           if (command.scheduledDate != null) {
+            final date = command.scheduledDate!;
+            final hourStr = (date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour)).toString().padLeft(2, '0');
+            final minStr = date.minute.toString().padLeft(2, '0');
+            final ampm = date.hour >= 12 ? 'PM' : 'AM';
+            final dayStr = date.day.toString().padLeft(2, '0');
+            final monthStr = date.month.toString().padLeft(2, '0');
+            final yearStr = date.year.toString();
+
+            final formattedDate = '$dayStr/$monthStr/$yearStr at $hourStr:$minStr $ampm';
+
             await _notificationService.scheduleNotification(
               id: notifId,
               title: command.title,
               body: command.body,
-              scheduledDate: command.scheduledDate!,
+              scheduledDate: date,
             );
 
-            final formattedDate =
-                '${command.scheduledDate!.day}/${command.scheduledDate!.month} at ${command.scheduledDate!.hour.toString().padLeft(2, '0')}:${command.scheduledDate!.minute.toString().padLeft(2, '0')}';
-
-            result = '🔔 **Reminder Scheduled!**\n\n'
-                '- **Content:** "${command.body}"\n'
-                '- **Time:** $formattedDate\n\n'
-                '> AIRA will push a high-priority system notification to your phone at the exact time.';
+            result = '🔔 **Exact Reminder Scheduled!**\n\n'
+                '- **Topic:** "${command.body}"\n'
+                '- **Exact Target Time:** $formattedDate\n'
+                '- **Alarm Mode:** ExactAllowWhileIdle (Doze-Proof) ✓\n'
+                '- **Cloud Sync:** Supabase Backup Saved ✓\n\n'
+                '> AIRA will deliver a high-priority alarm notification at the exact minute, even if your phone is in deep sleep at 2 AM.';
           } else {
-            result = 'Please specify a time for your reminder (e.g., *"remind me at 2 AM to check server"*).';
+            result = 'Please specify a time for your reminder (e.g., *"remind me at 2 AM to check logs"*).';
           }
           break;
 

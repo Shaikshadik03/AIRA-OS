@@ -414,12 +414,124 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
     // ─── Helpers ───
 
     private fun openAiraWithCommand(command: String) {
+        val lower = command.lowercase().trim()
+        
+        // 1. Direct Flashlight Voice Command
+        if (lower.contains("flashlight") || lower.contains("torch")) {
+            val turnOn = !lower.contains("off")
+            toggleFlashlightNative(turnOn)
+            val responseText = if (turnOn) "Flashlight turned on" else "Flashlight turned off"
+            updateUI(responseText, "#00FF88", false)
+            speakResponse(responseText)
+            handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 3000)
+            return
+        }
+
+        // 2. Direct Reminder / Alarm Voice Command (e.g. "remind me at 7 am HOD meeting", "set alarm for 6 am")
+        if (lower.contains("remind") || lower.contains("alarm") || lower.contains("alert")) {
+            val handled = handleVoiceReminderNative(lower)
+            if (handled) {
+                handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 3000)
+                return
+            }
+        }
+
+        // 3. App Launcher Voice Command (e.g. "open whatsapp", "open youtube", "open calculator")
+        if (lower.startsWith("open ") || lower.startsWith("launch ")) {
+            val appQuery = lower.replace("open ", "").replace("launch ", "").trim()
+            val launched = launchAppByName(appQuery)
+            if (launched) {
+                updateUI("Opening $appQuery...", "#00FF88", false)
+                speakResponse("Opening $appQuery")
+                handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 3000)
+                return
+            }
+        }
+
+        // 4. Default: Speak back response & launch AIRA with command
         speakResponse("AIRA activated")
+        updateUI("⚡ \"$command\"", "#00FF88", false)
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("voice_command", command)
         }
         try { startActivity(launchIntent) } catch (_: Exception) {}
+        handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 4000)
+    }
+
+    private fun toggleFlashlightNative(enable: Boolean) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val cameraManager = getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+                val cameraId = cameraManager.cameraIdList.firstOrNull()
+                if (cameraId != null) {
+                    cameraManager.setTorchMode(cameraId, enable)
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun handleVoiceReminderNative(lower: String): Boolean {
+        try {
+            // Regex to parse hour, minute, am/pm
+            val timeMatch = Regex("""(\d{1,2})(?::(\d{2}))?\s*(am|pm)?""").find(lower)
+            if (timeMatch != null) {
+                var hour = timeMatch.groupValues[1].toInt()
+                val minStr = timeMatch.groupValues[2]
+                val minute = if (minStr.isNotEmpty()) minStr.toInt() else 0
+                val ampm = timeMatch.groupValues[3]
+                if (ampm == "pm" && hour < 12) hour += 12
+                if (ampm == "am" && hour == 12) hour = 0
+
+                // Clean label
+                var label = lower.replace(Regex("""remind me (to|that|about|at|on)?"""), "")
+                    .replace(Regex("""set (an )?alarm (for|at)?"""), "")
+                    .replace(Regex("""\d{1,2}(:\d{2})?\s*(am|pm)?"""), "")
+                    .trim()
+                if (label.isEmpty()) label = "AIRA Voice Reminder"
+                label = label.replaceFirstChar { it.uppercase() }
+
+                val now = java.util.Calendar.getInstance()
+                val target = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, hour)
+                    set(java.util.Calendar.MINUTE, minute)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                    if (timeInMillis <= now.timeInMillis) {
+                        add(java.util.Calendar.DAY_OF_YEAR, 1)
+                    }
+                }
+
+                val notifId = (System.currentTimeMillis() / 1000).toInt()
+                AlarmReceiver.scheduleOneTime(applicationContext, notifId, "AIRA Reminder 🔔", label, target.timeInMillis)
+
+                val displayTime = String.format("%02d:%02d", hour, minute)
+                val responseMsg = "Reminder set for $displayTime for $label"
+                updateUI("🔔 $responseMsg", "#00FF88", false)
+                speakResponse(responseMsg)
+                return true
+            }
+        } catch (_: Exception) {}
+        return false
+    }
+
+    private fun launchAppByName(query: String): Boolean {
+        try {
+            val pm = packageManager
+            val packages = pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+            for (app in packages) {
+                val label = pm.getApplicationLabel(app).toString().lowercase()
+                if (label == query || label.contains(query)) {
+                    val launchIntent = pm.getLaunchIntentForPackage(app.packageName)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(launchIntent)
+                        return true
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return false
     }
 
     private fun updateUI(text: String, borderColor: String, pulsing: Boolean) {

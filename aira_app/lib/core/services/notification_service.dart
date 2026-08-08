@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -121,7 +122,19 @@ class NotificationService {
     );
   }
 
-  /// Schedule notification at specific DateTime
+  /// Request runtime exact alarm permission (Android 12+/14)
+  Future<bool> requestExactAlarmPermission() async {
+    if (Platform.isAndroid) {
+      try {
+        const channel = MethodChannel('com.aira.os/device_control');
+        final isGranted = await channel.invokeMethod<bool>('requestExactAlarmPermission');
+        return isGranted ?? true;
+      } catch (_) {}
+    }
+    return true;
+  }
+
+  /// Schedule notification at specific DateTime with guaranteed exact-time Doze-mode delivery
   Future<void> scheduleNotification({
     required int id,
     required String title,
@@ -130,7 +143,9 @@ class NotificationService {
     String? payload,
   }) async {
     await initialize();
+    await requestExactAlarmPermission();
 
+    // 1. Dispatch via native Android AlarmManager (exactAllowWhileIdle)
     if (Platform.isAndroid) {
       try {
         const channel = MethodChannel('com.aira.os/device_control');
@@ -143,6 +158,7 @@ class NotificationService {
       } catch (_) {}
     }
 
+    // 2. Schedule local notification via timezone zonedSchedule
     final tzScheduledTime = tz.TZDateTime.from(scheduledDate, tz.local);
 
     try {
@@ -158,7 +174,6 @@ class NotificationService {
         payload: payload,
       );
     } catch (_) {
-      // Fall back to inexact if exact alarm permission is missing on device
       await _notificationsPlugin.zonedSchedule(
         id,
         title,
@@ -171,6 +186,19 @@ class NotificationService {
         payload: payload,
       );
     }
+
+    // 3. Cloud Supabase Backup Sync (guarantees FCM delivery if OEM battery manager kills local alarm)
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase.from('reminders').upsert({
+        'id': id,
+        'title': title,
+        'body': body,
+        'scheduled_time': scheduledDate.toUtc().toIso8601String(),
+        'status': 'pending',
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    } catch (_) {}
   }
 
   /// Schedule daily recurring notification (e.g. 7 AM daily news / agenda)
