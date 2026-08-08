@@ -18,6 +18,7 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -25,6 +26,7 @@ import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.util.Locale
 
 /**
  * AIRA Floating Overlay Service — Senior Architecture
@@ -37,13 +39,15 @@ import android.widget.TextView
  * SpeechRecognizer runs on main thread (required by Android).
  * Foreground service with MICROPHONE type for Android 14+.
  */
-class OverlayService : Service() {
+class OverlayService : Service(), TextToSpeech.OnInitListener {
     private var windowManager: WindowManager? = null
     private var capsuleView: LinearLayout? = null
     private var statusText: TextView? = null
     private var micIcon: ImageView? = null
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private var tts: TextToSpeech? = null
+    private var isTtsReady = false
     @Volatile private var isListening = false
     @Volatile private var isHandsFreeMode = false
     private val handler = Handler(Looper.getMainLooper())
@@ -59,10 +63,29 @@ class OverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        tts = TextToSpeech(this, this)
         setupForegroundNotification()
         createOverlayCapsule()
         isHandsFreeMode = true
         startHandsFreeListening()
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            tts?.language = Locale.US
+            isTtsReady = true
+        }
+    }
+
+    private fun speakResponse(text: String) {
+        if (isTtsReady && text.isNotEmpty()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "AIRA_OVERLAY_TTS")
+            } else {
+                @Suppress("DEPRECATION")
+                tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -382,14 +405,16 @@ class OverlayService : Service() {
     }
 
     private fun isWakeWord(text: String): Boolean {
-        val t = text.lowercase()
+        val t = text.lowercase().trim()
         return t.contains("aira") || t.contains("ara") ||
-            (t.contains("ira") && (t.contains("hey") || t.contains("hi")))
+            (t.contains("ira") && (t.contains("hey") || t.contains("hi") || t.contains("hello") || t.contains("ok"))) ||
+            t.contains("hey siri") || t.contains("hey google")
     }
 
     // ─── Helpers ───
 
     private fun openAiraWithCommand(command: String) {
+        speakResponse("AIRA activated")
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("voice_command", command)
@@ -424,6 +449,11 @@ class OverlayService : Service() {
         try {
             speechRecognizer?.destroy()
             speechRecognizer = null
+        } catch (_: Exception) {}
+        try {
+            tts?.stop()
+            tts?.shutdown()
+            tts = null
         } catch (_: Exception) {}
         try {
             if (capsuleView != null) windowManager?.removeView(capsuleView)

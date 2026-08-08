@@ -81,7 +81,7 @@ class NotificationIntentDetector {
       );
     }
 
-    // 4. One-time scheduled reminder (e.g., "remind me in 10 minutes", "remind me at 2 am to check logs")
+    // 4. One-time scheduled reminder (e.g., "remind me at 7 am hod meeting", "remind me in 10 minutes")
     DateTime scheduledTime = DateTime.now().add(const Duration(hours: 1));
     String reminderText = input;
 
@@ -96,8 +96,8 @@ class NotificationIntentDetector {
         scheduledTime = DateTime.now().add(Duration(hours: amount));
       }
     } else {
-      // Check for "at X am/pm"
-      final timeMatch = RegExp(r'at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?').firstMatch(lower);
+      // Check for "at X am/pm" or "on X am/pm"
+      final timeMatch = RegExp(r'(?:at|on)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?').firstMatch(lower);
       if (timeMatch != null) {
         int hour = int.parse(timeMatch.group(1)!);
         int minute = timeMatch.group(2) != null ? int.parse(timeMatch.group(2)!) : 0;
@@ -113,14 +113,20 @@ class NotificationIntentDetector {
       }
     }
 
-    // Clean reminder text
+    // Clean reminder text for notification title/body
     reminderText = input
-        .replaceAll(RegExp(r'remind me (to|that|about)?', caseSensitive: false), '')
-        .replaceAll(RegExp(r'at \d{1,2}(:\d{2})?\s*(am|pm)?', caseSensitive: false), '')
-        .replaceAll(RegExp(r'in \d+ (minute|min|hour|hr)s?', caseSensitive: false), '')
+        .replaceAll(RegExp(r'remind me (to|that|about|on)?', caseSensitive: false), '')
+        .replaceAll(RegExp(r'(at|on)\s+\d{1,2}(:\d{2})?\s*(am|pm)?', caseSensitive: false), '')
+        .replaceAll(RegExp(r'in\s+\d+\s+(minute|min|hour|hr)s?', caseSensitive: false), '')
+        .replaceAll(RegExp(r'^\s*(as|for)\s+', caseSensitive: false), '')
         .trim();
 
     if (reminderText.isEmpty) reminderText = input;
+
+    // Capitalize first letter
+    if (reminderText.isNotEmpty) {
+      reminderText = reminderText[0].toUpperCase() + reminderText.substring(1);
+    }
 
     return NotificationCommand(
       intent: NotificationIntentType.scheduleReminder,

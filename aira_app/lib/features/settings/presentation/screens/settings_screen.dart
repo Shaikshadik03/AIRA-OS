@@ -341,7 +341,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final usernameController = TextEditingController();
     final passwordController = TextEditingController();
     final tokenController = TextEditingController();
-    bool isLoginTab = true;
+    int selectedTab = 0; // 0: Account Login, 1: API Access Token, 2: Session Token
+    bool isTesting = false;
 
     if (!mounted) return;
 
@@ -353,98 +354,156 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
             children: [
-              const Icon(Icons.check_circle_outline_rounded, color: AiraColors.success),
+              const Icon(Icons.extension_rounded, color: AiraColors.electricCyan),
               const SizedBox(width: 10),
-              Text('TickTick Integration', style: AiraTypography.h3.copyWith(color: Colors.white)),
+              Text('TickTick Connector', style: AiraTypography.h3.copyWith(color: Colors.white)),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                ticktick.isConnected
-                    ? '🟢 TickTick is currently Connected to AIRA OS.'
-                    : 'Connect your TickTick account using 1-Tap Auto Connect, Account Login, or API Token.',
-                style: AiraTypography.bodySmall.copyWith(color: AiraColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              if (!ticktick.isConnected) ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: ChoiceChip(
-                        label: const Text('Account Login'),
-                        selected: isLoginTab,
-                        onSelected: (val) => setDialogState(() => isLoginTab = true),
-                        selectedColor: AiraColors.electricCyan.withValues(alpha: 0.2),
-                        labelStyle: TextStyle(
-                          color: isLoginTab ? AiraColors.electricCyan : AiraColors.textMuted,
-                          fontWeight: FontWeight.bold,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ticktick.isConnected
+                      ? '🟢 TickTick Connector is active (${ticktick.authType == TickTickAuthType.openApiBearer ? 'Official API Bearer Token' : 'Session Cookie Auth'}).'
+                      : 'Connect AIRA to your TickTick account via Official API Token, Account Login, or Session Cookie.',
+                  style: AiraTypography.bodySmall.copyWith(color: AiraColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                if (!ticktick.isConnected) ...[
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Account Login'),
+                          selected: selectedTab == 0,
+                          onSelected: (val) => setDialogState(() => selectedTab = 0),
+                          selectedColor: AiraColors.electricCyan.withValues(alpha: 0.2),
+                          labelStyle: TextStyle(
+                            color: selectedTab == 0 ? AiraColors.electricCyan : AiraColors.textMuted,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
+                        const SizedBox(width: 6),
+                        ChoiceChip(
+                          label: const Text('API Access Token'),
+                          selected: selectedTab == 1,
+                          onSelected: (val) => setDialogState(() => selectedTab = 1),
+                          selectedColor: AiraColors.purpleLight.withValues(alpha: 0.2),
+                          labelStyle: TextStyle(
+                            color: selectedTab == 1 ? AiraColors.purpleLight : AiraColors.textMuted,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        ChoiceChip(
+                          label: const Text('Session Token'),
+                          selected: selectedTab == 2,
+                          onSelected: (val) => setDialogState(() => selectedTab = 2),
+                          selectedColor: AiraColors.success.withValues(alpha: 0.2),
+                          labelStyle: TextStyle(
+                            color: selectedTab == 2 ? AiraColors.success : AiraColors.textMuted,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (selectedTab == 0) ...[
+                    TextField(
+                      controller: usernameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: 'TickTick Email / Username',
+                        labelStyle: const TextStyle(color: AiraColors.textMuted),
+                        prefixIcon: const Icon(Icons.email_outlined, color: AiraColors.textMuted),
+                        filled: true,
+                        fillColor: AiraColors.surfaceDark,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ChoiceChip(
-                        label: const Text('Session / API Token'),
-                        selected: !isLoginTab,
-                        onSelected: (val) => setDialogState(() => isLoginTab = false),
-                        selectedColor: AiraColors.purpleLight.withValues(alpha: 0.2),
-                        labelStyle: TextStyle(
-                          color: !isLoginTab ? AiraColors.purpleLight : AiraColors.textMuted,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: passwordController,
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: 'TickTick Password',
+                        labelStyle: const TextStyle(color: AiraColors.textMuted),
+                        prefixIcon: const Icon(Icons.lock_outline, color: AiraColors.textMuted),
+                        filled: true,
+                        fillColor: AiraColors.surfaceDark,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ] else if (selectedTab == 1) ...[
+                    TextField(
+                      controller: tokenController,
+                      style: const TextStyle(color: Colors.white),
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        labelText: 'Official API Access Token',
+                        labelStyle: const TextStyle(color: AiraColors.textMuted),
+                        hintText: 'Paste API Token from developer.ticktick.com or TickTick Web Settings',
+                        hintStyle: const TextStyle(color: AiraColors.textMuted, fontSize: 11),
+                        filled: true,
+                        fillColor: AiraColors.surfaceDark,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ] else ...[
+                    TextField(
+                      controller: tokenController,
+                      style: const TextStyle(color: Colors.white),
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        labelText: 'Web Session Cookie Token (t=...)',
+                        labelStyle: const TextStyle(color: AiraColors.textMuted),
+                        hintText: 'Paste session cookie token (t=...) from browser DevTools',
+                        hintStyle: const TextStyle(color: AiraColors.textMuted, fontSize: 11),
+                        filled: true,
+                        fillColor: AiraColors.surfaceDark,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-                if (isLoginTab) ...[
-                  TextField(
-                    controller: usernameController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'TickTick Email / Username',
-                      labelStyle: const TextStyle(color: AiraColors.textMuted),
-                      prefixIcon: const Icon(Icons.email_outlined, color: AiraColors.textMuted),
-                      filled: true,
-                      fillColor: AiraColors.surfaceDark,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: passwordController,
-                    obscureText: true,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'TickTick Password',
-                      labelStyle: const TextStyle(color: AiraColors.textMuted),
-                      prefixIcon: const Icon(Icons.lock_outline, color: AiraColors.textMuted),
-                      filled: true,
-                      fillColor: AiraColors.surfaceDark,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
                 ] else ...[
-                  TextField(
-                    controller: tokenController,
-                    style: const TextStyle(color: Colors.white),
-                    maxLines: 2,
-                    decoration: InputDecoration(
-                      labelText: 'TickTick Session / API Token',
-                      labelStyle: const TextStyle(color: AiraColors.textMuted),
-                      hintText: 'Paste session cookie token or API token from TickTick web',
-                      hintStyle: const TextStyle(color: AiraColors.textMuted, fontSize: 12),
-                      filled: true,
-                      fillColor: AiraColors.surfaceDark,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: isTesting
+                          ? null
+                          : () async {
+                              setDialogState(() => isTesting = true);
+                              final ok = await ticktick.testConnection();
+                              setDialogState(() => isTesting = false);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(ok ? '🟢 Connection Test Passed! Connector active.' : '🔴 Connection Test Failed: ${ticktick.lastError}'),
+                                    backgroundColor: ok ? Colors.green : Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                      icon: isTesting
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AiraColors.electricCyan))
+                          : const Icon(Icons.network_check_rounded, color: AiraColors.electricCyan),
+                      label: Text(isTesting ? 'Testing Connection...' : 'Test Connection Status', style: const TextStyle(color: AiraColors.electricCyan)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AiraColors.electricCyan),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   ),
                 ],
               ],
-            ],
+            ),
           ),
           actions: [
             TextButton(
@@ -468,7 +527,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             else
               ElevatedButton(
                 onPressed: () async {
-                  if (isLoginTab) {
+                  if (selectedTab == 0) {
                     final u = usernameController.text.trim();
                     final p = passwordController.text.trim();
                     if (u.isNotEmpty && p.isNotEmpty) {
@@ -482,9 +541,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('TickTick Login Failed: ${ticktick.lastError}')),
+                              SnackBar(content: Text('Login Failed: ${ticktick.lastError}')),
                             );
                           }
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error: $e')),
+                          );
+                        }
+                      }
+                    }
+                  } else if (selectedTab == 1) {
+                    final token = tokenController.text.trim();
+                    if (token.isNotEmpty) {
+                      try {
+                        await ticktick.connectWithApiToken(token);
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('🟢 TickTick API Token Connected!')),
+                          );
                         }
                       } catch (e) {
                         if (context.mounted) {
@@ -498,11 +576,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     final token = tokenController.text.trim();
                     if (token.isNotEmpty) {
                       try {
-                        await ticktick.saveToken(token);
+                        await ticktick.connectWithSessionCookie(token);
                         if (context.mounted) {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('🟢 TickTick Connected Successfully!')),
+                            const SnackBar(content: Text('🟢 TickTick Session Cookie Connected!')),
                           );
                         }
                       } catch (e) {
@@ -516,7 +594,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   }
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: AiraColors.success),
-                child: Text(isLoginTab ? 'Log In & Connect' : 'Save & Connect', style: const TextStyle(color: Colors.black)),
+                child: Text(selectedTab == 0 ? 'Log In & Connect' : 'Save & Connect', style: const TextStyle(color: Colors.black)),
               ),
           ],
         ),
