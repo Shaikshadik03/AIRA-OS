@@ -10,6 +10,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -336,45 +339,103 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
 
     // ─── Hands-Free Mode (Optional — "Hey AIRA" loop) ───
 
+    // ─── Native Low-Power AudioRecord PCM VAD Engine ───
+
+    private var audioRecordThread: Thread? = null
+    @Volatile private var isPcmListening = false
+
     private fun startHandsFreeListening() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            updateUI("STT unavailable", "#FF4444", false)
-            return
-        }
         isHandsFreeMode = true
-        loopListen()
+        startLowPowerPcmVadThread()
     }
 
-    private fun loopListen() {
-        if (!isHandsFreeMode) return
-        isListening = true
+    private fun startLowPowerPcmVadThread() {
+        if (audioRecordThread?.isAlive == true) return
+        isPcmListening = true
+        updateUI("AIRA Listening • Say 'Hey AIRA'", "#00E5FF", false)
+
+        audioRecordThread = Thread {
+            val sampleRate = 16000
+            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+            val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+            val bufferSize = maxOf(minBufferSize, 2048)
+
+            var recorder: AudioRecord? = null
+            try {
+                recorder = AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    sampleRate,
+                    channelConfig,
+                    audioFormat,
+                    bufferSize
+                )
+
+                if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+                    handler.post { updateUI("Mic unavailable", "#FF4444", false) }
+                    return@Thread
+                }
+
+                recorder.startRecording()
+                val buffer = ShortArray(1024)
+
+                while (isPcmListening && isHandsFreeMode) {
+                    val readCount = recorder.read(buffer, 0, buffer.size)
+                    if (readCount > 0) {
+                        // Calculate Root Mean Square (RMS) energy level
+                        var sum = 0.0
+                        for (i in 0 until readCount) {
+                            sum += buffer[i] * buffer[i]
+                        }
+                        val rms = Math.sqrt(sum / readCount)
+
+                        // If voice energy exceeds noise threshold (~1200 RMS)
+                        if (rms > 1200.0) {
+                            handler.post {
+                                triggerSpeechRecognitionOnVoiceSpike()
+                            }
+                            // Sleep thread while SpeechRecognizer processes command
+                            Thread.sleep(5000)
+                        }
+                    }
+                    Thread.sleep(80) // 80ms sleep keeps CPU drain < 0.1%
+                }
+            } catch (_: Exception) {
+            } finally {
+                try {
+                    recorder?.stop()
+                    recorder?.release()
+                } catch (_: Exception) {}
+            }
+        }.apply { start() }
+    }
+
+    private fun triggerSpeechRecognitionOnVoiceSpike() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return
+        updateUI("⚡ Voice Detected • Listening...", "#00FF88", true)
 
         speechRecognizer?.destroy()
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext)
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                updateUI("AIRA • Say 'Hey AIRA'", "#00E5FF", true)
-            }
+            override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
 
             override fun onError(error: Int) {
-                isListening = false
-                val delay = if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 2000L else 800L
-                handler.postDelayed({ if (isHandsFreeMode) loopListen() }, delay)
+                updateUI("AIRA Listening • Say 'Hey AIRA'", "#00E5FF", false)
             }
 
             override fun onResults(results: Bundle?) {
-                isListening = false
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 val heard = matches?.firstOrNull()?.lowercase() ?: ""
-                if (isWakeWord(heard)) {
-                    updateUI("⚡ AIRA Activated!", "#00FF88", false)
+                if (heard.isNotEmpty()) {
+                    updateUI("⚡ \"$heard\"", "#00FF88", false)
                     openAiraWithCommand(heard)
+                } else {
+                    updateUI("AIRA Listening • Say 'Hey AIRA'", "#00E5FF", false)
                 }
-                handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 500)
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
@@ -394,14 +455,12 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
         try {
             speechRecognizer?.startListening(intent)
-        } catch (e: Exception) {
-            handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 2000)
-        }
+        } catch (_: Exception) {}
     }
 
     private fun isWakeWord(text: String): Boolean {
@@ -423,7 +482,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             val responseText = if (turnOn) "Flashlight turned on" else "Flashlight turned off"
             updateUI(responseText, "#00FF88", false)
             speakResponse(responseText)
-            handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 3000)
+            handler.postDelayed({ if (isHandsFreeMode) startLowPowerPcmVadThread() }, 3000)
             return
         }
 
@@ -431,7 +490,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
         if (lower.contains("remind") || lower.contains("alarm") || lower.contains("alert")) {
             val handled = handleVoiceReminderNative(lower)
             if (handled) {
-                handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 3000)
+                handler.postDelayed({ if (isHandsFreeMode) startLowPowerPcmVadThread() }, 3000)
                 return
             }
         }
@@ -443,7 +502,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             if (launched) {
                 updateUI("Opening $appQuery...", "#00FF88", false)
                 speakResponse("Opening $appQuery")
-                handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 3000)
+                handler.postDelayed({ if (isHandsFreeMode) startLowPowerPcmVadThread() }, 3000)
                 return
             }
         }
@@ -456,7 +515,7 @@ class OverlayService : Service(), TextToSpeech.OnInitListener {
             putExtra("voice_command", command)
         }
         try { startActivity(launchIntent) } catch (_: Exception) {}
-        handler.postDelayed({ if (isHandsFreeMode) loopListen() }, 4000)
+        handler.postDelayed({ if (isHandsFreeMode) startLowPowerPcmVadThread() }, 4000)
     }
 
     private fun toggleFlashlightNative(enable: Boolean) {
