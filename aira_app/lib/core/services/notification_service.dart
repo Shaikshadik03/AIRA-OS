@@ -130,6 +130,19 @@ class NotificationService {
     String? payload,
   }) async {
     await initialize();
+
+    if (Platform.isAndroid) {
+      try {
+        const channel = MethodChannel('com.aira.os/device_control');
+        await channel.invokeMethod('scheduleNativeOneTimeAlarm', {
+          'id': id,
+          'title': title,
+          'body': body,
+          'timestampMs': scheduledDate.millisecondsSinceEpoch,
+        });
+      } catch (_) {}
+    }
+
     final tzScheduledTime = tz.TZDateTime.from(scheduledDate, tz.local);
 
     try {

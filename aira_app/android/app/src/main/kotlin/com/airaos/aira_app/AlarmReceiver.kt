@@ -86,6 +86,59 @@ class AlarmReceiver : BroadcastReceiver() {
             }
         }
 
+        fun scheduleOneTime(
+            context: Context,
+            notificationId: Int,
+            title: String,
+            body: String,
+            timestampMs: Long
+        ) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, AlarmReceiver::class.java).apply {
+                putExtra(EXTRA_TITLE, title)
+                putExtra(EXTRA_BODY, body)
+                putExtra(EXTRA_NOTIFICATION_ID, notificationId)
+                putExtra("is_one_time", true)
+            }
+
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                notificationId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (alarmManager.canScheduleExactAlarms()) {
+                        alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            timestampMs,
+                            pendingIntent
+                        )
+                    } else {
+                        alarmManager.setAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            timestampMs,
+                            pendingIntent
+                        )
+                    }
+                } else {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        timestampMs,
+                        pendingIntent
+                    )
+                }
+            } catch (e: Exception) {
+                alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    timestampMs,
+                    pendingIntent
+                )
+            }
+        }
+
         fun cancel(context: Context, notificationId: Int) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val intent = Intent(context, AlarmReceiver::class.java)
@@ -115,10 +168,13 @@ class AlarmReceiver : BroadcastReceiver() {
         // Show the notification
         showNotification(context, notificationId, title, body)
 
-        // Reschedule for tomorrow (repeat daily)
-        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val currentMin = Calendar.getInstance().get(Calendar.MINUTE)
-        scheduleDaily(context, notificationId, title, body, currentHour, currentMin)
+        // Only reschedule if it's a daily recurring alarm (not one-time)
+        val isOneTime = intent.getBooleanExtra("is_one_time", false)
+        if (!isOneTime) {
+            val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+            val currentMin = Calendar.getInstance().get(Calendar.MINUTE)
+            scheduleDaily(context, notificationId, title, body, currentHour, currentMin)
+        }
     }
 
     private fun showNotification(context: Context, id: Int, title: String, body: String) {

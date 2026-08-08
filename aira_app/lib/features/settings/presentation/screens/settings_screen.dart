@@ -11,7 +11,6 @@ import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/core/services/ticktick_service.dart';
 import 'package:aira_app/core/theme/theme_provider.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -334,95 +333,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  void _openTickTickOAuthWebView() {
-    final ticktick = TickTickService();
-    late final WebViewController controller;
 
-    controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (NavigationRequest request) async {
-            final url = request.url;
-            // Intercept redirect to https://localhost (our registered redirect_uri)
-            if (url.startsWith('https://localhost')) {
-              try {
-                await ticktick.parseAndAuthenticate(url);
-                if (mounted) {
-                  Navigator.pop(context); // Close webview
-                  Navigator.pop(context); // Close settings dialog
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('🟢 TickTick Connected Successfully!'),
-                      backgroundColor: Colors.green,
-                      duration: Duration(seconds: 3),
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  Navigator.pop(context); // Close webview even on error
-                  // Show detailed error so user can see what went wrong
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      backgroundColor: AiraColors.cardDark,
-                      title: const Text('TickTick OAuth Error', style: TextStyle(color: Colors.redAccent)),
-                      content: SingleChildScrollView(
-                        child: Text(
-                          '$e\n\n'
-                          'BACKUP: Go to ticktick.com → avatar → Settings → Account → API Token → copy it → paste in API Token tab.',
-                          style: const TextStyle(color: Colors.white70, fontSize: 13),
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('OK', style: TextStyle(color: AiraColors.electricCyan)),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-              }
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.navigate;
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(ticktick.authorizationUrl));
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AiraColors.cardDark,
-      builder: (context) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.85,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: AiraColors.glassBorder)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('TickTick Authorization', style: AiraTypography.h3.copyWith(color: Colors.white)),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(child: WebViewWidget(controller: controller)),
-          ],
-        ),
-      ),
-    );
-  }
 
   void _showTickTickDialog() async {
     final ticktick = TickTickService();
@@ -459,23 +370,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 16),
               if (!ticktick.isConnected) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _openTickTickOAuthWebView,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AiraColors.electricCyan,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: const Icon(Icons.auto_awesome_rounded, color: Colors.black),
-                    label: const Text(
-                      '⚡ 1-Tap Auto Connect (Web)',
-                      style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
@@ -493,7 +387,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: ChoiceChip(
-                        label: const Text('API Token'),
+                        label: const Text('Session / API Token'),
                         selected: !isLoginTab,
                         onSelected: (val) => setDialogState(() => isLoginTab = false),
                         selectedColor: AiraColors.purpleLight.withValues(alpha: 0.2),
@@ -539,9 +433,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     style: const TextStyle(color: Colors.white),
                     maxLines: 2,
                     decoration: InputDecoration(
-                      labelText: 'TickTick API Token',
+                      labelText: 'TickTick Session / API Token',
                       labelStyle: const TextStyle(color: AiraColors.textMuted),
-                      hintText: 'ticktick.com → avatar → Settings → Account → API Token',
+                      hintText: 'Paste session cookie token or API token from TickTick web',
                       hintStyle: const TextStyle(color: AiraColors.textMuted, fontSize: 12),
                       filled: true,
                       fillColor: AiraColors.surfaceDark,
@@ -584,18 +478,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           if (success) {
                             Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('🟢 TickTick Logged In & Connected!')),
+                              const SnackBar(content: Text('🟢 TickTick Connected Successfully!')),
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('TickTick Login Failed: Invalid Credentials')),
+                              SnackBar(content: Text('TickTick Login Failed: ${ticktick.lastError}')),
                             );
                           }
                         }
                       } catch (e) {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('$e')),
+                            SnackBar(content: Text('Error: $e')),
                           );
                         }
                       }
@@ -604,7 +498,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     final token = tokenController.text.trim();
                     if (token.isNotEmpty) {
                       try {
-                        await ticktick.parseAndAuthenticate(token);
+                        await ticktick.saveToken(token);
                         if (context.mounted) {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -614,7 +508,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       } catch (e) {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('$e')),
+                            SnackBar(content: Text('Error: $e')),
                           );
                         }
                       }

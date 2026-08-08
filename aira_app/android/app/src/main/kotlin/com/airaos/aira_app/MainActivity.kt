@@ -524,6 +524,15 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
 
+                    "scheduleNativeOneTimeAlarm" -> {
+                        val notifId = call.argument<Int>("id") ?: 0
+                        val title = call.argument<String>("title") ?: "AIRA"
+                        val body = call.argument<String>("body") ?: ""
+                        val timestampMs = (call.argument<Number>("timestampMs") ?: System.currentTimeMillis()).toLong()
+                        AlarmReceiver.scheduleOneTime(this, notifId, title, body, timestampMs)
+                        result.success(true)
+                    }
+
                     "cancelNativeAlarm" -> {
                         val notifId = call.argument<Int>("id") ?: 0
                         AlarmReceiver.cancel(this, notifId)

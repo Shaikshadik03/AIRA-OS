@@ -61,15 +61,13 @@ class OverlayService : Service() {
         super.onCreate()
         setupForegroundNotification()
         createOverlayCapsule()
+        isHandsFreeMode = true
+        startHandsFreeListening()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Check if hands-free mode requested
-        val mode = intent?.getStringExtra("mode") ?: "tap"
-        if (mode == "handsfree") {
-            isHandsFreeMode = true
-            startHandsFreeListening()
-        }
+        isHandsFreeMode = true
+        startHandsFreeListening()
         return START_STICKY
     }
 
@@ -243,7 +241,7 @@ class OverlayService : Service() {
         }
 
         speechRecognizer?.destroy()
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext)
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 updateUI("Speak now...", "#00FF88", true)
@@ -329,7 +327,7 @@ class OverlayService : Service() {
         isListening = true
 
         speechRecognizer?.destroy()
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext)
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 updateUI("AIRA • Say 'Hey AIRA'", "#00E5FF", true)
