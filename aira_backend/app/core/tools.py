@@ -85,4 +85,63 @@ AIRA_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "ticktick_create_task",
+            "description": "Create a task in TickTick account via MCP connector.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "The title or action of the task (e.g. 'Buy groceries')",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Optional notes or details.",
+                    },
+                    "due_date": {
+                        "type": "string",
+                        "description": "Optional target due date or date time string.",
+                    },
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ticktick_get_tasks",
+            "description": "Get current or pending tasks from TickTick account via MCP connector.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filter": {
+                        "type": "string",
+                        "description": "Filter criteria: 'today', 'all', 'upcoming'.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ticktick_complete_task",
+            "description": "Mark a task complete in TickTick via MCP connector.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "Task ID or title to complete.",
+                    }
+                },
+                "required": ["task_id"],
+            },
+        },
+    },
 ]

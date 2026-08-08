@@ -30,7 +30,12 @@ class ChatService:
             return "Error: Invalid JSON arguments."
 
         try:
-            if name == "create_task":
+            if name.startswith("ticktick_"):
+                from app.services.mcp_service import TickTickMCPService
+                mcp_service = TickTickMCPService()
+                return await mcp_service.call_tool(name, args)
+
+            elif name == "create_task":
                 planner = PlannerService()
                 task = await planner.create_task(user_id, {
                     "title": args.get("title"),

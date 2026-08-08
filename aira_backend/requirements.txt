@@ -16,3 +16,4 @@ google-api-python-client==2.160.0
 apscheduler==3.11.0
 tavily-python==0.5.1
 sentence-transformers==3.4.1
+mcp>=1.2.0

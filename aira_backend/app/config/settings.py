@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # AI
     groq_api_key: str = "your-groq-api-key"
 
+    # TickTick Connector
+    ticktick_client_id: str = ""
+    ticktick_client_secret: str = ""
+
     # Security
     jwt_secret: str = "your-supabase-jwt-secret"
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8080"]
