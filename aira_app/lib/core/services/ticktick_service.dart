@@ -17,6 +17,10 @@ class TickTickService {
   static const String _tokenKey = 'ticktick_access_token';
   static const String _authTypeKey = 'ticktick_auth_type';
 
+  static const String clientId = 'Bu1phZur846CAwv76E';
+  static const String clientSecret = 'HV2IIr5V0PINcNy05mgd7ad9892UEeUL';
+  static const String redirectUri = 'https://localhost';
+
   String? _token;
   TickTickAuthType _authType = TickTickAuthType.openApiBearer;
   String lastError = '';
