@@ -6,7 +6,7 @@ import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/features/chat/domain/chat_models.dart';
 
-/// Claude-Style Message Bubble with Word-by-Word Streaming Animation & White Glowing Ball Indicator.
+/// Claude-Style Message Bubble with Word-by-Word Streaming Animation & Pulsing White Glowing Orb Indicator.
 class MessageBubble extends StatefulWidget {
   final ChatMessage message;
 
@@ -28,7 +28,7 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
     super.initState();
     _glowController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 700),
     )..repeat(reverse: true);
 
     _initWordStreaming();
@@ -49,29 +49,29 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
     }
 
     _words = widget.message.content.split(' ');
-    
-    // If message is new or short, start word-by-word streaming animation
-    if (widget.message.isStreaming || _words.length <= 120) {
-      _displayedWordCount = 1;
-      _isAnimating = true;
-      _wordTimer?.cancel();
-      _wordTimer = Timer.periodic(const Duration(milliseconds: 32), (timer) {
-        if (!mounted) return;
-        if (_displayedWordCount < _words.length) {
-          setState(() {
-            _displayedWordCount++;
-          });
-        } else {
-          timer.cancel();
-          setState(() {
-            _isAnimating = false;
-          });
-        }
-      });
-    } else {
-      _displayedWordCount = _words.length;
+    if (_words.isEmpty) {
       _isAnimating = false;
+      return;
     }
+
+    // Always start streaming animation for assistant messages
+    _displayedWordCount = 1;
+    _isAnimating = true;
+    _wordTimer?.cancel();
+
+    _wordTimer = Timer.periodic(const Duration(milliseconds: 28), (timer) {
+      if (!mounted) return;
+      if (_displayedWordCount < _words.length) {
+        setState(() {
+          _displayedWordCount++;
+        });
+      } else {
+        timer.cancel();
+        setState(() {
+          _isAnimating = false;
+        });
+      }
+    });
   }
 
   @override
@@ -101,32 +101,41 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
       child: Column(
         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          // Claude-Style Header Tag
+          // Header Label
           Padding(
             padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (!isUser) ...[
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AiraColors.electricCyan,
-                      boxShadow: [
-                        BoxShadow(color: AiraColors.electricCyan, blurRadius: 6, spreadRadius: 1),
-                      ],
-                    ),
+                  AnimatedBuilder(
+                    animation: _glowController,
+                    builder: (context, child) {
+                      return Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.white.withValues(alpha: 0.8 * _glowController.value),
+                              blurRadius: 8 * _glowController.value,
+                              spreadRadius: 2 * _glowController.value,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(width: 6),
                 ],
                 Text(
-                  isUser ? 'YOU' : 'AIRA',
+                  isUser ? 'YOU' : 'AIRA • CLAUDE MODE',
                   style: AiraTypography.overline.copyWith(
                     color: isUser
                         ? AiraColors.electricCyan.withValues(alpha: 0.8)
-                        : AiraColors.textSecondary,
+                        : Colors.white70,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.2,
@@ -136,14 +145,14 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
             ),
           ),
 
-          // Claude Minimalist Message Bubble
+          // Message Bubble
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: isUser
-                  ? AiraColors.electricCyan.withValues(alpha: 0.12)
-                  : AiraColors.cardDark,
+                  ? AiraColors.electricCyan.withValues(alpha: 0.14)
+                  : const Color(0xFF1F1E1B),
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(18),
                 topRight: const Radius.circular(18),
@@ -152,13 +161,13 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
               ),
               border: Border.all(
                 color: isUser
-                    ? AiraColors.electricCyan.withValues(alpha: 0.25)
-                    : AiraColors.glassBorder,
+                    ? AiraColors.electricCyan.withValues(alpha: 0.3)
+                    : const Color(0xFF33322E),
                 width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
+                  color: Colors.black.withValues(alpha: 0.3),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -172,31 +181,31 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                     data: _currentText,
                     styleSheet: MarkdownStyleSheet(
                       p: AiraTypography.bodyMedium.copyWith(
-                        color: AiraColors.textPrimary,
+                        color: const Color(0xFFF4F3EE),
                         height: 1.6,
                         fontSize: 15,
                       ),
-                      h1: AiraTypography.h4.copyWith(color: AiraColors.textPrimary),
-                      h2: AiraTypography.h5.copyWith(color: AiraColors.textPrimary),
-                      h3: AiraTypography.h6.copyWith(color: AiraColors.textPrimary),
+                      h1: AiraTypography.h4.copyWith(color: const Color(0xFFF4F3EE)),
+                      h2: AiraTypography.h5.copyWith(color: const Color(0xFFF4F3EE)),
+                      h3: AiraTypography.h6.copyWith(color: const Color(0xFFF4F3EE)),
                       code: AiraTypography.bodySmall.copyWith(
                         color: AiraColors.electricCyan,
-                        backgroundColor: AiraColors.scaffoldDark,
+                        backgroundColor: const Color(0xFF141413),
                         fontFamily: 'monospace',
                       ),
                       codeblockDecoration: BoxDecoration(
-                        color: AiraColors.scaffoldDark,
+                        color: const Color(0xFF141413),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AiraColors.glassBorder),
+                        border: Border.all(color: const Color(0xFF33322E)),
                       ),
                       codeblockPadding: const EdgeInsets.all(12),
                       listBullet: AiraTypography.bodyMedium.copyWith(
                         color: AiraColors.electricCyan,
                       ),
-                      blockquoteDecoration: BoxDecoration(
+                      blockquoteDecoration: const BoxDecoration(
                         border: Border(
                           left: BorderSide(
-                            color: AiraColors.electricCyan.withValues(alpha: 0.6),
+                            color: AiraColors.electricCyan,
                             width: 3,
                           ),
                         ),
@@ -204,7 +213,7 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                       blockquotePadding: const EdgeInsets.only(left: 12),
                       strong: AiraTypography.bodyMedium.copyWith(
                         fontWeight: FontWeight.w700,
-                        color: AiraColors.textPrimary,
+                        color: const Color(0xFFF4F3EE),
                       ),
                       em: AiraTypography.bodyMedium.copyWith(
                         fontStyle: FontStyle.italic,
@@ -214,9 +223,9 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                     selectable: true,
                   ),
 
-                  // White Glowing Pulsing Ball Indicator during streaming
+                  // White Glowing Orb Indicator during streaming
                   if (_isAnimating || widget.message.isStreaming) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -224,16 +233,16 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                           animation: _glowController,
                           builder: (context, child) {
                             return Container(
-                              width: 10,
-                              height: 10,
+                              width: 12,
+                              height: 12,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: Colors.white,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.white.withValues(alpha: 0.8 * _glowController.value),
-                                    blurRadius: 10 * _glowController.value,
-                                    spreadRadius: 3 * _glowController.value,
+                                    color: Colors.white.withValues(alpha: 0.9 * _glowController.value),
+                                    blurRadius: 12 * _glowController.value,
+                                    spreadRadius: 4 * _glowController.value,
                                   ),
                                 ],
                               ),
@@ -242,7 +251,7 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'thinking...',
+                          'typing words live...',
                           style: AiraTypography.caption.copyWith(
                             color: Colors.white70,
                             fontStyle: FontStyle.italic,
@@ -256,14 +265,14 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                   SelectableText(
                     widget.message.content,
                     style: AiraTypography.bodyMedium.copyWith(
-                      color: AiraColors.textPrimary,
+                      color: const Color(0xFFF4F3EE),
                       height: 1.5,
                       fontSize: 15,
                     ),
                   ),
                 ],
 
-                // Copy Action Button
+                // Action Buttons
                 if (widget.message.isAssistant && widget.message.content.isNotEmpty && !_isAnimating) ...[
                   const SizedBox(height: 10),
                   Row(
