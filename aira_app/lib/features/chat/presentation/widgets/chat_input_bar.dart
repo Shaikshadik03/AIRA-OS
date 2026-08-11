@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
 
-/// Chat input bar with text field and send button.
+/// Claude.ai Minimalist Floating Input Pill with Amber Glow.
 class ChatInputBar extends StatefulWidget {
   final ValueChanged<String> onSend;
   final bool isLoading;
@@ -38,46 +38,52 @@ class _ChatInputBarState extends State<ChatInputBar> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 8, 24),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
       decoration: BoxDecoration(
-        color: AiraColors.cardDark.withValues(alpha: 0.95),
-        border: Border(
-          top: BorderSide(color: AiraColors.glassBorder),
-        ),
+        color: AiraColors.scaffoldDark,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 120),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: AiraColors.surfaceDark,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: _hasText
-                      ? AiraColors.electricCyan.withValues(alpha: 0.3)
-                      : AiraColors.glassBorder,
-                ),
-              ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(
+          color: AiraColors.cardDark,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: _hasText
+                ? AiraColors.electricCyan.withValues(alpha: 0.5)
+                : AiraColors.glassBorder,
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
               child: TextField(
                 controller: _controller,
-                maxLines: 5,
+                maxLines: 4,
                 minLines: 1,
                 textInputAction: TextInputAction.newline,
                 style: AiraTypography.bodyMedium.copyWith(
                   color: AiraColors.textPrimary,
+                  fontSize: 15,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'Message AIRA...',
+                  hintText: 'Reply to AIRA...',
                   hintStyle: AiraTypography.bodyMedium.copyWith(
                     color: AiraColors.textMuted,
+                    fontSize: 14,
                   ),
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
                 onChanged: (text) {
                   final hasText = text.trim().isNotEmpty;
@@ -87,43 +93,46 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 },
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          // Send button
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              gradient: _hasText && !widget.isLoading
-                  ? AiraColors.primaryGradient
-                  : null,
-              color: _hasText && !widget.isLoading
-                  ? null
-                  : AiraColors.surfaceDark,
-              borderRadius: BorderRadius.circular(23),
-            ),
-            child: widget.isLoading
-                ? const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: AiraColors.electricCyan,
-                        strokeWidth: 2,
+            const SizedBox(width: 8),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _hasText && !widget.isLoading
+                    ? AiraColors.electricCyan
+                    : AiraColors.surfaceDark,
+                boxShadow: _hasText && !widget.isLoading
+                    ? [
+                        BoxShadow(
+                          color: AiraColors.electricCyan.withValues(alpha: 0.4),
+                          blurRadius: 10,
+                          spreadRadius: 1,
+                        )
+                      ]
+                    : [],
+              ),
+              child: IconButton(
+                icon: widget.isLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
+                      )
+                    : Icon(
+                        Icons.arrow_upward_rounded,
+                        color: _hasText ? Colors.black : AiraColors.textMuted,
+                        size: 20,
                       ),
-                    ),
-                  )
-                : IconButton(
-                    icon: Icon(
-                      Icons.send_rounded,
-                      size: 20,
-                      color: _hasText ? Colors.white : AiraColors.textMuted,
-                    ),
-                    onPressed: _hasText ? _handleSend : null,
-                  ),
-          ),
-        ],
+                onPressed: _hasText && !widget.isLoading ? _handleSend : null,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
