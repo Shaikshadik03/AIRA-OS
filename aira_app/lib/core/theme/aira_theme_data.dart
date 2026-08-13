@@ -4,10 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 class AiraThemeData {
   AiraThemeData._();
 
-  // ──────────────────── Dark Theme (ChatGPT / Claude Dark) ────────────────────
+  // ──────────────────── Dark Theme (Claude Minimalist Dark) ────────────────────
   static ThemeData get darkTheme {
-    const bgCanvas = Color(0xFF111827);
-    const bgSurface = Color(0xFF1F2937);
+    const bgCanvas = Color(0xFF141413);
+    const bgSurface = Color(0xFF1F1E1B);
     const accentCyan = Color(0xFF00E5FF);
 
     return ThemeData(
@@ -17,9 +17,9 @@ class AiraThemeData {
       primaryColor: accentCyan,
       colorScheme: const ColorScheme.dark(
         primary: accentCyan,
-        secondary: Color(0xFF8B5CF6),
+        secondary: Color(0xFFD97706),
         surface: bgSurface,
-        onSurface: Color(0xFFF9FAFB),
+        onSurface: Color(0xFFF4F3EE),
         onPrimary: Colors.black,
       ),
       textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).copyWith(
