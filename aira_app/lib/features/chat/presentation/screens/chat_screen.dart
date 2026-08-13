@@ -140,10 +140,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: const Color(0xFF141413),
       drawer: const AppDrawer(),
       appBar: AppBar(
-        backgroundColor: theme.cardColor,
+        backgroundColor: const Color(0xFF1F1E1B),
         surfaceTintColor: Colors.transparent,
         leading: Builder(
           builder: (context) => IconButton(
@@ -167,13 +167,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Container(
-                  width: 7,
-                  height: 7,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AiraColors.success,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AiraColors.electricCyan.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AiraColors.electricCyan.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(
+                    'CLAUDE MODE',
+                    style: AiraTypography.overline.copyWith(
+                      color: AiraColors.electricCyan,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
