@@ -222,6 +222,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 12),
+              // Instant Guest Demo Button
+              ElevatedButton.icon(
+                onPressed: () {
+                  ref.read(authProvider.notifier).signInGuest();
+                  context.go('/chat');
+                },
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: AiraColors.electricCyan.withValues(alpha: 0.18),
+                  side: const BorderSide(color: AiraColors.electricCyan, width: 1.2),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                icon: const Icon(Icons.bolt_rounded, size: 22, color: AiraColors.electricCyan),
+                label: Text(
+                  'Instant Guest Access (Start AIRA OS)',
+                  style: AiraTypography.bodyMedium.copyWith(
+                    color: AiraColors.electricCyan,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
               const SizedBox(height: 16),
               // Toggle
               Row(

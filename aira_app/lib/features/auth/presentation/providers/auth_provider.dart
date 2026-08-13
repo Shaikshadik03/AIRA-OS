@@ -162,6 +162,12 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
     }
   }
 
+  /// Instant Guest Demo mode entry.
+  void signInGuest() {
+    state = AuthStatus.authenticated;
+    errorMessage = null;
+  }
+
   /// Sign out.
   Future<void> signOut() async {
     try {
