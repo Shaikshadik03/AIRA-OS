@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -262,13 +263,34 @@ class _MessageBubbleState extends State<MessageBubble> with SingleTickerProvider
                     ),
                   ],
                 ] else ...[
-                  SelectableText(
-                    widget.message.content,
-                    style: AiraTypography.bodyMedium.copyWith(
-                      color: const Color(0xFFF4F3EE),
-                      height: 1.5,
-                      fontSize: 15,
-                    ),
+                  // User message with optional image
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (widget.message.base64Image != null) ...[
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          constraints: const BoxConstraints(maxHeight: 200),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            image: DecorationImage(
+                              image: MemoryImage(base64Decode(widget.message.base64Image!)),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          width: double.infinity,
+                          height: 150,
+                        ),
+                      ],
+                      SelectableText(
+                        widget.message.content,
+                        style: AiraTypography.bodyMedium.copyWith(
+                          color: const Color(0xFFF4F3EE),
+                          height: 1.5,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
 

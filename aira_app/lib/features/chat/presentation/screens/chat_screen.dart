@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/theme/aira_typography.dart';
@@ -11,6 +10,8 @@ import 'package:aira_app/core/theme/theme_provider.dart';
 import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
+import 'package:aira_app/features/chat/presentation/widgets/message_bubble.dart';
+import 'package:aira_app/features/chat/presentation/widgets/typing_indicator.dart';
 import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:go_router/go_router.dart';
@@ -537,179 +538,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
-      itemCount: chatState.messages.length,
+      itemCount: chatState.messages.length + (chatState.isSending ? 1 : 0),
       itemBuilder: (context, index) {
+        // Show typing indicator as last item while sending
+        if (chatState.isSending && index == chatState.messages.length) {
+          return const TypingIndicator();
+        }
+
         final message = chatState.messages[index];
 
         if (message.isStreaming) {
-          return _buildTypingIndicator();
+          return const TypingIndicator();
         }
 
-        return message.isUser
-            ? _buildUserBubble(message.content, message.base64Image)
-            : _buildAssistantBubble(message.content);
+        // Use MessageBubble for BOTH user and assistant — word-by-word streaming is inside MessageBubble
+        return MessageBubble(message: message);
       },
-    );
-  }
-
-  Widget _buildUserBubble(String content, String? base64Image) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isDark ? AiraColors.surfaceDark : const Color(0xFFE5E7EB),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(18),
-                  topRight: Radius.circular(18),
-                  bottomLeft: Radius.circular(18),
-                  bottomRight: Radius.circular(4),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (base64Image != null)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        image: DecorationImage(
-                          image: MemoryImage(base64Decode(base64Image)),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      width: double.infinity,
-                      height: 150,
-                    ),
-                  Text(
-                    content,
-                    style: AiraTypography.bodyMedium.copyWith(
-                      color: theme.colorScheme.onSurface,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAssistantBubble(String content) {
-    final theme = Theme.of(context);
-    final textPrimary = theme.colorScheme.onSurface;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            margin: const EdgeInsets.only(top: 2, right: 10),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: AiraColors.cyanPurpleGradient,
-            ),
-            child: const Center(
-              child: Text('A', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          Flexible(
-            child: MarkdownBody(
-              data: content,
-              styleSheet: MarkdownStyleSheet(
-                p: AiraTypography.bodyMedium.copyWith(
-                  color: textPrimary,
-                  height: 1.6,
-                ),
-                h1: AiraTypography.h3.copyWith(color: textPrimary),
-                h2: AiraTypography.h4.copyWith(color: textPrimary),
-                h3: AiraTypography.h5.copyWith(color: textPrimary),
-                strong: AiraTypography.bodyMedium.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: textPrimary,
-                ),
-                em: AiraTypography.bodyMedium.copyWith(
-                  fontStyle: FontStyle.italic,
-                  color: textPrimary.withValues(alpha: 0.7),
-                ),
-                code: AiraTypography.bodySmall.copyWith(
-                  color: theme.colorScheme.primary,
-                  backgroundColor: theme.cardColor,
-                  fontFamily: 'monospace',
-                ),
-                codeblockDecoration: BoxDecoration(
-                  color: theme.cardColor,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: theme.brightness == Brightness.dark ? AiraColors.glassBorder : Colors.black12),
-                ),
-                codeblockPadding: const EdgeInsets.all(12),
-                listBullet: AiraTypography.bodyMedium.copyWith(color: theme.colorScheme.primary),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTypingIndicator() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            margin: const EdgeInsets.only(right: 10),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: AiraColors.cyanPurpleGradient,
-            ),
-            child: const Center(
-              child: Text('A', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          ...[0, 1, 2].map((i) => Container(
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AiraColors.electricCyan.withValues(alpha: 0.6),
-                  ),
-                )
-                    .animate(
-                      onPlay: (controller) => controller.repeat(),
-                    )
-                    .fadeIn(delay: Duration(milliseconds: i * 200), duration: 400.ms)
-                    .then()
-                    .fadeOut(duration: 400.ms),
-              )),
-          const SizedBox(width: 4),
-          Text(
-            'Thinking...',
-            style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
-          ),
-        ],
-      ),
     );
   }
 
