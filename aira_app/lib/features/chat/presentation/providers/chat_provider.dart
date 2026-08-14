@@ -836,10 +836,20 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
     } catch (e) {
       final updatedMessages = state.messages.where((m) => m.id != typingMsg.id).toList();
+      // Show a short, friendly error — not the raw DioException stack
+      String friendlyError = 'Could not reach AI. Please check your internet connection.';
+      final raw = e.toString();
+      if (raw.contains('401') || raw.contains('API key') || raw.contains('Unauthorized')) {
+        friendlyError = 'AI service authentication failed. Please check your API key.';
+      } else if (raw.contains('timeout') || raw.contains('SocketException') || raw.contains('connection')) {
+        friendlyError = 'No internet connection. Please try again.';
+      } else if (raw.contains('503') || raw.contains('502') || raw.contains('unavailable')) {
+        friendlyError = 'AI service is temporarily busy. Please try again in a moment.';
+      }
       state = state.copyWith(
         messages: updatedMessages,
         isSending: false,
-        error: e.toString().replaceAll('Exception: ', ''),
+        error: friendlyError,
       );
     }
   }

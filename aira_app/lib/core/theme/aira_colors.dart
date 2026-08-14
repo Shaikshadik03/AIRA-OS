@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 class AiraColors {
   AiraColors._();
 
-  // Backgrounds
-  static const Color scaffoldDark = Color(0xFF0A0E1A);
-  static const Color cardDark = Color(0xFF111827);
-  static const Color surfaceDark = Color(0xFF1F2937);
-  static const Color surfaceLight = Color(0xFF374151);
+  // Backgrounds — Warm Claude Charcoal palette
+  static const Color scaffoldDark = Color(0xFF141413);
+  static const Color cardDark = Color(0xFF1F1E1B);
+  static const Color surfaceDark = Color(0xFF2A2A28);
+  static const Color surfaceLight = Color(0xFF3A3A38);
 
   // Primary - Electric Cyan
   static const Color electricCyan = Color(0xFF00E5FF);

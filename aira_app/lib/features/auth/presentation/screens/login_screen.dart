@@ -74,15 +74,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (success && mounted) {
       context.go('/chat');
     } else if (mounted) {
-      final error = ref.read(authProvider.notifier).errorMessage;
-      if (error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(error),
-            backgroundColor: AiraColors.error,
+      // Show friendly error — not raw AuthApiException
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Google sign-in is not configured yet. Use Guest Access to start.'),
+          backgroundColor: AiraColors.surfaceDark,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Guest Access',
+            textColor: AiraColors.electricCyan,
+            onPressed: () {
+              ref.read(authProvider.notifier).signInGuest();
+              context.go('/chat');
+            },
           ),
-        );
-      }
+        ),
+      );
     }
   }
 

@@ -198,55 +198,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ],
         ),
         actions: [
-          // Google Workspace status chip
-          GestureDetector(
-            onTap: () {
-              if (!chatState.isGoogleConnected) {
-                ref.read(chatProvider.notifier).connectGoogleWorkspace();
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Google Workspace connected ✓')),
-                );
-              }
-            },
-            child: Container(
-              margin: const EdgeInsets.only(right: 4, top: 10, bottom: 10),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: chatState.isGoogleConnected
-                    ? AiraColors.success.withValues(alpha: 0.15)
-                    : AiraColors.surfaceDark,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: chatState.isGoogleConnected
-                      ? AiraColors.success.withValues(alpha: 0.4)
-                      : AiraColors.glassBorder,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    chatState.isGoogleConnected ? Icons.check_circle_rounded : Icons.g_mobiledata_rounded,
-                    size: 16,
-                    color: chatState.isGoogleConnected ? AiraColors.success : AiraColors.textMuted,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    chatState.isGoogleConnected ? 'Google' : 'Connect',
-                    style: AiraTypography.caption.copyWith(
-                      color: chatState.isGoogleConnected ? AiraColors.success : AiraColors.textMuted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          // Theme toggle
           IconButton(
             icon: Icon(
               ref.watch(themeProvider) == ThemeMode.light ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
               color: ref.watch(themeProvider) == ThemeMode.light ? AiraColors.purpleLight : AiraColors.amber,
+              size: 20,
             ),
             tooltip: 'Switch Theme',
             onPressed: () {
@@ -255,60 +212,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ref.read(themeProvider.notifier).setThemeMode(next);
             },
           ),
-          IconButton(
-            icon: Icon(
-              _isHandsFreeActive ? Icons.graphic_eq_rounded : Icons.mic_none_rounded,
-              color: _isHandsFreeActive ? AiraColors.success : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
-            tooltip: _isHandsFreeActive ? 'Hands-Free "Hey AIRA" Active' : 'Enable Hands-Free "Hey AIRA"',
-            onPressed: () async {
-              if (_isHandsFreeActive) {
-                await _voiceService.stopPassiveWakeWordLoop();
-                setState(() => _isHandsFreeActive = false);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Hands-Free "Hey AIRA" Wake-Word Disabled')),
-                  );
-                }
-              } else {
-                setState(() => _isHandsFreeActive = true);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('🟢 Hands-Free "Hey AIRA" Listening Active! Speak "Hey AIRA..." anytime.')),
-                  );
-                }
-                _voiceService.startPassiveWakeWordLoop(
-                  onWakeWordDetected: (_) {},
-                  onCommandTriggered: (command) {
-                    if (command.isNotEmpty) {
-                      _textController.text = command;
-                      _sendMessage();
-                    }
-                  },
-                );
-                AndroidDeviceService().startOverlayService();
-              }
-            },
-          ),
           if (chatState.messages.isNotEmpty)
             IconButton(
-              icon: Icon(
-                ref.read(chatProvider.notifier).isVoiceEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
-              onPressed: () {
-                final notifier = ref.read(chatProvider.notifier);
-                notifier.toggleVoice(!notifier.isVoiceEnabled);
-                setState(() {});
-              },
-            ),
-          if (chatState.messages.isNotEmpty)
-            IconButton(
-              icon: Icon(Icons.add_rounded, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+              icon: Icon(Icons.add_rounded, color: theme.colorScheme.onSurface.withValues(alpha: 0.7), size: 22),
               tooltip: 'New Chat',
               onPressed: () => ref.read(chatProvider.notifier).clearChat(),
             ),
+          const SizedBox(width: 4),
         ],
+
       ),
       body: Column(
         children: [
@@ -538,24 +450,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
-      itemCount: chatState.messages.length + (chatState.isSending ? 1 : 0),
+      itemCount: chatState.messages.length,
       itemBuilder: (context, index) {
-        // Show typing indicator as last item while sending
-        if (chatState.isSending && index == chatState.messages.length) {
-          return const TypingIndicator();
-        }
-
         final message = chatState.messages[index];
 
+        // Streaming placeholder → show TypingIndicator (not MessageBubble)
         if (message.isStreaming) {
           return const TypingIndicator();
         }
 
-        // Use MessageBubble for BOTH user and assistant — word-by-word streaming is inside MessageBubble
+        // All real messages → MessageBubble (handles word-by-word streaming)
         return MessageBubble(message: message);
       },
     );
   }
+
 
   // ──────────────────── Input Bar ────────────────────
 
