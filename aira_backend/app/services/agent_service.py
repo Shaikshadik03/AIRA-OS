@@ -2,8 +2,8 @@
 
 import logging
 import httpx
-from bs4 import BeautifulSoup
 from app.core.ai_engine import get_ai_engine
+
 
 logger = logging.getLogger("aira.agents")
 
