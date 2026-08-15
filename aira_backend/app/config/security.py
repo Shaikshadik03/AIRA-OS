@@ -1,6 +1,11 @@
 """JWT token verification utilities."""
 
-from jose import jwt, JWTError
+try:
+    import jwt
+    from jwt.exceptions import PyJWTError as JWTError
+except ImportError:
+    from jose import jwt, JWTError
+
 from fastapi import HTTPException, status
 from app.config.settings import get_settings
 
