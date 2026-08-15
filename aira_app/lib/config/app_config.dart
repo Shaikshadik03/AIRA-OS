@@ -19,7 +19,7 @@ class AppConfig {
   );
   static const String supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    defaultValue: '',
+    defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lYW9yaG9mdHVpdnp2dXVweXFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4Njg3NjgsImV4cCI6MjA5OTQ0NDc2OH0.BM3uNMB9um3LelTPaT_jBHsAkmsYeTezX5zoirkfTOE',
   );
 
   // ============================================
@@ -31,6 +31,8 @@ class AppConfig {
   );
   static const String groqModel = 'llama-3.3-70b-versatile';
   static const String groqBaseUrl = 'https://api.groq.com/openai/v1';
+
+
 
   // ============================================
   // 🤖 GEMINI AI (Fallback 1)

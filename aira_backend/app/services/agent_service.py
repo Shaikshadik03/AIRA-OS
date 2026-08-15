@@ -56,11 +56,11 @@ class AgentService:
                 f"Context:\n{search_context}"
             )
             
-            summary = await self.ai.generate_response(
+            msg = await self.ai.generate_response(
                 messages=[{"role": "user", "content": prompt}],
                 system_prompt="You are a precise research assistant. Be concise."
             )
-            return summary
+            return msg.content if hasattr(msg, "content") else str(msg)
 
         except Exception as e:
             logger.error(f"Web search failed: {e}")
@@ -77,10 +77,11 @@ class AgentService:
             "Use markdown or standard spacing for the email body layout. Do not write anything else."
         )
 
-        response = await self.ai.generate_response(
+        msg = await self.ai.generate_response(
             messages=[{"role": "user", "content": prompt}],
             system_prompt=system_prompt
         )
+        response = msg.content if hasattr(msg, "content") else str(msg)
 
         # Parse JSON output
         import json
@@ -105,10 +106,12 @@ class AgentService:
             f"Write a summary about: '{query}' based on your knowledge base. "
             "Note at the beginning that this is offline compiled data."
         )
-        return await self.ai.generate_response(
+        msg = await self.ai.generate_response(
             messages=[{"role": "user", "content": prompt}],
             system_prompt="You are a helpful research assistant."
         )
+        return msg.content if hasattr(msg, "content") else str(msg)
+
 
 
 def get_agent_service() -> AgentService:

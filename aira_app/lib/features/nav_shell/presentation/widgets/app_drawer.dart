@@ -220,6 +220,15 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
               child: Column(
                 children: [
                   _DrawerItem(
+                    icon: Icons.newspaper_rounded,
+                    label: 'Daily Intelligence',
+                    color: AiraColors.amber,
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.push('/briefing');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.settings_rounded,
                     label: 'Settings',
                     color: AiraColors.electricCyan,
@@ -243,6 +252,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                   ),
                 ],
               ),
+
             ),
           ],
         ),

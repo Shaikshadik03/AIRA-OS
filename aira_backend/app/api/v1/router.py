@@ -1,7 +1,22 @@
 """Aggregated API v1 router."""
 
 from fastapi import APIRouter
-from app.api.v1 import health, auth, chat, memory, planner, finance, agents, study, coding, voice, creative, business, google
+from app.api.v1 import (
+    health,
+    auth,
+    chat,
+    memory,
+    planner,
+    finance,
+    agents,
+    study,
+    coding,
+    voice,
+    creative,
+    business,
+    google,
+    briefing,
+)
 
 router = APIRouter()
 
@@ -18,3 +33,5 @@ router.include_router(voice.router)
 router.include_router(creative.router)
 router.include_router(business.router)
 router.include_router(google.router)
+router.include_router(briefing.router)
+

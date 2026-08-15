@@ -15,6 +15,7 @@ logger = logging.getLogger("aira")
 
 from app.core.scheduler import start_scheduler, stop_scheduler, scheduler
 from app.jobs.daily_brief import generate_daily_brief
+from app.jobs.night_brief import generate_night_brief
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,8 +28,7 @@ async def lifespan(app: FastAPI):
     # Start background scheduler
     start_scheduler()
     
-    # Schedule the daily brief job (e.g., every day at 7:00 AM UTC)
-    # Using a simple cron trigger.
+    # Schedule morning briefing job (7:00 AM)
     if not scheduler.get_job('daily_brief_job'):
         scheduler.add_job(
             generate_daily_brief,
@@ -39,10 +39,22 @@ async def lifespan(app: FastAPI):
             replace_existing=True
         )
     
+    # Schedule night briefing job (10:00 PM / 22:00)
+    if not scheduler.get_job('night_brief_job'):
+        scheduler.add_job(
+            generate_night_brief,
+            'cron',
+            hour=22,
+            minute=0,
+            id='night_brief_job',
+            replace_existing=True
+        )
+    
     logger.info("✅ AIRA OS Backend is ready!")
     yield
     logger.info("👋 AIRA OS Backend shutting down...")
     stop_scheduler()
+
 
 
 def create_app() -> FastAPI:

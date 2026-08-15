@@ -17,6 +17,8 @@
 **/android/key.properties
 *.jks
 *.keystore
+*.apk
+
 
 # iOS
 **/ios/Pods/
