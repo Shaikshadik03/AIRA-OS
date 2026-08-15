@@ -1,7 +1,7 @@
 """Business CRM and invoicing API endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from app.core.middleware import get_current_user
 from app.services.business_service import get_business_service
 
@@ -11,10 +11,11 @@ router = APIRouter(prefix="/business", tags=["Business CRM"])
 class ClientCreate(BaseModel):
     name: str
     company: str | None = None
-    email: EmailStr | None = None
+    email: str | None = None
     phone: str | None = None
     notes: str | None = None
     status: str = "lead"
+
 
 
 class InvoiceItem(BaseModel):
