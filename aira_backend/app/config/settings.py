@@ -21,7 +21,8 @@ class Settings(BaseSettings):
 
     # Security
     jwt_secret: str = "your-supabase-jwt-secret"
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8080"]
+    cors_origins: list[str] | str = ["*"]
+
 
     # App
     environment: str = "development"

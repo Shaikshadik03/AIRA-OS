@@ -71,13 +71,24 @@ def create_app() -> FastAPI:
     )
 
     # CORS
+    raw_cors = settings.cors_origins
+    if isinstance(raw_cors, str):
+        import json
+        try:
+            cors_list = json.loads(raw_cors)
+        except Exception:
+            cors_list = [c.strip() for c in raw_cors.split(",")] if "," in raw_cors else [raw_cors]
+    else:
+        cors_list = raw_cors or ["*"]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
+        allow_origins=cors_list,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
 
     # Include API routes
     app.include_router(v1_router, prefix=settings.api_v1_prefix)
