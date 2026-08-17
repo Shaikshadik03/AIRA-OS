@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
-import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:aira_app/core/services/supabase_chat_service.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
@@ -42,67 +42,83 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final drawerBg = isDark ? AiraColors.canvasDark : AiraColors.canvasLight;
+    final cardBg = isDark ? AiraColors.cardDark : AiraColors.cardLight;
+    final borderColor = isDark ? AiraColors.borderDark : AiraColors.borderLight;
+    final mutedColor = isDark ? AiraColors.textMuted : AiraColors.textMutedLight;
 
     return Drawer(
-      backgroundColor: AiraColors.cardDark,
+      backgroundColor: drawerBg,
       child: SafeArea(
         child: Column(
           children: [
-            // ─── User Profile Header ───
+            // ─── Header: Profile ───
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 20, 16, 18),
               decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: AiraColors.glassBorder),
-                ),
+                border: Border(bottom: BorderSide(color: borderColor)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: AiraColors.cyanPurpleGradient,
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AiraColors.claudeTerracotta,
+                    ),
+                    child: Center(
+                      child: Text(
+                        (user?.displayName.isNotEmpty == true ? user!.displayName[0] : 'U').toUpperCase(),
+                        style: GoogleFonts.sourceSerif4(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
                         ),
-                        child: Center(
-                          child: Text(
-                            (user?.displayName ?? 'U')[0].toUpperCase(),
-                            style: AiraTypography.h4.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user?.displayName ?? 'User',
+                          style: GoogleFonts.playfairDisplay(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            color: theme.colorScheme.onSurface,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      const Spacer(),
-                      // Refresh history button
-                      IconButton(
-                        icon: const Icon(Icons.refresh_rounded, color: AiraColors.textMuted, size: 20),
-                        tooltip: 'Refresh history',
-                        onPressed: _loadHistory,
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        Text(
+                          user?.email ?? 'Not signed in',
+                          style: GoogleFonts.sourceSerif4(
+                            color: mutedColor,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    user?.displayName ?? 'User',
-                    style: AiraTypography.h5.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    user?.email ?? 'Not signed in',
-                    style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
+                  IconButton(
+                    icon: Icon(Icons.refresh_rounded, color: mutedColor, size: 20),
+                    tooltip: 'Refresh chats',
+                    onPressed: _loadHistory,
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
 
             // ─── New Chat Button ───
             Padding(
@@ -116,59 +132,74 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                     context.go('/chat');
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AiraColors.electricCyan.withValues(alpha: 0.15),
-                    foregroundColor: AiraColors.electricCyan,
+                    backgroundColor: cardBg,
+                    foregroundColor: theme.colorScheme.onSurface,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: AiraColors.electricCyan.withValues(alpha: 0.3)),
+                      side: BorderSide(color: borderColor),
                     ),
                   ),
-                  icon: const Icon(Icons.add_rounded, size: 20),
-                  label: Text('New Chat', style: AiraTypography.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                  icon: const Icon(Icons.add_rounded, size: 20, color: AiraColors.claudeTerracotta),
+                  label: Text(
+                    'New Chat',
+                    style: GoogleFonts.sourceSerif4(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ),
 
             const SizedBox(height: 8),
 
-            // ─── Chat History ───
+            // ─── Chat History Section ───
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _DrawerSectionTitle(title: 'RECENT CHATS'),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+                    child: Text(
+                      'RECENT CONVERSATIONS',
+                      style: GoogleFonts.sourceSerif4(
+                        color: mutedColor,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: _loading
                         ? const Center(
                             child: Padding(
                               padding: EdgeInsets.all(20),
                               child: CircularProgressIndicator(
-                                color: AiraColors.electricCyan,
+                                color: AiraColors.claudeTerracotta,
                                 strokeWidth: 2,
                               ),
                             ),
                           )
                         : _history.isEmpty
                             ? Padding(
-                                padding: const EdgeInsets.all(20),
+                                padding: const EdgeInsets.all(24),
                                 child: Column(
                                   children: [
                                     Icon(
                                       Icons.chat_bubble_outline_rounded,
-                                      color: AiraColors.textMuted,
-                                      size: 32,
+                                      color: mutedColor,
+                                      size: 28,
                                     ),
-                                    const SizedBox(height: 8),
+                                    const SizedBox(height: 10),
                                     Text(
                                       'No previous chats',
-                                      style: AiraTypography.bodySmall.copyWith(color: AiraColors.textMuted),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Start a new chat above',
-                                      style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
+                                      style: GoogleFonts.sourceSerif4(
+                                        color: mutedColor,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -184,7 +215,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                                       : null;
                                   final timeAgo = _formatTimeAgo(updatedAt);
 
-                                  return _ChatHistoryItem(
+                                  return _ChatHistoryTile(
                                     title: title,
                                     timeAgo: timeAgo,
                                     onTap: () {
@@ -211,27 +242,34 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
 
             // ─── Bottom Actions ───
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: AiraColors.glassBorder),
-                ),
+                border: Border(top: BorderSide(color: borderColor)),
               ),
               child: Column(
                 children: [
                   _DrawerItem(
                     icon: Icons.newspaper_rounded,
                     label: 'Daily Intelligence',
-                    color: AiraColors.amber,
+                    iconColor: AiraColors.claudeTerracotta,
                     onTap: () {
                       Navigator.pop(context);
                       context.push('/briefing');
                     },
                   ),
                   _DrawerItem(
-                    icon: Icons.settings_rounded,
-                    label: 'Settings',
-                    color: AiraColors.electricCyan,
+                    icon: Icons.laptop_mac_rounded,
+                    label: 'Laptop Remote',
+                    iconColor: AiraColors.claudeTerracotta,
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.push('/laptop');
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.settings_outlined,
+                    label: 'Settings & Theme',
+                    iconColor: isDark ? AiraColors.textSecondary : AiraColors.textSecondaryLight,
                     onTap: () {
                       Navigator.pop(context);
                       context.push('/settings');
@@ -240,7 +278,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                   _DrawerItem(
                     icon: Icons.logout_rounded,
                     label: 'Sign Out',
-                    color: AiraColors.error,
+                    iconColor: AiraColors.error,
                     onTap: () async {
                       Navigator.pop(context);
                       final notifier = ref.read(authProvider.notifier);
@@ -252,7 +290,6 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
                   ),
                 ],
               ),
-
             ),
           ],
         ),
@@ -271,15 +308,15 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
   }
 }
 
-// ──────────────────── Chat History Item ────────────────────
+// ──────────────────── Chat History Tile ────────────────────
 
-class _ChatHistoryItem extends StatelessWidget {
+class _ChatHistoryTile extends StatelessWidget {
   final String title;
   final String timeAgo;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
-  const _ChatHistoryItem({
+  const _ChatHistoryTile({
     required this.title,
     required this.timeAgo,
     required this.onTap,
@@ -288,18 +325,20 @@ class _ChatHistoryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final mutedColor = isDark ? AiraColors.textMuted : AiraColors.textMutedLight;
+
     return InkWell(
       onTap: onTap,
-      splashColor: AiraColors.electricCyan.withValues(alpha: 0.1),
-      highlightColor: AiraColors.electricCyan.withValues(alpha: 0.05),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.chat_bubble_outline_rounded,
-              color: AiraColors.textMuted,
-              size: 18,
+              color: mutedColor,
+              size: 16,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -308,8 +347,9 @@ class _ChatHistoryItem extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: AiraTypography.bodySmall.copyWith(
-                      color: AiraColors.textPrimary,
+                    style: GoogleFonts.sourceSerif4(
+                      color: theme.colorScheme.onSurface,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w500,
                     ),
                     maxLines: 1,
@@ -318,13 +358,16 @@ class _ChatHistoryItem extends StatelessWidget {
                   if (timeAgo.isNotEmpty)
                     Text(
                       timeAgo,
-                      style: AiraTypography.caption.copyWith(color: AiraColors.textMuted),
+                      style: GoogleFonts.sourceSerif4(
+                        color: mutedColor,
+                        fontSize: 11,
+                      ),
                     ),
                 ],
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AiraColors.textMuted),
+              icon: Icon(Icons.delete_outline_rounded, size: 16, color: mutedColor),
               onPressed: onDelete,
               tooltip: 'Delete chat',
               padding: EdgeInsets.zero,
@@ -337,62 +380,44 @@ class _ChatHistoryItem extends StatelessWidget {
   }
 }
 
-// ──────────────────── Drawer Helpers ────────────────────
+// ──────────────────── Drawer Action Item ────────────────────
 
 class _DrawerItem extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color color;
+  final Color iconColor;
   final VoidCallback onTap;
 
   const _DrawerItem({
     required this.icon,
     required this.label,
-    required this.color,
+    required this.iconColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return InkWell(
       onTap: onTap,
-      splashColor: color.withValues(alpha: 0.1),
-      highlightColor: color.withValues(alpha: 0.05),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         child: Row(
           children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(width: 16),
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 14),
             Expanded(
               child: Text(
                 label,
-                style: AiraTypography.bodyMedium.copyWith(
-                  color: Colors.white,
+                style: GoogleFonts.sourceSerif4(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DrawerSectionTitle extends StatelessWidget {
-  final String title;
-
-  const _DrawerSectionTitle({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-      child: Text(
-        title,
-        style: AiraTypography.overline.copyWith(
-          color: AiraColors.textMuted,
         ),
       ),
     );

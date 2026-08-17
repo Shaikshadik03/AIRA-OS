@@ -3,13 +3,16 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
-import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/features/chat/domain/chat_models.dart';
+import 'package:aira_app/features/chat/presentation/screens/artifact_canvas_screen.dart';
 
-/// Claude-style message bubble.
-/// - User messages: right-aligned, compact, no sender label
-/// - Assistant messages: left-aligned, full-width, "AIRA" label + word-by-word streaming + pulsing orb
+/// Pure Claude-Style Message Bubble with Live Artifacts:
+/// - User messages: Right-aligned compact bubble with warm surface tone and soft border.
+/// - Assistant messages: Left-aligned generous layout, markdown typography with Source Serif 4,
+///   smooth word-by-word streaming, pulsing glowing orb indicator, clean code blocks,
+///   and interactive Claude Artifact Canvas.
 class MessageBubble extends StatefulWidget {
   final ChatMessage message;
   const MessageBubble({super.key, required this.message});
@@ -31,7 +34,7 @@ class _MessageBubbleState extends State<MessageBubble>
     super.initState();
     _glowController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
+      duration: const Duration(milliseconds: 750),
     )..repeat(reverse: true);
 
     if (widget.message.isAssistant) {
@@ -58,7 +61,7 @@ class _MessageBubbleState extends State<MessageBubble>
     _isAnimating = true;
     _wordTimer?.cancel();
 
-    _wordTimer = Timer.periodic(const Duration(milliseconds: 28), (timer) {
+    _wordTimer = Timer.periodic(const Duration(milliseconds: 26), (timer) {
       if (!mounted) return;
       if (_displayedWordCount < _words.length) {
         setState(() => _displayedWordCount++);
@@ -81,6 +84,26 @@ class _MessageBubbleState extends State<MessageBubble>
     return _words.take(_displayedWordCount).join(' ');
   }
 
+  List<_ArtifactSnippet> _extractArtifacts(String text) {
+    final artifacts = <_ArtifactSnippet>[];
+    final codeBlockRegex = RegExp(r'```([a-zA-Z0-9_-]*)\n([\s\S]*?)```');
+    final matches = codeBlockRegex.allMatches(text);
+
+    for (final m in matches) {
+      final lang = m.group(1)?.trim();
+      final code = m.group(2)?.trim() ?? '';
+      if (code.length > 40) {
+        final displayLang = (lang != null && lang.isNotEmpty) ? lang : 'code';
+        artifacts.add(_ArtifactSnippet(
+          language: displayLang,
+          content: code,
+          title: '$displayLang snippet (${code.split('\n').length} lines)',
+        ));
+      }
+    }
+    return artifacts;
+  }
+
   @override
   Widget build(BuildContext context) {
     return widget.message.isUser ? _buildUserBubble() : _buildAssistantBubble();
@@ -89,8 +112,15 @@ class _MessageBubbleState extends State<MessageBubble>
   // ── USER BUBBLE ──────────────────────────────────────────────────────────
 
   Widget _buildUserBubble() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bubbleBg = isDark ? AiraColors.surfaceDark : AiraColors.surfaceRaisedLight;
+    final bubbleBorder = isDark ? AiraColors.borderDark : const Color(0xFFDFDAD0);
+    final textColor = isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight;
+
     return Padding(
-      padding: const EdgeInsets.only(left: 56, right: 16, bottom: 8),
+      padding: const EdgeInsets.only(left: 60, right: 18, bottom: 12),
       child: Align(
         alignment: Alignment.centerRight,
         child: Column(
@@ -102,19 +132,19 @@ class _MessageBubbleState extends State<MessageBubble>
                 borderRadius: BorderRadius.circular(14),
                 child: Image.memory(
                   base64Decode(widget.message.base64Image!),
-                  width: 200,
-                  height: 150,
+                  width: 220,
+                  height: 160,
                   fit: BoxFit.cover,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 6),
             ],
-            // Message text
+            // User message bubble
             if (widget.message.content.isNotEmpty)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2A2A28),
+                  color: bubbleBg,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(18),
                     topRight: Radius.circular(4),
@@ -122,14 +152,14 @@ class _MessageBubbleState extends State<MessageBubble>
                     bottomRight: Radius.circular(18),
                   ),
                   border: Border.all(
-                    color: const Color(0xFF3A3A38),
+                    color: bubbleBorder,
                     width: 1,
                   ),
                 ),
                 child: SelectableText(
                   widget.message.content,
-                  style: AiraTypography.bodyMedium.copyWith(
-                    color: const Color(0xFFECEBE6),
+                  style: GoogleFonts.sourceSerif4(
+                    color: textColor,
                     height: 1.5,
                     fontSize: 15,
                   ),
@@ -144,98 +174,133 @@ class _MessageBubbleState extends State<MessageBubble>
   // ── ASSISTANT BUBBLE ─────────────────────────────────────────────────────
 
   Widget _buildAssistantBubble() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textColor = isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight;
+    final mutedColor = isDark ? AiraColors.textMuted : AiraColors.textMutedLight;
+    final codeBg = isDark ? const Color(0xFF1C1B19) : const Color(0xFF262523);
+    final codeBorder = isDark ? AiraColors.borderDark : const Color(0xFF3C3A36);
+
+    final artifacts = _extractArtifacts(widget.message.content);
+
     return Padding(
-      padding: const EdgeInsets.only(left: 16, right: 56, bottom: 12),
+      padding: const EdgeInsets.only(left: 18, right: 28, bottom: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // "AIRA" label with animated orb
+          // "AIRA" label with glowing terracotta orb
           Padding(
-            padding: const EdgeInsets.only(bottom: 5, left: 2),
+            padding: const EdgeInsets.only(bottom: 6, left: 2),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 AnimatedBuilder(
                   animation: _glowController,
                   builder: (_, __) => Container(
-                    width: 7,
-                    height: 7,
+                    width: 8,
+                    height: 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white,
+                      color: AiraColors.claudeTerracotta,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.white.withValues(
-                              alpha: 0.7 * _glowController.value),
-                          blurRadius: 6 * _glowController.value,
+                          color: AiraColors.claudeTerracotta.withValues(
+                            alpha: 0.8 * _glowController.value,
+                          ),
+                          blurRadius: 7 * _glowController.value,
                           spreadRadius: 2 * _glowController.value,
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 7),
                 Text(
                   'AIRA',
-                  style: AiraTypography.caption.copyWith(
-                    color: Colors.white54,
-                    fontSize: 10,
+                  style: GoogleFonts.sourceSerif4(
+                    color: mutedColor,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 1.4,
+                    letterSpacing: 1.2,
                   ),
                 ),
               ],
             ),
           ),
 
-          // Message content
+          // Rendered Markdown
           MarkdownBody(
             data: _streamedText,
             styleSheet: MarkdownStyleSheet(
-              p: AiraTypography.bodyMedium.copyWith(
-                color: const Color(0xFFECEBE6),
-                height: 1.7,
+              p: GoogleFonts.sourceSerif4(
+                color: textColor,
+                height: 1.65,
                 fontSize: 15,
               ),
-              h1: AiraTypography.h4.copyWith(color: const Color(0xFFECEBE6)),
-              h2: AiraTypography.h5.copyWith(color: const Color(0xFFECEBE6)),
-              h3: AiraTypography.h6.copyWith(color: const Color(0xFFECEBE6)),
-              strong: AiraTypography.bodyMedium.copyWith(
+              h1: GoogleFonts.playfairDisplay(
+                color: textColor,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFFECEBE6),
+                fontSize: 22,
+                height: 1.3,
+              ),
+              h2: GoogleFonts.playfairDisplay(
+                color: textColor,
+                fontWeight: FontWeight.w700,
+                fontSize: 19,
+                height: 1.3,
+              ),
+              h3: GoogleFonts.playfairDisplay(
+                color: textColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 17,
+                height: 1.3,
+              ),
+              strong: GoogleFonts.sourceSerif4(
+                fontWeight: FontWeight.w700,
+                color: textColor,
                 fontSize: 15,
               ),
-              em: AiraTypography.bodyMedium.copyWith(
+              em: GoogleFonts.sourceSerif4(
                 fontStyle: FontStyle.italic,
-                color: Colors.white70,
+                color: isDark ? const Color(0xFFD6D4CD) : const Color(0xFF383733),
                 fontSize: 15,
               ),
-              code: AiraTypography.bodySmall.copyWith(
-                color: AiraColors.electricCyan,
-                backgroundColor: const Color(0xFF1A1A18),
-                fontFamily: 'monospace',
+              code: GoogleFonts.firaCode(
+                color: AiraColors.claudeTerracotta,
+                backgroundColor: isDark ? const Color(0xFF262522) : const Color(0xFFECE9E0),
+                fontSize: 13,
               ),
               codeblockDecoration: BoxDecoration(
-                color: const Color(0xFF1A1A18),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF33322E)),
+                color: codeBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: codeBorder),
               ),
               codeblockPadding: const EdgeInsets.all(14),
-              listBullet: AiraTypography.bodyMedium.copyWith(
-                color: AiraColors.electricCyan,
+              listBullet: GoogleFonts.sourceSerif4(
+                color: AiraColors.claudeTerracotta,
                 fontSize: 15,
+                fontWeight: FontWeight.bold,
               ),
-              blockquoteDecoration: const BoxDecoration(
-                border: Border(
-                  left: BorderSide(color: AiraColors.electricCyan, width: 3),
+              blockquoteDecoration: BoxDecoration(
+                border: const Border(
+                  left: BorderSide(color: AiraColors.claudeTerracotta, width: 3),
                 ),
+                color: isDark
+                    ? AiraColors.claudeTerracotta.withValues(alpha: 0.06)
+                    : AiraColors.claudeTerracotta.withValues(alpha: 0.04),
               ),
-              blockquotePadding: const EdgeInsets.only(left: 12),
+              blockquotePadding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
             ),
             selectable: true,
           ),
 
-          // Pulsing white orb indicator while streaming
+          // ── Claude Artifacts Live Cards (if code blocks are present) ──
+          if (!_isAnimating && artifacts.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ...artifacts.map((art) => _buildArtifactCard(art, isDark)),
+          ],
+
+          // Pulsing glowing orb indicator while streaming
           if (_isAnimating) ...[
             const SizedBox(height: 10),
             Row(
@@ -244,17 +309,17 @@ class _MessageBubbleState extends State<MessageBubble>
                 AnimatedBuilder(
                   animation: _glowController,
                   builder: (_, __) => Container(
-                    width: 10,
-                    height: 10,
+                    width: 9,
+                    height: 9,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white,
+                      color: AiraColors.claudeTerracotta,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.white
+                          color: AiraColors.claudeTerracotta
                               .withValues(alpha: 0.9 * _glowController.value),
-                          blurRadius: 12 * _glowController.value,
-                          spreadRadius: 4 * _glowController.value,
+                          blurRadius: 10 * _glowController.value,
+                          spreadRadius: 3 * _glowController.value,
                         ),
                       ],
                     ),
@@ -264,40 +329,130 @@ class _MessageBubbleState extends State<MessageBubble>
             ),
           ],
 
-          // Copy button after streaming done
+          // Action buttons after message is finished
           if (!_isAnimating && widget.message.content.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            GestureDetector(
-              onTap: () {
-                Clipboard.setData(
-                    ClipboardData(text: widget.message.content));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Copied'),
-                    duration: Duration(seconds: 1),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.copy_rounded,
-                      size: 12, color: Colors.white30),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Copy',
-                    style: AiraTypography.caption.copyWith(
-                      color: Colors.white30,
-                      fontSize: 11,
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InkWell(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    Clipboard.setData(ClipboardData(text: widget.message.content));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Copied to clipboard',
+                          style: GoogleFonts.sourceSerif4(fontSize: 13),
+                        ),
+                        duration: const Duration(seconds: 1),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.copy_rounded,
+                          size: 13,
+                          color: mutedColor,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Copy',
+                          style: GoogleFonts.sourceSerif4(
+                            color: mutedColor,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ],
       ),
     );
   }
+
+  Widget _buildArtifactCard(_ArtifactSnippet artifact, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AiraColors.claudeTerracotta.withValues(alpha: 0.35),
+          width: 1,
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AiraColors.claudeTerracotta.withValues(alpha: 0.12),
+          ),
+          child: const Icon(
+            Icons.code_rounded,
+            color: AiraColors.claudeTerracotta,
+            size: 18,
+          ),
+        ),
+        title: Text(
+          artifact.title,
+          style: GoogleFonts.sourceSerif4(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          'Tap to open in Live Canvas',
+          style: GoogleFonts.sourceSerif4(
+            fontSize: 11.5,
+            color: AiraColors.claudeTerracotta,
+          ),
+        ),
+        trailing: const Icon(
+          Icons.open_in_new_rounded,
+          size: 18,
+          color: AiraColors.claudeTerracotta,
+        ),
+        onTap: () {
+          HapticFeedback.mediumImpact();
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ArtifactCanvasScreen(
+                title: artifact.title,
+                content: artifact.content,
+                language: artifact.language,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ArtifactSnippet {
+  final String title;
+  final String language;
+  final String content;
+
+  const _ArtifactSnippet({
+    required this.title,
+    required this.language,
+    required this.content,
+  });
 }

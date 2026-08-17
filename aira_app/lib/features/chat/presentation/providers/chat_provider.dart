@@ -6,6 +6,11 @@ import 'package:aira_app/features/chat/domain/phone_intent.dart';
 import 'package:aira_app/features/chat/domain/device_intent.dart';
 import 'package:aira_app/features/chat/domain/notification_intent.dart';
 import 'package:aira_app/features/chat/domain/routine_intent.dart';
+import 'package:aira_app/features/chat/domain/whatsapp_intent.dart';
+import 'package:aira_app/features/laptop/domain/laptop_intent_detector.dart';
+import 'package:aira_app/features/laptop/data/laptop_control_service.dart';
+import 'dart:convert';
+import 'package:aira_app/core/services/web_search_service.dart';
 import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/routine_service.dart';
 import 'package:aira_app/core/services/groq_service.dart';
@@ -66,6 +71,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final AndroidDeviceService _deviceService = AndroidDeviceService();
   final NotificationService _notificationService = NotificationService();
   final RoutineService _routineService = RoutineService();
+  final LaptopControlService _laptopService = LaptopControlService();
   final _uuid = const Uuid();
   final FlutterTts _tts = FlutterTts();
   bool _isVoiceEnabled = true;
@@ -173,8 +179,189 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return;
     }
 
-    // ── Normal AI chat flow ──
+    // ── Check for WhatsApp Intent (Milestone Upgrade) ──
+    final waCommand = WhatsAppIntentDetector.detect(content);
+    if (waCommand.isWhatsAppCommand) {
+      await _handleWhatsAppCommand(content, waCommand);
+      return;
+    }
+
+    // ── Check for Laptop Control Intent (Milestone 3) ──
+    if (LaptopIntentDetector.isLaptopCommand(content)) {
+      final laptopCommand = LaptopIntentDetector.parse(content);
+      if (laptopCommand != null) {
+        await _handleLaptopCommand(content, laptopCommand);
+        return;
+      }
+    }
+
+    // ── Normal AI chat flow (with auto web search) ──
     await _sendToAI(content, base64Image: base64Image);
+  }
+
+  // ──────────────────── WhatsApp Handlers ────────────────────
+
+  Future<void> _handleWhatsAppCommand(String content, WhatsAppCommand command) async {
+    _addUserMessage(content);
+    _addLoadingMessage('Drafting WhatsApp message...');
+
+    try {
+      String draftedMessage = command.message;
+      if (command.intent == WhatsAppIntentType.draftMessage || draftedMessage.length < 10) {
+        try {
+          draftedMessage = await _groq.chat(
+            'Draft a clear, polite, natural WhatsApp message for this instruction: "$content". Write ONLY the message body text ready to send. No quotes, no intro.',
+            [],
+          );
+        } catch (_) {
+          draftedMessage = command.message;
+        }
+      }
+
+      String? phone;
+      String recipientLabel = command.recipient;
+
+      if (command.recipient.isNotEmpty) {
+        // Try looking up in Google Contacts / AI Memory
+        try {
+          final contact = await _phoneService.resolvePhoneNumber(command.recipient);
+          if (contact['phone'] != null && contact['phone']!.isNotEmpty) {
+            phone = contact['phone'];
+            recipientLabel = '${contact['name']} ($phone)';
+          }
+        } catch (_) {}
+      }
+
+      // Launch WhatsApp
+      final opened = await WhatsAppIntentDetector.openWhatsApp(
+        phone: phone,
+        message: draftedMessage,
+      );
+
+      _removeLoadingMessage();
+
+      final result = opened
+          ? '💬 **WhatsApp Opened!**\n\n'
+            '${recipientLabel.isNotEmpty ? '**To:** $recipientLabel\n' : ''}'
+            '**Drafted Message:**\n> "${draftedMessage.replaceAll('\n', '\n> ')}"\n\n'
+            '✅ *Message prefilled in WhatsApp ready to send.*'
+          : '💬 **WhatsApp Message Drafted:**\n\n'
+            '${recipientLabel.isNotEmpty ? '**To:** $recipientLabel\n' : ''}'
+            '**Drafted Message:**\n> "${draftedMessage.replaceAll('\n', '\n> ')}"\n\n'
+            '⚠️ *Could not open WhatsApp app directly. Please copy the text above.*';
+
+      _addSystemMessage(result);
+
+      if (_isVoiceEnabled && draftedMessage.isNotEmpty) {
+        await _tts.speak('WhatsApp message prepared.');
+      }
+    } catch (e) {
+      _removeLoadingMessage();
+      _addSystemMessage('❌ **Failed to prepare WhatsApp message:** $e');
+    }
+  }
+
+  // ──────────────────── Laptop Control Handlers (Milestone 3) ────────────────────
+
+  Future<void> _handleLaptopCommand(String content, LaptopCommand command) async {
+    _addUserMessage(content);
+    _addLoadingMessage('Sending command to laptop...');
+
+    await _laptopService.loadConfig();
+    if (!_laptopService.isConfigured) {
+      _removeLoadingMessage();
+      _addSystemMessage(
+        '⚠️ **Laptop not configured yet.**\n\n'
+        'Please go to **Drawer ☰ → Laptop Remote** to enter your laptop\'s Wi-Fi IP address and PIN.',
+      );
+      return;
+    }
+
+    try {
+      Map<String, dynamic>? result;
+      String? base64Image;
+
+      switch (command.type) {
+        case LaptopCommandType.screenshot:
+          final bytes = await _laptopService.captureScreenshot();
+          if (bytes != null) {
+            base64Image = base64Encode(bytes);
+            result = {'success': true};
+          }
+          break;
+        case LaptopCommandType.lock:
+          await _laptopService.lockScreen();
+          result = {'success': true};
+          break;
+        case LaptopCommandType.sleep:
+          await _laptopService.sleepLaptop();
+          result = {'success': true};
+          break;
+        case LaptopCommandType.shutdown:
+          await _laptopService.shutdownLaptop();
+          result = {'success': true};
+          break;
+        case LaptopCommandType.restart:
+          await _laptopService.restartLaptop();
+          result = {'success': true};
+          break;
+        case LaptopCommandType.mute:
+          await _laptopService.muteVolume();
+          result = {'success': true};
+          break;
+        case LaptopCommandType.volumeUp:
+          await _laptopService.volumeUp();
+          result = {'success': true};
+          break;
+        case LaptopCommandType.volumeDown:
+          await _laptopService.volumeDown();
+          result = {'success': true};
+          break;
+        case LaptopCommandType.openApp:
+          result = await _laptopService.openApp(command.argument ?? '');
+          break;
+        case LaptopCommandType.closeApp:
+          result = await _laptopService.closeApp(command.argument ?? '');
+          break;
+        case LaptopCommandType.type:
+          await _laptopService.typeText(command.argument ?? '');
+          result = {'success': true};
+          break;
+        case LaptopCommandType.terminal:
+          result = await _laptopService.runCommand(command.argument ?? '');
+          break;
+        case LaptopCommandType.systemStats:
+          result = await _laptopService.getSystemStats();
+          break;
+      }
+
+      _removeLoadingMessage();
+      final responseText = LaptopIntentDetector.getResponse(command, result);
+
+      if (base64Image != null) {
+        final assistantMsg = ChatMessage(
+          id: _uuid.v4(),
+          conversationId: state.activeConversationId ?? 'local',
+          role: 'assistant',
+          content: responseText,
+          createdAt: DateTime.now(),
+          base64Image: base64Image,
+        );
+        state = state.copyWith(messages: [...state.messages, assistantMsg]);
+      } else {
+        _addSystemMessage(responseText);
+      }
+
+      if (_isVoiceEnabled) {
+        final speechText = responseText
+            .replaceAll(RegExp(r'[*#_`\[\]>]'), '')
+            .replaceAll(RegExp(r'[📸🔒😴🔴🔄🔇🔊🔉🚀✅⌨️💻📊🖥️💾💿🔋⚡]'), '');
+        await _tts.speak(speechText);
+      }
+    } catch (e) {
+      _removeLoadingMessage();
+      _addSystemMessage('❌ **Failed to execute laptop command:** $e');
+    }
   }
 
   // ──────────────────── Device Control Handlers (Milestone 4) ────────────────────
@@ -806,11 +993,25 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
       final memoryContext = await _memoryService.getMemoriesPromptContext();
 
+      // ── Live Web Search Trigger (Live Web Search Agent) ──
+      String? webSearchContext;
+      final webSearch = WebSearchService();
+      if (webSearch.shouldSearchWeb(content)) {
+        try {
+          webSearchContext = await webSearch.search(content);
+        } catch (_) {}
+      }
+
+      final combinedContext = [
+        if (memoryContext.isNotEmpty) memoryContext,
+        if (webSearchContext != null && webSearchContext.isNotEmpty) webSearchContext,
+      ].join('\n\n');
+
       final response = await _groq.chat(
         content.trim().isEmpty ? 'Describe this image.' : content.trim(),
         history,
         base64Image: base64Image,
-        memoryContext: memoryContext,
+        memoryContext: combinedContext.isNotEmpty ? combinedContext : null,
       );
 
       final assistantMsg = ChatMessage(

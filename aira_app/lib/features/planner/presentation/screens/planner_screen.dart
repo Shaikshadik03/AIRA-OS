@@ -37,7 +37,7 @@ class _PlannerScreenState extends ConsumerState<PlannerScreen>
     final state = ref.watch(plannerProvider);
 
     return Scaffold(
-      backgroundColor: AiraColors.scaffoldDark,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: Text('Planner', style: AiraTypography.h4),

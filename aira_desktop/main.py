@@ -1,0 +1,359 @@
+"""
+AIRA Desktop Agent — Main FastAPI Server
+Runs on your Windows laptop and accepts commands from the AIRA Android app
+over your home Wi-Fi or Ngrok tunnel.
+
+Usage:
+    python main.py
+
+Default: Listens on http://0.0.0.0:8765
+"""
+
+import os
+import socket
+import hashlib
+import base64
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import Optional
+import uvicorn
+
+import mouse_control
+import system_control
+import screen_capture
+import app_launcher
+import file_manager
+import terminal_runner
+import clipboard_sync
+
+# ── Config ────────────────────────────────────────────────────────────────
+
+# Change this PIN to anything you want. Your phone must send this to connect.
+AIRA_PIN = os.environ.get("AIRA_PIN", "123456")
+PORT = int(os.environ.get("AIRA_PORT", 8765))
+AGENT_VERSION = "3.0.0"
+
+app = FastAPI(
+    title="AIRA Desktop Agent",
+    description="Control your laptop from AIRA OS on your phone.",
+    version=AGENT_VERSION,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────
+
+def verify_pin(x_aira_pin: str = None):
+    """Simple PIN-based authentication header check."""
+    if x_aira_pin != AIRA_PIN:
+        raise HTTPException(status_code=401, detail="Invalid AIRA PIN. Check your PIN in Settings.")
+    return True
+
+
+# ── Request Models ────────────────────────────────────────────────────────
+
+class MouseMoveRequest(BaseModel):
+    dx: int = 0
+    dy: int = 0
+
+class MouseClickRequest(BaseModel):
+    x: Optional[int] = None
+    y: Optional[int] = None
+    button: str = "left"  # left, right, double
+
+class TypeTextRequest(BaseModel):
+    text: str
+
+class HotkeyRequest(BaseModel):
+    keys: list[str]  # e.g. ["ctrl", "c"]
+
+class ScrollRequest(BaseModel):
+    amount: int  # positive = up, negative = down
+
+class VolumeRequest(BaseModel):
+    level: int  # 0-100
+
+class BrightnessRequest(BaseModel):
+    level: int  # 0-100
+
+class AppRequest(BaseModel):
+    app_name: str
+
+class CommandRequest(BaseModel):
+    command: str
+    working_dir: Optional[str] = None
+
+class ClipboardRequest(BaseModel):
+    text: str
+
+class FileBrowseRequest(BaseModel):
+    path: Optional[str] = None
+
+class FileOpenRequest(BaseModel):
+    path: str
+
+class ShutdownRequest(BaseModel):
+    delay_seconds: int = 10
+
+
+# ── Info Endpoint ─────────────────────────────────────────────────────────
+
+@app.get("/")
+def root():
+    """Health check — confirms the AIRA Desktop Agent is running."""
+    return {
+        "status": "AIRA Desktop Agent Online",
+        "version": AGENT_VERSION,
+        "hostname": socket.gethostname(),
+        "screen": mouse_control.get_screen_size(),
+    }
+
+@app.get("/info")
+def info(auth: bool = Depends(verify_pin)):
+    """Return full system info (requires PIN)."""
+    stats = system_control.get_system_stats()
+    return {
+        "hostname": socket.gethostname(),
+        "screen": mouse_control.get_screen_size(),
+        "mouse": mouse_control.get_mouse_position(),
+        "stats": stats,
+        "version": AGENT_VERSION,
+    }
+
+
+# ── Mouse & Keyboard ──────────────────────────────────────────────────────
+
+@app.post("/mouse/move")
+def mouse_move(req: MouseMoveRequest, auth: bool = Depends(verify_pin)):
+    mouse_control.move_mouse(req.dx, req.dy)
+    return {"success": True}
+
+@app.post("/mouse/click")
+def mouse_click(req: MouseClickRequest, auth: bool = Depends(verify_pin)):
+    if req.button == "right":
+        mouse_control.right_click(req.x, req.y)
+    elif req.button == "double":
+        mouse_control.double_click(req.x, req.y)
+    else:
+        mouse_control.left_click(req.x, req.y)
+    return {"success": True}
+
+@app.post("/mouse/scroll")
+def mouse_scroll(req: ScrollRequest, auth: bool = Depends(verify_pin)):
+    mouse_control.scroll(req.amount)
+    return {"success": True}
+
+@app.post("/keyboard/type")
+def keyboard_type(req: TypeTextRequest, auth: bool = Depends(verify_pin)):
+    mouse_control.type_text(req.text)
+    return {"success": True, "typed": req.text}
+
+@app.post("/keyboard/hotkey")
+def keyboard_hotkey(req: HotkeyRequest, auth: bool = Depends(verify_pin)):
+    mouse_control.hotkey(*req.keys)
+    return {"success": True, "hotkey": req.keys}
+
+@app.post("/keyboard/press")
+def keyboard_press(req: TypeTextRequest, auth: bool = Depends(verify_pin)):
+    mouse_control.press_key(req.text)
+    return {"success": True, "key": req.text}
+
+
+# ── Screenshot ────────────────────────────────────────────────────────────
+
+@app.get("/screen/capture")
+def get_screenshot(quality: int = 55, scale: float = 0.45, auth: bool = Depends(verify_pin)):
+    """Capture a screenshot and return it as base64 JPEG."""
+    image_b64 = screen_capture.capture_screenshot(quality=quality, scale=scale)
+    return {"success": True, "image": image_b64, "format": "jpeg"}
+
+
+# ── System Control ────────────────────────────────────────────────────────
+
+@app.post("/system/volume")
+def set_vol(req: VolumeRequest, auth: bool = Depends(verify_pin)):
+    return system_control.set_volume(req.level)
+
+@app.get("/system/volume")
+def get_vol(auth: bool = Depends(verify_pin)):
+    return {"volume": system_control.get_volume()}
+
+@app.post("/system/volume/mute")
+def mute(auth: bool = Depends(verify_pin)):
+    return system_control.mute_volume()
+
+@app.post("/system/volume/up")
+def vol_up(auth: bool = Depends(verify_pin)):
+    return system_control.volume_up()
+
+@app.post("/system/volume/down")
+def vol_down(auth: bool = Depends(verify_pin)):
+    return system_control.volume_down()
+
+@app.post("/system/brightness")
+def set_bright(req: BrightnessRequest, auth: bool = Depends(verify_pin)):
+    return system_control.set_brightness(req.level)
+
+@app.get("/system/brightness")
+def get_bright(auth: bool = Depends(verify_pin)):
+    return {"brightness": system_control.get_brightness()}
+
+@app.post("/system/lock")
+def lock(auth: bool = Depends(verify_pin)):
+    return system_control.lock_screen()
+
+@app.post("/system/sleep")
+def sleep(auth: bool = Depends(verify_pin)):
+    return system_control.sleep_laptop()
+
+@app.post("/system/shutdown")
+def shutdown(req: ShutdownRequest, auth: bool = Depends(verify_pin)):
+    return system_control.shutdown_laptop(req.delay_seconds)
+
+@app.post("/system/restart")
+def restart(req: ShutdownRequest, auth: bool = Depends(verify_pin)):
+    return system_control.restart_laptop(req.delay_seconds)
+
+@app.post("/system/cancel_shutdown")
+def cancel_shut(auth: bool = Depends(verify_pin)):
+    return system_control.cancel_shutdown()
+
+@app.get("/system/stats")
+def get_stats(auth: bool = Depends(verify_pin)):
+    return system_control.get_system_stats()
+
+
+# ── App Launcher ──────────────────────────────────────────────────────────
+
+@app.post("/apps/open")
+def open_app(req: AppRequest, auth: bool = Depends(verify_pin)):
+    return app_launcher.open_app(req.app_name)
+
+@app.post("/apps/close")
+def close_app(req: AppRequest, auth: bool = Depends(verify_pin)):
+    return app_launcher.close_app(req.app_name)
+
+@app.get("/apps/list")
+def list_apps(auth: bool = Depends(verify_pin)):
+    return {"apps": app_launcher.list_running_apps()}
+
+
+# ── File Manager ──────────────────────────────────────────────────────────
+
+@app.post("/files/list")
+def list_files(req: FileBrowseRequest, auth: bool = Depends(verify_pin)):
+    return file_manager.list_directory(req.path)
+
+@app.get("/files/quick_access")
+def quick_access(auth: bool = Depends(verify_pin)):
+    return file_manager.get_quick_access_paths()
+
+@app.post("/files/open")
+def open_file(req: FileOpenRequest, auth: bool = Depends(verify_pin)):
+    return file_manager.open_file(req.path)
+
+@app.post("/files/read")
+def read_file(req: FileOpenRequest, auth: bool = Depends(verify_pin)):
+    return file_manager.read_text_file(req.path)
+
+
+# ── Terminal ──────────────────────────────────────────────────────────────
+
+@app.post("/terminal/run")
+def run_terminal(req: CommandRequest, auth: bool = Depends(verify_pin)):
+    return terminal_runner.run_command(req.command, req.working_dir)
+
+
+# ── Clipboard ─────────────────────────────────────────────────────────────
+
+@app.get("/clipboard")
+def get_clip(auth: bool = Depends(verify_pin)):
+    return clipboard_sync.get_clipboard()
+
+@app.post("/clipboard")
+def set_clip(req: ClipboardRequest, auth: bool = Depends(verify_pin)):
+    return clipboard_sync.set_clipboard(req.text)
+
+
+# ── WebSocket for Live Trackpad ───────────────────────────────────────────
+
+@app.websocket("/ws/trackpad")
+async def trackpad_ws(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time trackpad control.
+    Phone sends JSON events like:
+        {"type": "move", "dx": 5, "dy": -3}
+        {"type": "click", "button": "left"}
+        {"type": "scroll", "amount": -3}
+    """
+    await websocket.accept()
+    # Verify PIN in first message
+    try:
+        auth_msg = await websocket.receive_json()
+        if auth_msg.get("pin") != AIRA_PIN:
+            await websocket.send_json({"error": "Invalid PIN"})
+            await websocket.close()
+            return
+        await websocket.send_json({"status": "connected", "message": "AIRA trackpad ready"})
+
+        while True:
+            data = await websocket.receive_json()
+            event_type = data.get("type")
+
+            if event_type == "move":
+                mouse_control.move_mouse(data.get("dx", 0), data.get("dy", 0))
+            elif event_type == "click":
+                btn = data.get("button", "left")
+                if btn == "right":
+                    mouse_control.right_click()
+                elif btn == "double":
+                    mouse_control.double_click()
+                else:
+                    mouse_control.left_click()
+            elif event_type == "scroll":
+                mouse_control.scroll(data.get("amount", 0))
+            elif event_type == "type":
+                mouse_control.type_text(data.get("text", ""))
+            elif event_type == "hotkey":
+                mouse_control.hotkey(*data.get("keys", []))
+
+    except WebSocketDisconnect:
+        pass
+
+
+# ── Entry Point ───────────────────────────────────────────────────────────
+
+def get_local_ip():
+    """Get laptop's local Wi-Fi IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+if __name__ == "__main__":
+    local_ip = get_local_ip()
+    print("\n" + "="*55)
+    print("  🤖  AIRA Desktop Agent v3.0.0 — ONLINE")
+    print("="*55)
+    print(f"  📡  Local IP  :  http://{local_ip}:{PORT}")
+    print(f"  🔑  Your PIN  :  {AIRA_PIN}")
+    print(f"  💻  Hostname  :  {socket.gethostname()}")
+    print("="*55)
+    print(f"\n  Open AIRA OS on your phone →")
+    print(f"  Settings → Connect Laptop → Enter IP: {local_ip}")
+    print(f"  Enter PIN: {AIRA_PIN}\n")
+
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")

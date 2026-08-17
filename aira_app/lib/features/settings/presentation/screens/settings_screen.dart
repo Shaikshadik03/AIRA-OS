@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
-import 'package:aira_app/core/theme/aira_typography.dart';
-import 'package:aira_app/core/widgets/glassmorphic_container.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/core/services/notification_service.dart';
@@ -27,39 +26,65 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final user = ref.watch(currentUserProvider);
     final isAuthenticated = authState == AuthStatus.authenticated;
     final currentThemeMode = ref.watch(themeProvider);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final cardBg = isDark ? AiraColors.cardDark : AiraColors.cardLight;
+    final borderColor = isDark ? AiraColors.borderDark : AiraColors.borderLight;
+    final mutedColor = isDark ? AiraColors.textMuted : AiraColors.textMutedLight;
 
     return Scaffold(
-      backgroundColor: AiraColors.scaffoldDark,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Colors.white, size: 20),
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: theme.colorScheme.onSurface,
+            size: 18,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('AIRA OS Control Center', style: AiraTypography.h4.copyWith(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Settings',
+          style: GoogleFonts.playfairDisplay(
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        centerTitle: true,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
         children: [
-          // Profile section
-          GlassmorphicContainer(
+          // ── User Profile Card ──
+          Container(
             padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor),
+            ),
             child: Row(
               children: [
                 Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: AiraColors.cyanPurpleGradient,
-                    borderRadius: BorderRadius.circular(16),
+                  width: 48,
+                  height: 48,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AiraColors.claudeTerracotta,
                   ),
                   child: Center(
                     child: Text(
-                      isAuthenticated ? (user?.displayName.isNotEmpty == true ? user!.displayName[0].toUpperCase() : 'U') : 'G',
-                      style: AiraTypography.h4.copyWith(
+                      isAuthenticated
+                          ? (user?.displayName.isNotEmpty == true ? user!.displayName[0].toUpperCase() : 'U')
+                          : 'G',
+                      style: GoogleFonts.sourceSerif4(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
+                        fontSize: 20,
                       ),
                     ),
                   ),
@@ -69,12 +94,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(isAuthenticated ? (user?.displayName ?? 'User') : 'Guest Account', style: AiraTypography.h5),
+                      Text(
+                        isAuthenticated ? (user?.displayName ?? 'User') : 'Guest Account',
+                        style: GoogleFonts.playfairDisplay(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       Text(
-                        isAuthenticated ? (user?.email ?? 'Logged in') : 'Sign in to sync data across devices',
-                        style: AiraTypography.caption.copyWith(
-                          color: AiraColors.textMuted,
+                        isAuthenticated ? (user?.email ?? 'Logged in') : 'Sign in to sync memories & data',
+                        style: GoogleFonts.sourceSerif4(
+                          color: mutedColor,
+                          fontSize: 12.5,
                         ),
                       ),
                     ],
@@ -83,141 +116,196 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
+
           const SizedBox(height: 24),
 
-          // ── AIRA Tools & Features ──
-          _sectionTitle('AIRA Smart Tools'),
+          // ── Appearance & Theme (Claude Dark / Linen Light / System) ──
+          _sectionTitle('APPEARANCE & THEME'),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Color Palette',
+                  style: GoogleFonts.sourceSerif4(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _themeOptionCard(
+                        title: 'Dark',
+                        subtitle: 'Warm Obsidian',
+                        icon: Icons.dark_mode_rounded,
+                        isSelected: currentThemeMode == ThemeMode.dark,
+                        onTap: () => ref.read(themeProvider.notifier).setThemeMode(ThemeMode.dark),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _themeOptionCard(
+                        title: 'Light',
+                        subtitle: 'Warm Linen',
+                        icon: Icons.light_mode_rounded,
+                        isSelected: currentThemeMode == ThemeMode.light,
+                        onTap: () => ref.read(themeProvider.notifier).setThemeMode(ThemeMode.light),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _themeOptionCard(
+                        title: 'System',
+                        subtitle: 'Device Default',
+                        icon: Icons.brightness_auto_rounded,
+                        isSelected: currentThemeMode == ThemeMode.system,
+                        onTap: () => ref.read(themeProvider.notifier).setThemeMode(ThemeMode.system),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // ── AIRA Smart Tools ──
+          _sectionTitle('SMART TOOLS'),
           _settingsTile(
-            Icons.remove_red_eye_rounded,
-            'AIRA Vision (Live Camera AI)',
-            'Analyze visual code & object',
-            iconColor: AiraColors.electricCyan,
+            Icons.laptop_mac_rounded,
+            'Laptop Remote Control',
+            'Trackpad, screen capture, keyboard & terminal',
+            iconColor: AiraColors.claudeTerracotta,
+            onTap: () => context.push('/laptop'),
+          ),
+          _settingsTile(
+            Icons.newspaper_rounded,
+            'Daily Intelligence Briefing',
+            'Morning 7 AM & Night 10 PM Recaps',
+            iconColor: AiraColors.claudeTerracotta,
+            onTap: () => context.push('/briefing'),
+          ),
+          _settingsTile(
+            Icons.remove_red_eye_outlined,
+            'AIRA Vision (Camera AI)',
+            'Analyze photos, code, documents & objects',
+            iconColor: AiraColors.claudeTerracotta,
             onTap: () => context.push('/vision'),
           ),
           _settingsTile(
-            Icons.mic_rounded,
-            'Voice Note & Meeting Summarizer',
-            'Transcribe & AI Summary',
+            Icons.mic_none_rounded,
+            'Voice Notes & Meetings',
+            'Transcribe & AI summary',
             iconColor: AiraColors.purpleLight,
             onTap: () => context.push('/voice-note'),
           ),
           _settingsTile(
-            Icons.picture_in_picture_alt_rounded,
-            'AIRA Everywhere Floating Overlay',
-            'Cross-app chat head bubble',
-            iconColor: AiraColors.cyanLight,
-            onTap: () => context.push('/overlay'),
-          ),
-          _settingsTile(
-            Icons.psychology_rounded,
-            'AIRA Memory Vault',
-            'View & manage AI long-term memory',
-            iconColor: AiraColors.amber,
+            Icons.psychology_outlined,
+            'Memory Vault',
+            'View & manage AI long-term context',
+            iconColor: AiraColors.claudeAmber,
             onTap: () {
               ref.read(chatProvider.notifier).sendMessage('show my memories');
               context.go('/chat');
             },
           ),
-
-          const SizedBox(height: 24),
-
-          // ── Integrations & Apps ──
-          _sectionTitle('Integrations & Apps'),
           _settingsTile(
-            Icons.task_alt_rounded,
-            'AIRA Built-in Planner & Tasks',
-            'Internal Native Task Block Active ✓',
+            Icons.picture_in_picture_alt_rounded,
+            'Everywhere Floating Bubble',
+            'Use AIRA on top of other Android apps',
             iconColor: AiraColors.electricCyan,
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('🟢 AIRA Internal Task Engine is active. Use Planner tab or tell AIRA to add tasks.')),
-              );
-            },
+            onTap: () => context.push('/overlay'),
           ),
 
           const SizedBox(height: 24),
 
-          // ── System & Appearance ──
-          _sectionTitle('System & Appearance'),
-          _settingsTile(
-            Icons.palette_outlined,
-            'Appearance & Theme',
-            _themeLabel(currentThemeMode),
-            iconColor: AiraColors.purpleLight,
-            onTap: _showThemeDialog,
-          ),
+          // ── System Controls ──
+          _sectionTitle('SYSTEM & VOICE'),
           _settingsTile(
             Icons.mic_rounded,
-            'Voice & Wake-Word Control',
-            'Mic permissions & test voice triggers',
-            iconColor: AiraColors.electricCyan,
+            'Voice & Wake-Word Engine',
+            'Test speech recognition & mic permissions',
+            iconColor: AiraColors.claudeTerracotta,
             onTap: _showVoiceControlDialog,
           ),
           _settingsTile(
-            Icons.notifications_active_rounded,
-            'System Notifications',
-            'Test push notification now',
-            iconColor: AiraColors.electricCyan,
+            Icons.notifications_none_rounded,
+            'System Notifications & Alarms',
+            'Test high-priority reminder delivery',
+            iconColor: AiraColors.claudeAmber,
             onTap: _showNotificationTestDialog,
           ),
           _settingsTile(
-            Icons.psychology_outlined,
-            'AI Personality Engine',
+            Icons.auto_fix_high_rounded,
+            'AI Personality Tone',
             _selectedPersonality,
             onTap: _showPersonalityDialog,
           ),
 
           const SizedBox(height: 24),
 
-          // ── Privacy & System Diagnostics ──
-          _sectionTitle('Privacy & Storage Diagnostics'),
+          // ── Privacy & Diagnostics ──
+          _sectionTitle('DIAGNOSTICS & ACCOUNT'),
           _settingsTile(
-            Icons.storage_rounded,
-            'Storage & System Info',
-            'Check RAM, Storage & Battery',
+            Icons.memory_rounded,
+            'Device & Storage Diagnostics',
+            'Check RAM, battery & hardware details',
             onTap: _showStorageInfoDialog,
           ),
           _settingsTile(
             Icons.shield_outlined,
-            'Privacy & Security Shield',
-            'Supabase RLS & Encryption Active',
+            'Privacy & Data Security',
+            'End-to-end encrypted with Supabase RLS',
             onTap: _showPrivacyDialog,
           ),
           _settingsTile(
             Icons.help_outline_rounded,
-            'Command Guide & Support',
-            'View full feature list',
+            'Command Guide',
+            'Browse all supported voice and text commands',
             onTap: _showHelpDialog,
           ),
 
           const SizedBox(height: 28),
 
-          // Sign In / Sign Out
-          GestureDetector(
+          // ── Sign In / Sign Out ──
+          InkWell(
             onTap: () {
               if (isAuthenticated) {
                 ref.read(authProvider.notifier).signOut();
               }
               context.go('/login');
             },
+            borderRadius: BorderRadius.circular(12),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 14),
               decoration: BoxDecoration(
-                color: isAuthenticated 
-                    ? AiraColors.error.withValues(alpha: 0.08)
-                    : AiraColors.electricCyan.withValues(alpha: 0.08),
+                color: isAuthenticated
+                    ? AiraColors.error.withValues(alpha: isDark ? 0.12 : 0.08)
+                    : AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.12 : 0.08),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: isAuthenticated
-                      ? AiraColors.error.withValues(alpha: 0.2)
-                      : AiraColors.electricCyan.withValues(alpha: 0.2),
+                      ? AiraColors.error.withValues(alpha: 0.3)
+                      : AiraColors.claudeTerracotta.withValues(alpha: 0.3),
                 ),
               ),
               child: Center(
                 child: Text(
                   isAuthenticated ? 'Sign Out' : 'Sign In / Create Account',
-                  style: AiraTypography.buttonText.copyWith(
-                    color: isAuthenticated ? AiraColors.error : AiraColors.electricCyan,
+                  style: GoogleFonts.sourceSerif4(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: isAuthenticated ? AiraColors.error : AiraColors.claudeTerracotta,
                   ),
                 ),
               ),
@@ -228,14 +316,77 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Widget _themeOptionCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.18 : 0.12)
+              : (isDark ? AiraColors.surfaceDark : AiraColors.surfaceLightWarm),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? AiraColors.claudeTerracotta
+                : (isDark ? AiraColors.borderDark : AiraColors.borderLight),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 22,
+              color: isSelected
+                  ? AiraColors.claudeTerracotta
+                  : (isDark ? AiraColors.textSecondary : AiraColors.textSecondaryLight),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              title,
+              style: GoogleFonts.sourceSerif4(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? AiraColors.claudeTerracotta : theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: GoogleFonts.sourceSerif4(
+                fontSize: 10,
+                color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _sectionTitle(String title) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 8),
       child: Text(
-        title.toUpperCase(),
-        style: AiraTypography.overline.copyWith(
-          color: AiraColors.textMuted,
-          letterSpacing: 1.5,
+        title,
+        style: GoogleFonts.sourceSerif4(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.2,
+          color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
         ),
       ),
     );
@@ -248,23 +399,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     Color? iconColor,
     VoidCallback? onTap,
   }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBg = isDark ? AiraColors.cardDark : AiraColors.cardLight;
+    final borderColor = isDark ? AiraColors.borderDark : AiraColors.borderLight;
+    final mutedColor = isDark ? AiraColors.textMuted : AiraColors.textMutedLight;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: AiraColors.cardDark,
+        color: cardBg,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AiraColors.glassBorder),
+        border: Border.all(color: borderColor),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-        leading: Icon(icon, color: iconColor ?? AiraColors.textSecondary, size: 22),
-        title: Text(title, style: AiraTypography.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+        leading: Icon(
+          icon,
+          color: iconColor ?? (isDark ? AiraColors.textSecondary : AiraColors.textSecondaryLight),
+          size: 22,
+        ),
+        title: Text(
+          title,
+          style: GoogleFonts.sourceSerif4(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
         subtitle: trailing != null
-            ? Text(trailing, style: AiraTypography.caption.copyWith(color: AiraColors.textMuted))
+            ? Text(
+                trailing,
+                style: GoogleFonts.sourceSerif4(
+                  fontSize: 12,
+                  color: mutedColor,
+                ),
+              )
             : null,
-        trailing: const Icon(
+        trailing: Icon(
           Icons.chevron_right_rounded,
-          color: AiraColors.textMuted,
+          color: mutedColor,
           size: 20,
         ),
         onTap: onTap,
@@ -274,68 +448,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ──────────────────── Dialogs ────────────────────
 
-  String _themeLabel(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.light:
-        return 'Light Mode ☀️';
-      case ThemeMode.dark:
-        return 'Dark Mode 🌙';
-      case ThemeMode.system:
-        return 'System Default 📱';
-    }
-  }
-
-  void _showThemeDialog() {
-    final currentMode = ref.read(themeProvider);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AiraColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.palette_rounded, color: AiraColors.purpleLight),
-            const SizedBox(width: 10),
-            Text('Appearance & Theme', style: AiraTypography.h5.copyWith(color: Colors.white)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.light_mode_rounded, color: AiraColors.amber),
-              title: Text('Light Mode ☀️', style: AiraTypography.bodyMedium.copyWith(color: Colors.white)),
-              trailing: currentMode == ThemeMode.light ? const Icon(Icons.check_circle_rounded, color: AiraColors.electricCyan) : null,
-              onTap: () {
-                ref.read(themeProvider.notifier).setThemeMode(ThemeMode.light);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.dark_mode_rounded, color: AiraColors.purpleLight),
-              title: Text('Dark Mode 🌙', style: AiraTypography.bodyMedium.copyWith(color: Colors.white)),
-              trailing: currentMode == ThemeMode.dark ? const Icon(Icons.check_circle_rounded, color: AiraColors.electricCyan) : null,
-              onTap: () {
-                ref.read(themeProvider.notifier).setThemeMode(ThemeMode.dark);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.brightness_auto_rounded, color: AiraColors.electricCyan),
-              title: Text('System Default 📱', style: AiraTypography.bodyMedium.copyWith(color: Colors.white)),
-              trailing: currentMode == ThemeMode.system ? const Icon(Icons.check_circle_rounded, color: AiraColors.electricCyan) : null,
-              onTap: () {
-                ref.read(themeProvider.notifier).setThemeMode(ThemeMode.system);
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _showVoiceControlDialog() async {
     final voice = VoiceService();
     final hasPermission = await voice.checkPermission();
@@ -344,18 +456,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     if (!mounted) return;
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            backgroundColor: AiraColors.cardDark,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            backgroundColor: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(color: isDark ? AiraColors.borderDark : AiraColors.borderLight),
+            ),
             title: Row(
               children: [
-                const Icon(Icons.mic_rounded, color: AiraColors.electricCyan),
+                const Icon(Icons.mic_rounded, color: AiraColors.claudeTerracotta),
                 const SizedBox(width: 10),
-                Text('Voice & Wake-Word Control', style: AiraTypography.h5.copyWith(color: Colors.white)),
+                Text(
+                  'Voice & Speech Engine',
+                  style: GoogleFonts.playfairDisplay(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
               ],
             ),
             content: SingleChildScrollView(
@@ -366,12 +491,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Microphone Status:', style: AiraTypography.bodySmall.copyWith(color: AiraColors.textMuted)),
+                      Text(
+                        'Microphone:',
+                        style: GoogleFonts.sourceSerif4(
+                          color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                          fontSize: 13,
+                        ),
+                      ),
                       Text(
                         hasPermission ? 'Granted ✓' : 'Permission Required ⚠️',
-                        style: AiraTypography.bodySmall.copyWith(
+                        style: GoogleFonts.sourceSerif4(
                           color: hasPermission ? AiraColors.success : AiraColors.warning,
                           fontWeight: FontWeight.w700,
+                          fontSize: 13,
                         ),
                       ),
                     ],
@@ -393,29 +525,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         backgroundColor: AiraColors.warning,
                         foregroundColor: Colors.black,
                         minimumSize: const Size(double.infinity, 42),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                     ),
                   const SizedBox(height: 14),
                   Text(
-                    'Test Speech Recognition Engine:',
-                    style: AiraTypography.caption.copyWith(color: AiraColors.textSecondary, fontWeight: FontWeight.w600),
+                    'Speech Recognition Test:',
+                    style: GoogleFonts.sourceSerif4(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AiraColors.scaffoldDark,
+                      color: isDark ? AiraColors.surfaceDark : AiraColors.surfaceLightWarm,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AiraColors.glassBorder),
+                      border: Border.all(color: isDark ? AiraColors.borderDark : AiraColors.borderLight),
                     ),
                     child: Text(
                       isTestingVoice
-                          ? 'Listening... Speak "Hey AIRA call Rahul" or any command'
-                          : (testResultText.isNotEmpty ? 'Recognized: "$testResultText"' : 'Tap button below to start live voice test'),
-                      style: AiraTypography.caption.copyWith(
-                        color: isTestingVoice ? AiraColors.electricCyan : AiraColors.textPrimary,
+                          ? 'Listening... Speak "Hey AIRA call Rahul" or any query'
+                          : (testResultText.isNotEmpty ? 'Recognized: "$testResultText"' : 'Tap button below to start live test'),
+                      style: GoogleFonts.sourceSerif4(
+                        fontSize: 13,
+                        color: isTestingVoice ? AiraColors.claudeTerracotta : theme.colorScheme.onSurface,
                         fontStyle: isTestingVoice ? FontStyle.italic : FontStyle.normal,
                       ),
                     ),
@@ -456,12 +593,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             }
                           },
                     icon: Icon(isTestingVoice ? Icons.stop_rounded : Icons.mic_rounded, size: 16),
-                    label: Text(isTestingVoice ? 'Stop Testing' : 'Start Live Voice Test'),
+                    label: Text(isTestingVoice ? 'Stop Testing' : 'Start Live Test'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isTestingVoice ? AiraColors.error : AiraColors.electricCyan,
-                      foregroundColor: isTestingVoice ? Colors.white : Colors.black,
+                      backgroundColor: isTestingVoice ? AiraColors.error : AiraColors.claudeTerracotta,
+                      foregroundColor: Colors.white,
                       minimumSize: const Size(double.infinity, 44),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ],
@@ -473,7 +610,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   voice.stopListening();
                   Navigator.pop(context);
                 },
-                child: const Text('Close'),
+                child: Text(
+                  'Close',
+                  style: GoogleFonts.sourceSerif4(color: AiraColors.claudeTerracotta),
+                ),
               ),
             ],
           );
@@ -483,16 +623,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _showNotificationTestDialog() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AiraColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: isDark ? AiraColors.borderDark : AiraColors.borderLight),
+        ),
         title: Row(
           children: [
-            const Icon(Icons.notifications_active_rounded, color: AiraColors.electricCyan),
+            const Icon(Icons.notifications_active_rounded, color: AiraColors.claudeTerracotta),
             const SizedBox(width: 10),
-            Text('System Notifications', style: AiraTypography.h5.copyWith(color: Colors.white)),
+            Text(
+              'System Notifications',
+              style: GoogleFonts.playfairDisplay(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
           ],
         ),
         content: Column(
@@ -500,8 +653,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'AIRA OS uses Android system notification channels to deliver high-priority alerts for exact reminders and daily briefings.',
-              style: AiraTypography.bodySmall.copyWith(color: AiraColors.textSecondary, height: 1.5),
+              'AIRA OS uses Android system notification channels to deliver high-priority alarms for exact reminders and 7 AM / 10 PM briefings.',
+              style: GoogleFonts.sourceSerif4(
+                fontSize: 13,
+                color: isDark ? AiraColors.textSecondary : AiraColors.textSecondaryLight,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
@@ -510,7 +667,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 await notif.requestPermissions();
                 await notif.showNotification(
                   id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-                  title: 'AIRA OS Notification Test 🔔',
+                  title: 'AIRA OS Notification 🔔',
                   body: 'System notifications are 100% active and working on your Android device!',
                 );
                 if (!context.mounted) return;
@@ -522,10 +679,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               icon: const Icon(Icons.send_rounded, size: 16),
               label: const Text('Send Test Notification Now'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AiraColors.electricCyan,
-                foregroundColor: Colors.black,
+                backgroundColor: AiraColors.claudeTerracotta,
+                foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 44),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
           ],
@@ -542,24 +699,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       'Professional Assistant 💼',
     ];
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AiraColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Select AI Personality', style: AiraTypography.h5.copyWith(color: Colors.white)),
+        backgroundColor: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: isDark ? AiraColors.borderDark : AiraColors.borderLight),
+        ),
+        title: Text(
+          'Select AI Tone',
+          style: GoogleFonts.playfairDisplay(
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: personalities.map((p) {
             final isSelected = _selectedPersonality == p;
             return ListTile(
-              title: Text(p, style: AiraTypography.bodyMedium.copyWith(color: Colors.white)),
-              trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: AiraColors.electricCyan) : null,
+              title: Text(
+                p,
+                style: GoogleFonts.sourceSerif4(
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                  color: isSelected ? AiraColors.claudeTerracotta : theme.colorScheme.onSurface,
+                ),
+              ),
+              trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: AiraColors.claudeTerracotta) : null,
               onTap: () {
                 setState(() => _selectedPersonality = p);
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('AIRA Personality set to $p')),
+                  SnackBar(content: Text('AIRA Tone set to $p')),
                 );
               },
             );
@@ -579,16 +756,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final availMB = info['availStorageMB'] ?? '?';
     final model = '${info['manufacturer'] ?? ''} ${info['model'] ?? ''}';
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AiraColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: isDark ? AiraColors.borderDark : AiraColors.borderLight),
+        ),
         title: Row(
           children: [
-            const Icon(Icons.memory_rounded, color: AiraColors.electricCyan),
+            const Icon(Icons.memory_rounded, color: AiraColors.claudeTerracotta),
             const SizedBox(width: 10),
-            Text('System Diagnostics', style: AiraTypography.h5.copyWith(color: Colors.white)),
+            Text(
+              'System Diagnostics',
+              style: GoogleFonts.playfairDisplay(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
           ],
         ),
         content: Column(
@@ -605,7 +795,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text(
+              'Close',
+              style: GoogleFonts.sourceSerif4(color: AiraColors.claudeTerracotta),
+            ),
           ),
         ],
       ),
@@ -613,39 +806,74 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _diagRow(String label, String value) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: AiraTypography.caption.copyWith(color: AiraColors.textMuted)),
-          Text(value, style: AiraTypography.caption.copyWith(color: AiraColors.textPrimary, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: GoogleFonts.sourceSerif4(
+              fontSize: 12.5,
+              color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+            ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.sourceSerif4(
+              fontSize: 12.5,
+              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
   }
 
   void _showPrivacyDialog() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AiraColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: isDark ? AiraColors.borderDark : AiraColors.borderLight),
+        ),
         title: Row(
           children: [
             const Icon(Icons.shield_rounded, color: AiraColors.success),
             const SizedBox(width: 10),
-            Text('Privacy & Security Shield', style: AiraTypography.h5.copyWith(color: Colors.white)),
+            Text(
+              'Privacy Shield',
+              style: GoogleFonts.playfairDisplay(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
           ],
         ),
         content: Text(
-          'AIRA OS processes all phone actions locally via native Android OS APIs. Long-term chat memory is encrypted in your private Supabase database instance.',
-          style: AiraTypography.bodySmall.copyWith(color: AiraColors.textSecondary, height: 1.5),
+          'AIRA OS executes device controls locally via native Android OS APIs. Long-term memories and conversations are encrypted in your private Supabase instance.',
+          style: GoogleFonts.sourceSerif4(
+            fontSize: 13.5,
+            color: isDark ? AiraColors.textSecondary : AiraColors.textSecondaryLight,
+            height: 1.5,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+            child: Text(
+              'OK',
+              style: GoogleFonts.sourceSerif4(color: AiraColors.claudeTerracotta),
+            ),
           ),
         ],
       ),
@@ -653,16 +881,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _showHelpDialog() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AiraColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: isDark ? AiraColors.borderDark : AiraColors.borderLight),
+        ),
         title: Row(
           children: [
-            const Icon(Icons.auto_awesome_rounded, color: AiraColors.electricCyan),
+            const Icon(Icons.auto_awesome_rounded, color: AiraColors.claudeTerracotta),
             const SizedBox(width: 10),
-            Text('AIRA OS Command Guide', style: AiraTypography.h5.copyWith(color: Colors.white)),
+            Text(
+              'Command Guide',
+              style: GoogleFonts.playfairDisplay(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
           ],
         ),
         content: SingleChildScrollView(
@@ -670,11 +911,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              _helpItem('🗞️ Daily Briefing', 'View 7 AM & 10 PM curated intelligence'),
               _helpItem('📸 Vision AI', 'Tap Eye icon in chat to analyze camera feed'),
-              _helpItem('🎙️ Meeting Notes', 'Open Voice Notes screen to record & summarize'),
+              _helpItem('🎙️ Meeting Notes', 'Record and generate meeting transcripts & summaries'),
               _helpItem('💬 Everywhere Overlay', 'Enable floating chat bubble over all apps'),
               _helpItem('📞 Phone & SMS', '"Call Rahul", "Send SMS to Mom saying hello"'),
-              _helpItem('⚙️ Device Control', '"Turn on flashlight", "Volume up", "Open Spotify"'),
+              _helpItem('⚙️ Device Control', '"Turn on flashlight", "Volume up", "Open YouTube"'),
               _helpItem('🔔 Reminders', '"Remind me at 2 PM", "Send daily news at 7 AM"'),
             ],
           ),
@@ -682,7 +924,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text(
+              'Close',
+              style: GoogleFonts.sourceSerif4(color: AiraColors.claudeTerracotta),
+            ),
           ),
         ],
       ),
@@ -690,13 +935,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Widget _helpItem(String title, String subtitle) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: AiraTypography.bodySmall.copyWith(fontWeight: FontWeight.w700, color: AiraColors.electricCyan)),
-          Text(subtitle, style: AiraTypography.caption.copyWith(color: AiraColors.textMuted)),
+          Text(
+            title,
+            style: GoogleFonts.sourceSerif4(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: AiraColors.claudeTerracotta,
+            ),
+          ),
+          Text(
+            subtitle,
+            style: GoogleFonts.sourceSerif4(
+              fontSize: 12,
+              color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+            ),
+          ),
         ],
       ),
     );
