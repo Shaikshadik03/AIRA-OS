@@ -7,6 +7,8 @@ import 'package:aira_app/features/chat/domain/device_intent.dart';
 import 'package:aira_app/features/chat/domain/notification_intent.dart';
 import 'package:aira_app/features/chat/domain/routine_intent.dart';
 import 'package:aira_app/features/chat/domain/whatsapp_intent.dart';
+import 'package:aira_app/features/chat/domain/task_intent.dart';
+import 'package:aira_app/features/planner/presentation/providers/planner_provider.dart';
 import 'package:aira_app/features/laptop/domain/laptop_intent_detector.dart';
 import 'package:aira_app/features/laptop/data/laptop_control_service.dart';
 import 'dart:convert';
@@ -179,6 +181,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return;
     }
 
+    // ── Check for Task / Reminder Intent (Built-in TickTick System) ──
+    if (TaskIntentDetector.isTaskCommand(content)) {
+      final taskCommand = TaskIntentDetector.parse(content);
+      if (taskCommand != null) {
+        await _handleTaskCommand(content, taskCommand);
+        return;
+      }
+    }
+
     // ── Check for WhatsApp Intent (Milestone Upgrade) ──
     final waCommand = WhatsAppIntentDetector.detect(content);
     if (waCommand.isWhatsAppCommand) {
@@ -258,6 +269,96 @@ class ChatNotifier extends StateNotifier<ChatState> {
     } catch (e) {
       _removeLoadingMessage();
       _addSystemMessage('❌ **Failed to prepare WhatsApp message:** $e');
+    }
+  }
+
+  // ──────────────────── Task & Planner Handlers (In-built TickTick System) ────────────────────
+
+  Future<void> _handleTaskCommand(String content, TaskCommand command) async {
+    _addUserMessage(content);
+    _addLoadingMessage('Updating task manager...');
+
+    try {
+      final plannerNotifier = PlannerNotifier();
+      await plannerNotifier.loadAll();
+
+      String result = '';
+
+      switch (command.type) {
+        case TaskCommandType.addTask:
+          final created = await plannerNotifier.addTask(
+            title: command.title,
+            dueDate: command.dueDate,
+            hasAlarm: command.hasAlarm,
+            priority: command.priority,
+            category: command.category,
+          );
+          final timeStr = created.dueDate != null
+              ? '${created.dueDate!.hour.toString().padLeft(2, "0")}:${created.dueDate!.minute.toString().padLeft(2, "0")}'
+              : 'No specific time';
+          final alarmBadge = created.hasAlarm ? '🔔 *Android Alarm & Notification Active*' : '';
+
+          result = '✅ **Task Added to Agenda!**\n\n'
+              '• **Task:** ${created.title}\n'
+              '• **Category:** ${created.category}\n'
+              '• **Priority:** ${created.priority.toUpperCase()}\n'
+              '• **Due:** $timeStr\n'
+              '$alarmBadge\n\n'
+              '👉 *View and edit in Planner anytime.*';
+          break;
+
+        case TaskCommandType.listTasks:
+          final tasks = plannerNotifier.state.tasks;
+          if (tasks.isEmpty) {
+            result = '📋 **Your task list is empty.**\n\nSay *"Add task Study OS at 5 PM"* to create one!';
+          } else {
+            result = '📋 **Your Current Tasks:**\n\n';
+            for (final t in tasks) {
+              final check = t.isCompleted ? '~~' : '';
+              final icon = t.isCompleted ? '✅' : '⏳';
+              final time = t.dueDate != null ? ' (${t.dueDate!.hour.toString().padLeft(2, "0")}:${t.dueDate!.minute.toString().padLeft(2, "0")})' : '';
+              result += '$icon $check**${t.title}**$check — *${t.category}* [${t.priority}]$time\n';
+            }
+          }
+          break;
+
+        case TaskCommandType.completeTask:
+          final match = plannerNotifier.state.tasks.firstWhere(
+            (t) => t.title.toLowerCase().contains(command.title.toLowerCase()),
+            orElse: () => TaskItem(id: '', title: '', priority: '', status: '', category: '', createdAt: DateTime.now()),
+          );
+          if (match.id.isNotEmpty) {
+            await plannerNotifier.toggleTask(match.id, true);
+            result = '🎉 **Completed Task:** "${match.title}" marked as done!';
+          } else {
+            result = '⚠️ Could not find a task matching "${command.title}".';
+          }
+          break;
+
+        case TaskCommandType.deleteTask:
+          final match = plannerNotifier.state.tasks.firstWhere(
+            (t) => t.title.toLowerCase().contains(command.title.toLowerCase()),
+            orElse: () => TaskItem(id: '', title: '', priority: '', status: '', category: '', createdAt: DateTime.now()),
+          );
+          if (match.id.isNotEmpty) {
+            await plannerNotifier.deleteTask(match.id);
+            result = '🗑️ **Task Deleted:** "${match.title}" removed from your list.';
+          } else {
+            result = '⚠️ Could not find a task matching "${command.title}".';
+          }
+          break;
+      }
+
+      _removeLoadingMessage();
+      _addSystemMessage(result);
+
+      if (_isVoiceEnabled && result.isNotEmpty) {
+        final clean = result.replaceAll(RegExp(r'[*#_`~]'), '').replaceAll(RegExp(r'[✅📋⏳🎉🗑️⚠️🔔]'), '');
+        await _tts.speak(clean);
+      }
+    } catch (e) {
+      _removeLoadingMessage();
+      _addSystemMessage('❌ **Failed to update tasks:** $e');
     }
   }
 

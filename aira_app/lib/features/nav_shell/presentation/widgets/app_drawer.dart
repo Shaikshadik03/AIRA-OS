@@ -249,6 +249,15 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
               child: Column(
                 children: [
                   _DrawerItem(
+                    icon: Icons.check_circle_outline_rounded,
+                    label: 'TickTick Agenda & Tasks',
+                    iconColor: AiraColors.claudeTerracotta,
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.push('/planner');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.newspaper_rounded,
                     label: 'Daily Intelligence',
                     iconColor: AiraColors.claudeTerracotta,

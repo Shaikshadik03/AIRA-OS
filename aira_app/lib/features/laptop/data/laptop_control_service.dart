@@ -23,16 +23,27 @@ class LaptopControlService {
   bool get isConfigured => _laptopIp != null && _laptopIp!.isNotEmpty;
 
   Dio get _dio {
-    final baseUrl = 'http://$_laptopIp:$_port';
+    final baseUrl = 'http://${_sanitizeHost(_laptopIp)}:$_port';
     return Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 5),
-      receiveTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 4),
+      receiveTimeout: const Duration(seconds: 8),
       headers: {
-        'X-AIRA-PIN': _laptopPin ?? '',
+        'X-AIRA-PIN': _laptopPin ?? '123456',
         'Content-Type': 'application/json',
       },
     ));
+  }
+
+  static String _sanitizeHost(String? rawIp) {
+    if (rawIp == null || rawIp.trim().isEmpty) return '127.0.0.1';
+    var clean = rawIp.trim();
+    clean = clean.replaceAll(RegExp(r'^https?:\/\/'), '');
+    clean = clean.replaceAll(RegExp(r'\/.*$'), '');
+    if (clean.contains(':')) {
+      clean = clean.split(':')[0];
+    }
+    return clean.trim();
   }
 
   // ── Config ────────────────────────────────────────────────────────────
@@ -40,18 +51,30 @@ class LaptopControlService {
   Future<void> loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
     _laptopIp = prefs.getString(_ipKey);
-    _laptopPin = prefs.getString(_pinKey);
+    _laptopPin = prefs.getString(_pinKey) ?? '123456';
     _port = prefs.getInt(_portKey) ?? _defaultPort;
   }
 
   Future<void> saveConfig(String ip, String pin, {int port = _defaultPort}) async {
-    _laptopIp = ip.trim();
-    _laptopPin = pin.trim();
-    _port = port;
+    var rawIp = ip.trim();
+    int targetPort = port;
+
+    // Sanitize user input (e.g. "http://192.168.1.15:8765" -> host="192.168.1.15", port=8765)
+    var clean = rawIp.replaceAll(RegExp(r'^https?:\/\/'), '').replaceAll(RegExp(r'\/.*$'), '');
+    if (clean.contains(':')) {
+      final parts = clean.split(':');
+      clean = parts[0];
+      targetPort = int.tryParse(parts[1]) ?? port;
+    }
+
+    _laptopIp = clean.trim();
+    _laptopPin = pin.trim().isNotEmpty ? pin.trim() : '123456';
+    _port = targetPort;
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_ipKey, _laptopIp!);
     await prefs.setString(_pinKey, _laptopPin!);
-    await prefs.setInt(_portKey, port);
+    await prefs.setInt(_portKey, _port);
   }
 
   Future<void> clearConfig() async {
@@ -68,6 +91,13 @@ class LaptopControlService {
   // ── Connection Test ───────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> testConnection() async {
+    if (!isConfigured) {
+      return {
+        'success': false,
+        'error': 'Please enter your laptop IP address first.',
+      };
+    }
+
     try {
       final res = await _dio.get('/');
       return {'success': true, 'data': res.data};
@@ -332,13 +362,15 @@ class LaptopControlService {
   String _friendlyError(dynamic e) {
     if (e is DioException) {
       if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.connectionError) {
-        return 'Cannot reach laptop. Make sure:\n1. AIRA Desktop Agent is running on your laptop.\n2. Both devices are on the same Wi-Fi.';
+          e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        return 'Cannot connect to laptop.\n\nQuick checklist:\n1. Is start_aira_desktop.bat running on your laptop?\n2. Are both phone and laptop on the SAME Wi-Fi network?\n3. Check your IP: ${_laptopIp ?? "none"}';
       }
       if (e.response?.statusCode == 401) {
-        return 'Wrong PIN. Check your PIN in Settings → Connect Laptop.';
+        return 'Invalid PIN. Please enter the PIN shown in your desktop terminal (default: 123456).';
       }
-      return 'Network error: ${e.message}';
+      return 'Connection error (${e.message}). Ensure desktop agent is running.';
     }
     return e.toString();
   }

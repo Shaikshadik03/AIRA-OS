@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aira_app/config/app_config.dart';
 
 
@@ -141,8 +142,12 @@ Key Companion Traits:
       debugPrint('[LLM FALLBACK] ✅ Responded via OPENROUTER (Fallback 2)');
       return result;
     } catch (e) {
-      debugPrint('[LLM FALLBACK] ❌ All LLM Providers (Groq, Gemini, OpenRouter) Failed!');
-      throw Exception('All AI services are currently unavailable ($e). Check connection.');
+      debugPrint('[LLM FALLBACK] ❌ All LLM Providers Failed: $e');
+      return '⚠️ **AI API Key Setup**\n\n'
+          'To start chatting with AIRA:\n'
+          '1. Open **Settings ⚙️ → AI Model & API Keys**\n'
+          '2. Paste your free **Groq API Key** (get one instantly at [console.groq.com/keys](https://console.groq.com/keys)) or **Gemini Key**.\n\n'
+          '💡 *Tip: Your offline features like Laptop Remote Control, TickTick Tasks, DSA Problems, and Alarms work 100% anytime!*';
     }
   }
 
@@ -154,12 +159,23 @@ Key Companion Traits:
     required String systemPrompt,
     String? base64Image,
   }) async {
+    // Check SharedPreferences for user-provided custom Groq key first
+    final prefs = await SharedPreferences.getInstance();
+    final customKey = prefs.getString('aira_custom_groq_key')?.trim();
+    final apiKey = (customKey != null && customKey.isNotEmpty)
+        ? customKey
+        : AppConfig.groqApiKey;
+
+    if (apiKey.isEmpty) {
+      throw Exception('Groq API Key is not set. Please add a free key in Settings.');
+    }
+
     final dio = Dio(BaseOptions(
       baseUrl: AppConfig.groqBaseUrl,
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 30),
       headers: {
-        'Authorization': 'Bearer ${AppConfig.groqApiKey}',
+        'Authorization': 'Bearer $apiKey',
         'Content-Type': 'application/json',
       },
     ));
@@ -192,6 +208,16 @@ Key Companion Traits:
     required String systemPrompt,
     String? base64Image,
   }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final customKey = prefs.getString('aira_custom_gemini_key')?.trim();
+    final apiKey = (customKey != null && customKey.isNotEmpty)
+        ? customKey
+        : AppConfig.geminiApiKey;
+
+    if (apiKey.isEmpty) {
+      throw Exception('Gemini API Key is not configured.');
+    }
+
     final dio = Dio(BaseOptions(
       baseUrl: AppConfig.geminiBaseUrl,
       connectTimeout: const Duration(seconds: 15),
@@ -207,7 +233,6 @@ Key Companion Traits:
     );
 
     final model = AppConfig.geminiModel;
-    final apiKey = AppConfig.geminiApiKey;
 
     final resp = await dio.post(
       '/models/$model:generateContent',
@@ -226,15 +251,25 @@ Key Companion Traits:
     required String systemPrompt,
     String? base64Image,
   }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final customKey = prefs.getString('aira_custom_openrouter_key')?.trim();
+    final apiKey = (customKey != null && customKey.isNotEmpty)
+        ? customKey
+        : AppConfig.openRouterApiKey;
+
+    if (apiKey.isEmpty) {
+      throw Exception('OpenRouter API Key is not configured.');
+    }
+
     final dio = Dio(BaseOptions(
       baseUrl: AppConfig.openRouterBaseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 30),
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 40),
       headers: {
-        'Authorization': 'Bearer ${AppConfig.openRouterApiKey}',
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://github.com/Shaikshadik03/AIRA-OS',
+        'Authorization': 'Bearer $apiKey',
+        'HTTP-Referer': 'https://aira.app',
         'X-Title': 'AIRA OS',
+        'Content-Type': 'application/json',
       },
     ));
 

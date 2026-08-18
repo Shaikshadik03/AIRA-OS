@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
@@ -231,6 +232,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           // ── System Controls ──
           _sectionTitle('SYSTEM & VOICE'),
+          _settingsTile(
+            Icons.key_rounded,
+            'AI Model & API Keys',
+            'Configure Groq, Gemini & OpenRouter keys',
+            iconColor: AiraColors.claudeTerracotta,
+            onTap: _showApiKeyDialog,
+          ),
           _settingsTile(
             Icons.mic_rounded,
             'Voice & Wake-Word Engine',
@@ -955,6 +963,128 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               fontSize: 12,
               color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showApiKeyDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final groqController = TextEditingController(text: prefs.getString('aira_custom_groq_key') ?? '');
+    final geminiController = TextEditingController(text: prefs.getString('aira_custom_gemini_key') ?? '');
+
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.key_rounded, color: AiraColors.claudeTerracotta, size: 22),
+            const SizedBox(width: 10),
+            Text(
+              'AI Model & API Keys',
+              style: GoogleFonts.playfairDisplay(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.12 : 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AiraColors.claudeTerracotta.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  '💡 AIRA works with free API keys from Groq or Google Gemini. Get a free Groq key in 10 seconds at console.groq.com/keys.',
+                  style: GoogleFonts.sourceSerif4(
+                    fontSize: 12.5,
+                    color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Groq API Key (Recommended)',
+                style: GoogleFonts.sourceSerif4(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: groqController,
+                decoration: InputDecoration(
+                  hintText: 'gsk_...',
+                  hintStyle: GoogleFonts.firaCode(fontSize: 12),
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                style: GoogleFonts.firaCode(fontSize: 12),
+                obscureText: true,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Gemini API Key (Optional Fallback)',
+                style: GoogleFonts.sourceSerif4(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: geminiController,
+                decoration: InputDecoration(
+                  hintText: 'AIzaSy...',
+                  hintStyle: GoogleFonts.firaCode(fontSize: 12),
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                style: GoogleFonts.firaCode(fontSize: 12),
+                obscureText: true,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: GoogleFonts.sourceSerif4()),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await prefs.setString('aira_custom_groq_key', groqController.text.trim());
+              await prefs.setString('aira_custom_gemini_key', geminiController.text.trim());
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('AI API keys saved successfully!'),
+                    backgroundColor: AiraColors.claudeTerracotta,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AiraColors.claudeTerracotta),
+            child: Text('Save Keys', style: GoogleFonts.sourceSerif4(color: Colors.white, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
