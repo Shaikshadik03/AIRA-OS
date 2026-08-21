@@ -5,6 +5,12 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:aira_app/config/app_config.dart';
 import 'package:aira_app/core/services/notification_service.dart';
+import 'package:aira_app/core/services/chat_cache_service.dart';
+import 'package:aira_app/core/services/personality_engine.dart';
+import 'package:aira_app/core/services/user_profile_service.dart';
+import 'package:aira_app/core/services/memory_engine.dart';
+import 'package:aira_app/core/services/proactive_engine.dart';
+import 'package:aira_app/core/services/wake_word_service.dart';
 import 'package:aira_app/app.dart';
 
 void main() async {
@@ -29,8 +35,24 @@ void main() async {
   // Initialize Hive for local chat storage
   await Hive.initFlutter();
 
+  // Initialize offline chat cache (was missing — caused silent cache failures)
+  await ChatCacheService.init();
+
+  // Initialize AIRA Brain: Personality, Profile, and Memory
+  await PersonalityEngine().load();
+  await UserProfileService().load();
+  await MemoryEngine().load();
+
   // Initialize Notification Service for local alerts
   await NotificationService().initialize();
+
+  // Initialize Proactive Intelligence Engine (auto-reminders, nudges)
+  final proactive = ProactiveEngine();
+  await proactive.load();
+  proactive.start();
+
+  // Initialize Wake Word Service (Hey AIRA hands-free)
+  await WakeWordService().load();
 
   runApp(
     const ProviderScope(
@@ -38,3 +60,4 @@ void main() async {
     ),
   );
 }
+

@@ -357,6 +357,40 @@ class LaptopControlService {
     } catch (_) {}
   }
 
+  // ── Autonomous Actions ────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> organizeDownloads() async {
+    try {
+      final res = await _dio.post('/auto/organize_downloads');
+      return res.data;
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
+  Future<Map<String, dynamic>> saveQuickNote(String title, String content) async {
+    try {
+      final res = await _dio.post('/auto/quick_note', data: {
+        'title': title,
+        'content': content,
+      });
+      return res.data;
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
+  Future<Map<String, dynamic>> autoWebSearch(String query) async {
+    try {
+      final res = await _dio.post('/auto/web_search', data: {
+        'query': query,
+      });
+      return res.data;
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────
 
   String _friendlyError(dynamic e) {

@@ -21,6 +21,10 @@ import 'package:aira_app/core/services/supabase_memory_service.dart';
 import 'package:aira_app/core/services/google_workspace_service.dart';
 import 'package:aira_app/core/services/android_phone_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
+import 'package:aira_app/core/services/fact_extractor.dart';
+import 'package:aira_app/core/services/memory_engine.dart';
+import 'package:aira_app/core/services/implicit_reminder_detector.dart';
+import 'package:aira_app/core/services/proactive_engine.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -131,6 +135,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> sendMessage(String content, {String? base64Image}) async {
     if (content.trim().isEmpty && base64Image == null) return;
+
+    // Record interaction for proactive idle check-in tracking
+    ProactiveEngine.recordInteraction();
+
+    // Detect implicit time commitments and auto-schedule reminders
+    // (runs async, non-blocking — user doesn't see this)
+    ImplicitReminderDetector().detectAndSchedule(content);
 
     final lower = content.toLowerCase().trim();
     if (lower.contains('connect google') || lower == 'connect workspace' || lower == 'link google') {
@@ -433,6 +444,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
           break;
         case LaptopCommandType.systemStats:
           result = await _laptopService.getSystemStats();
+          break;
+        case LaptopCommandType.organizeDownloads:
+          result = await _laptopService.organizeDownloads();
+          break;
+        case LaptopCommandType.saveNote:
+          result = await _laptopService.saveQuickNote('AIRA_Note_${DateTime.now().millisecondsSinceEpoch}', command.argument ?? '');
+          break;
+        case LaptopCommandType.webSearch:
+          result = await _laptopService.autoWebSearch(command.argument ?? '');
           break;
       }
 
@@ -1103,9 +1123,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
         } catch (_) {}
       }
 
+      // Inject relevant memory facts from MemoryEngine
+      final memoryEngine = MemoryEngine();
+      final relevantFacts = memoryEngine.getRelevantFacts(content, limit: 5);
+
       final combinedContext = [
         if (memoryContext.isNotEmpty) memoryContext,
         if (webSearchContext != null && webSearchContext.isNotEmpty) webSearchContext,
+        if (relevantFacts.isNotEmpty) '\n<local_memory>\n${relevantFacts.map((f) => '- $f').join('\n')}\n</local_memory>',
       ].join('\n\n');
 
       final response = await _groq.chat(
@@ -1135,6 +1160,23 @@ class ChatNotifier extends StateNotifier<ChatState> {
       if (_isVoiceEnabled) {
         final cleanText = response.replaceAll(RegExp(r'[*#_`]'), '');
         await _tts.speak(cleanText);
+      }
+
+      // ── Background Fact Extraction (learn about user) ──
+      // Every 5 messages, extract durable facts from the conversation
+      final userMessages = state.messages.where((m) => m.role == 'user').toList();
+      if (userMessages.length % 5 == 0 && userMessages.isNotEmpty) {
+        // Run fact extraction asynchronously (don't await — non-blocking)
+        final recentTurns = state.messages
+            .where((m) => !m.isStreaming)
+            .toList()
+            .reversed
+            .take(10)
+            .toList()
+            .reversed
+            .map((m) => {'role': m.role, 'content': m.content})
+            .toList();
+        FactExtractor().extractFromConversation(recentTurns);
       }
     } catch (e) {
       final updatedMessages = state.messages.where((m) => m.id != typingMsg.id).toList();

@@ -10,6 +10,8 @@ import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/core/theme/theme_provider.dart';
+import 'package:aira_app/core/services/user_profile_service.dart';
+import 'package:aira_app/core/services/wake_word_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -252,6 +254,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             'Test high-priority reminder delivery',
             iconColor: AiraColors.claudeAmber,
             onTap: _showNotificationTestDialog,
+          ),
+          _settingsTile(
+            Icons.person_outline_rounded,
+            'My Profile & Memory',
+            'Tell AIRA who you are so it knows you personally',
+            iconColor: AiraColors.claudeTerracotta,
+            onTap: _showProfileDialog,
+          ),
+          _settingsTile(
+            Icons.mic_none_rounded,
+            'Hey AIRA — Hands-Free Mode',
+            WakeWordService().isEnabled ? 'Active — say "Hey AIRA" anytime' : 'Tap to enable always-on voice',
+            iconColor: const Color(0xFF4CAF50),
+            onTap: _showWakeWordDialog,
           ),
           _settingsTile(
             Icons.auto_fix_high_rounded,
@@ -1087,6 +1103,229 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Text('Save Keys', style: GoogleFonts.sourceSerif4(color: Colors.white, fontWeight: FontWeight.w700)),
           ),
         ],
+      ),
+    );
+  }
+  void _showProfileDialog() async {
+    final profileService = UserProfileService();
+    await profileService.load();
+    final controllers = <String, TextEditingController>{};
+
+    for (final field in UserProfileService.profileFields) {
+      controllers[field['key']!] = TextEditingController(
+        text: (profileService.getField(field['key']!) ?? '').toString(),
+      );
+    }
+
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.person_outline_rounded, color: AiraColors.claudeTerracotta, size: 22),
+            const SizedBox(width: 10),
+            Text(
+              'My Profile',
+              style: GoogleFonts.playfairDisplay(
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.12 : 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AiraColors.claudeTerracotta.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  'Tell AIRA about yourself so it can talk to you like a real friend who knows you.',
+                  style: GoogleFonts.sourceSerif4(
+                    fontSize: 12.5,
+                    color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              ...UserProfileService.profileFields.map((field) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  controller: controllers[field['key']!],
+                  decoration: InputDecoration(
+                    labelText: field['label'],
+                    hintText: field['hint'],
+                    labelStyle: GoogleFonts.sourceSerif4(fontSize: 12.5, fontWeight: FontWeight.w600),
+                    hintStyle: GoogleFonts.sourceSerif4(fontSize: 12, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  style: GoogleFonts.sourceSerif4(fontSize: 13, color: theme.colorScheme.onSurface),
+                ),
+              )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: GoogleFonts.sourceSerif4()),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final updates = <String, dynamic>{};
+              for (final entry in controllers.entries) {
+                updates[entry.key] = entry.value.text.trim();
+              }
+              await profileService.updateProfile(updates);
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Profile saved! AIRA now knows you personally.'),
+                    backgroundColor: AiraColors.claudeTerracotta,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AiraColors.claudeTerracotta),
+            child: Text('Save Profile', style: GoogleFonts.sourceSerif4(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWakeWordDialog() async {
+    final wakeService = WakeWordService();
+    await wakeService.load();
+    final keyController = TextEditingController();
+    bool isEnabled = wakeService.isEnabled;
+
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: theme.scaffoldBackgroundColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.mic_none_rounded, color: Color(0xFF4CAF50), size: 22),
+              const SizedBox(width: 10),
+              Text(
+                'Hey AIRA',
+                style: GoogleFonts.playfairDisplay(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4CAF50).withValues(alpha: isDark ? 0.12 : 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF4CAF50).withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    'Say "Hey AIRA" with your screen off, phone in pocket — and AIRA starts listening. Just like Siri, but yours.',
+                    style: GoogleFonts.sourceSerif4(
+                      fontSize: 12.5,
+                      color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  title: Text('Enable Hands-Free Mode', style: GoogleFonts.sourceSerif4(fontWeight: FontWeight.w600, fontSize: 14)),
+                  subtitle: Text(
+                    isEnabled ? 'AIRA is always listening for your voice' : 'Turn on to activate "Hey AIRA"',
+                    style: GoogleFonts.sourceSerif4(fontSize: 12),
+                  ),
+                  value: isEnabled,
+                  activeTrackColor: const Color(0xFF4CAF50),
+                  onChanged: (val) {
+                    setDialogState(() => isEnabled = val);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: keyController,
+                  decoration: InputDecoration(
+                    labelText: 'Picovoice Access Key (Optional)',
+                    hintText: 'Get free key from console.picovoice.ai',
+                    labelStyle: GoogleFonts.sourceSerif4(fontSize: 12.5, fontWeight: FontWeight.w600),
+                    hintStyle: GoogleFonts.sourceSerif4(fontSize: 11),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  style: GoogleFonts.sourceSerif4(fontSize: 13, color: theme.colorScheme.onSurface),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Without a Picovoice key, AIRA uses fallback keyword detection (less accurate but still works).',
+                  style: GoogleFonts.sourceSerif4(fontSize: 11, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: GoogleFonts.sourceSerif4()),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (keyController.text.trim().isNotEmpty) {
+                  await wakeService.setAccessKey(keyController.text.trim());
+                }
+                await wakeService.setEnabled(isEnabled);
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  setState(() {}); // Refresh settings UI
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(isEnabled
+                          ? 'Hands-free mode enabled! Say "Hey AIRA" anytime.'
+                          : 'Hands-free mode disabled.'),
+                      backgroundColor: const Color(0xFF4CAF50),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4CAF50)),
+              child: Text('Save', style: GoogleFonts.sourceSerif4(color: Colors.white, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
       ),
     );
   }

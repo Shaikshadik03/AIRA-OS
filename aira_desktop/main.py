@@ -13,7 +13,10 @@ import os
 import socket
 import hashlib
 import base64
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
+import shutil
+import webbrowser
+import urllib.parse
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -33,7 +36,7 @@ import clipboard_sync
 # Change this PIN to anything you want. Your phone must send this to connect.
 AIRA_PIN = os.environ.get("AIRA_PIN", "123456")
 PORT = int(os.environ.get("AIRA_PORT", 8765))
-AGENT_VERSION = "3.0.0"
+AGENT_VERSION = "4.0.0"
 
 app = FastAPI(
     title="AIRA Desktop Agent",
@@ -51,8 +54,8 @@ app.add_middleware(
 
 # ── Auth ──────────────────────────────────────────────────────────────────
 
-def verify_pin(x_aira_pin: str = None):
-    """Simple PIN-based authentication header check."""
+def verify_pin(x_aira_pin: Optional[str] = Header(None, alias="X-AIRA-PIN")):
+    """PIN-based authentication via X-AIRA-PIN HTTP header."""
     if x_aira_pin != AIRA_PIN:
         raise HTTPException(status_code=401, detail="Invalid AIRA PIN. Check your PIN in Settings.")
     return True
@@ -102,6 +105,13 @@ class FileOpenRequest(BaseModel):
 
 class ShutdownRequest(BaseModel):
     delay_seconds: int = 10
+
+class QuickNoteRequest(BaseModel):
+    title: str = "AIRA_Note"
+    content: str
+
+class WebSearchRequest(BaseModel):
+    query: str
 
 
 # ── Info Endpoint ─────────────────────────────────────────────────────────
@@ -281,6 +291,94 @@ def get_clip(auth: bool = Depends(verify_pin)):
 @app.post("/clipboard")
 def set_clip(req: ClipboardRequest, auth: bool = Depends(verify_pin)):
     return clipboard_sync.set_clipboard(req.text)
+
+
+# ── Autonomous Digital Agent Endpoints ────────────────────────────────────
+
+@app.post("/auto/organize_downloads")
+def organize_downloads(auth: bool = Depends(verify_pin)):
+    """Automatically sorts files in Downloads folder into categorized folders."""
+    downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
+    if not os.path.exists(downloads_path):
+        return {"success": False, "error": "Downloads folder not found"}
+
+    categories = {
+        "PDFs": [".pdf"],
+        "Images": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"],
+        "Documents": [".docx", ".doc", ".txt", ".pptx", ".ppt", ".xlsx", ".xls", ".csv"],
+        "Archives": [".zip", ".rar", ".7z", ".tar", ".gz"],
+        "Code": [".py", ".dart", ".js", ".ts", ".html", ".css", ".json", ".cpp", ".java"],
+        "Installers": [".exe", ".msi", ".apk"],
+        "Media": [".mp4", ".mkv", ".mp3", ".wav", ".avi", ".mov"],
+    }
+
+    moved_count = 0
+    moved_details = []
+
+    for filename in os.listdir(downloads_path):
+        file_path = os.path.join(downloads_path, filename)
+        if os.path.isdir(file_path):
+            continue
+
+        ext = os.path.splitext(filename)[1].lower()
+        for folder_name, extensions in categories.items():
+            if ext in extensions:
+                target_dir = os.path.join(downloads_path, folder_name)
+                os.makedirs(target_dir, exist_ok=True)
+                target_path = os.path.join(target_dir, filename)
+                try:
+                    shutil.move(file_path, target_path)
+                    moved_count += 1
+                    moved_details.append(f"{filename} → {folder_name}/")
+                except Exception as e:
+                    pass
+                break
+
+    return {
+        "success": True,
+        "moved_count": moved_count,
+        "details": moved_details,
+        "message": f"Organized {moved_count} files in Downloads folder.",
+    }
+
+@app.post("/auto/quick_note")
+def save_quick_note(req: QuickNoteRequest, auth: bool = Depends(verify_pin)):
+    """Saves a markdown note to user's Desktop."""
+    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+    if not os.path.exists(desktop_path):
+        desktop_path = os.path.expanduser("~")
+
+    sanitized_title = "".join(c for c in req.title if c.isalnum() or c in (' ', '_', '-')).rstrip()
+    if not sanitized_title:
+        sanitized_title = "AIRA_Note"
+
+    filename = f"{sanitized_title}.md"
+    file_path = os.path.join(desktop_path, filename)
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(req.content)
+
+    return {
+        "success": True,
+        "path": file_path,
+        "message": f"Note saved to Desktop as {filename}",
+    }
+
+@app.post("/auto/web_search")
+def auto_web_search(req: WebSearchRequest, auth: bool = Depends(verify_pin)):
+    """Opens browser directly to search query or URL."""
+    q = req.query.strip()
+    if q.startswith("http://") or q.startswith("https://"):
+        url = q
+    else:
+        url = f"https://www.google.com/search?q={urllib.parse.quote_plus(q)}"
+    
+    webbrowser.open(url)
+    return {
+        "success": True,
+        "url": url,
+        "message": f"Opened search in browser: {q}",
+    }
 
 
 # ── WebSocket for Live Trackpad ───────────────────────────────────────────

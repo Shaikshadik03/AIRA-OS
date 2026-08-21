@@ -7,7 +7,7 @@ class AppConfig {
 
   // App Info
   static const String appName = 'AIRA OS';
-  static const String appVersion = '3.0.0';
+  static const String appVersion = '4.0.0';
 
   // ============================================
   // 🔑 SUPABASE

@@ -101,6 +101,29 @@ class LaptopIntentDetector {
       return LaptopCommand(type: LaptopCommandType.systemStats);
     }
 
+    // Organize downloads
+    if (lower.contains('organize downloads') || lower.contains('sort downloads') || lower.contains('clean downloads')) {
+      return LaptopCommand(type: LaptopCommandType.organizeDownloads);
+    }
+
+    // Quick note / save note on laptop
+    final noteMatch = RegExp(r'(?:take a note|save a note|write a note|create a note)\s+(?:saying\s+|that\s+)?(.+)', caseSensitive: false).firstMatch(lower);
+    if (noteMatch != null) {
+      final noteContent = noteMatch.group(1)?.trim() ?? '';
+      if (noteContent.isNotEmpty) {
+        return LaptopCommand(type: LaptopCommandType.saveNote, argument: noteContent);
+      }
+    }
+
+    // Search on laptop
+    final searchMatch = RegExp(r'(?:search on my laptop|search on laptop|google on laptop)\s+(?:for\s+)?(.+)', caseSensitive: false).firstMatch(lower);
+    if (searchMatch != null) {
+      final query = searchMatch.group(1)?.trim() ?? '';
+      if (query.isNotEmpty) {
+        return LaptopCommand(type: LaptopCommandType.webSearch, argument: query);
+      }
+    }
+
     return null;
   }
 
@@ -145,6 +168,14 @@ class LaptopIntentDetector {
             '- 💾 RAM: ${result['ram_used_gb']}GB / ${result['ram_total_gb']}GB (${result['ram_percent']}%)\n'
             '- 💿 Disk: ${result['disk_used_gb']}GB / ${result['disk_total_gb']}GB\n'
             '- 🔋 Battery: ${result['battery_percent'] ?? "N/A"}%${result['is_charging'] == true ? " ⚡ Charging" : ""}';
+      case LaptopCommandType.organizeDownloads:
+        final count = result?['moved_count'] ?? 0;
+        return '📁 **Downloads Organized!** Cleaned and sorted $count files into categorized folders (PDFs, Images, Code, Docs, Media).';
+      case LaptopCommandType.saveNote:
+        final path = result?['path'] ?? 'Desktop';
+        return '📝 **Note Saved!** Created markdown note on your laptop Desktop: `$path`';
+      case LaptopCommandType.webSearch:
+        return '🌐 **Opened Browser!** Searching for "${command.argument}" on your laptop.';
     }
   }
 }
@@ -163,6 +194,9 @@ enum LaptopCommandType {
   type,
   terminal,
   systemStats,
+  organizeDownloads,
+  saveNote,
+  webSearch,
 }
 
 class LaptopCommand {

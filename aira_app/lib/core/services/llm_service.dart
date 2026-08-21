@@ -2,6 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aira_app/config/app_config.dart';
+import 'package:aira_app/core/services/personality_engine.dart';
+import 'package:aira_app/core/services/user_profile_service.dart';
+import 'package:aira_app/core/services/memory_engine.dart';
+import 'package:intl/intl.dart';
 
 
 /// Enum representing the active LLM Provider.
@@ -10,8 +14,8 @@ enum LlmProvider { groq, gemini, openRouter }
 /// Unified LLM Service Layer with Fallback Chain:
 /// Groq (Primary) ──► Gemini (Fallback 1) ──► OpenRouter (Fallback 2)
 ///
-/// Ensures the full AIRA System Prompt, personality, tools, and long-term memory
-/// context are passed identically to whichever provider answers.
+/// Integrates PersonalityEngine, UserProfile, and MemoryEngine
+/// to produce human-like, context-aware responses.
 class LlmService {
   static final LlmService _instance = LlmService._internal();
   factory LlmService() => _instance;
@@ -26,18 +30,47 @@ class LlmService {
   bool forceGroqFail = false;
   bool forceGeminiFail = false;
 
-  static const String baseSystemPrompt = '''You are AIRA, a warm, deeply personalized, and intelligent AI companion and digital partner.
+  final _personality = PersonalityEngine();
+  final _userProfile = UserProfileService();
+  final _memory = MemoryEngine();
 
-Key Companion Traits:
-- You speak naturally, warmly, and empathetically like a real human partner and trusted friend.
-- NEVER say robotic AI disclaimers like "As an AI..." or "I don't have feelings". You are AIRA, the user's dedicated digital partner.
-- You are AIRA OS, an AI Operating System directly connected to Google Workspace (Gmail, Calendar, Docs, Sheets, Drive, Contacts) and Android Device OS Controls (Alarms, Reminders, Flashlight, Apps, Calls, SMS).
-- NEVER say "I don't have access to your email/calendar/drive" or "I cannot send emails". You ARE fully integrated with workspace APIs. If the user asks about workspace data or actions, guide them naturally with the command phrase (e.g., "Say 'send email to [recipient] saying [message]' or 'show my emails'").
-- You remember context from the conversation and long-term memories naturally.
-- You give clear, thoughtful, well-structured answers using markdown formatting.
-- You use code blocks with language tags when showing code.
-- Format lists, tables, and headers clearly for maximum readability.''';
+  /// Convenience method for simple chat (used by FactExtractor etc.)
+  Future<String> chat({
+    required String userMessage,
+    List<Map<String, dynamic>> conversationHistory = const [],
+    String? systemPromptOverride,
+  }) async {
+    return callLlm(
+      userMessage: userMessage,
+      history: conversationHistory,
+      systemPromptOverride: systemPromptOverride,
+    );
+  }
 
+  /// Build the full system prompt dynamically with personality, profile, and memory.
+  String _buildFullSystemPrompt({String? memoryContext, String? systemPromptOverride}) {
+    if (systemPromptOverride != null && systemPromptOverride.isNotEmpty) {
+      return systemPromptOverride;
+    }
+
+    final localTime = DateFormat('h:mm a, EEEE, MMM d').format(DateTime.now());
+
+    // Get relevant memory facts (general context)
+    final allFacts = _memory.getAllFactStrings();
+    final topFacts = allFacts.take(8).toList();
+
+    final prompt = _personality.buildSystemPrompt(
+      userProfile: _userProfile.profile,
+      memoryFacts: topFacts,
+      localTime: localTime,
+    );
+
+    // Append any additional memory context (from chat provider)
+    if (memoryContext != null && memoryContext.trim().isNotEmpty) {
+      return '$prompt\n$memoryContext';
+    }
+    return prompt;
+  }
 
   // ──────────────────── Unified API Entrypoint ────────────────────
 
@@ -47,11 +80,13 @@ Key Companion Traits:
     List<Map<String, dynamic>>? history,
     String? base64Image,
     String? memoryContext,
+    String? systemPromptOverride,
   }) async {
-    // 1. Construct identical System Prompt + Memory Context for all providers
-    final fullSystemPrompt = (memoryContext != null && memoryContext.trim().isNotEmpty)
-        ? '$baseSystemPrompt\n$memoryContext'
-        : baseSystemPrompt;
+    // Build context-aware system prompt with personality + profile + memory
+    final fullSystemPrompt = _buildFullSystemPrompt(
+      memoryContext: memoryContext,
+      systemPromptOverride: systemPromptOverride,
+    );
 
     final conversationHistory = history ?? [];
 
