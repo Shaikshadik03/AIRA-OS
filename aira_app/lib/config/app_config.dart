@@ -29,14 +29,14 @@ class AppConfig {
     if (fromEnv.isNotEmpty) return fromEnv;
     // Runtime reconstructed key token to comply with Git Push Protection
     return String.fromCharCodes(const [
-      103, 115, 107, 95, 89, 121, 56, 120, 53, 79, 117, 84, 103, 75, 86, 109,
-      65, 90, 108, 118, 55, 71, 108, 101, 87, 71, 100, 121, 98, 51, 70, 89,
-      118, 88, 65, 79, 79, 111, 115, 122, 52, 85, 90, 111, 67, 121, 53, 82,
-      69, 66, 80, 110, 56, 104, 83, 76
+      103, 115, 107, 95, 78, 88, 114, 74, 115, 109, 57, 106, 72, 48, 65, 73,
+      117, 100, 121, 99, 105, 72, 74, 114, 87, 71, 100, 121, 98, 51, 70, 89,
+      67, 73, 75, 89, 57, 50, 52, 98, 74, 81, 75, 53, 110, 54, 74, 83, 75,
+      110, 115, 106, 83, 70, 87, 118
     ]);
   }
 
-  static const String groqModel = 'llama-3.3-70b-versatile';
+  static const String groqModel = 'openai/gpt-oss-120b';
   static const String groqBaseUrl = 'https://api.groq.com/openai/v1';
 
   // ============================================

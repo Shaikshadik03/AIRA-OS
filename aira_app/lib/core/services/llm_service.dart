@@ -224,15 +224,29 @@ class LlmService {
 
     final model = base64Image != null ? 'llama-3.2-90b-vision-preview' : AppConfig.groqModel;
 
-    final resp = await dio.post('/chat/completions', data: {
-      'model': model,
-      'messages': messages,
-      'temperature': 0.7,
-      'max_tokens': 4096,
-      'stream': false,
-    });
-
-    return _parseOpenAiResponse(resp.data);
+    try {
+      final resp = await dio.post('/chat/completions', data: {
+        'model': model,
+        'messages': messages,
+        'temperature': 0.7,
+        'max_tokens': 4096,
+        'stream': false,
+      });
+      return _parseOpenAiResponse(resp.data);
+    } catch (e) {
+      if (model != 'openai/gpt-oss-20b' && base64Image == null) {
+        debugPrint('[GROQ] Retrying with model openai/gpt-oss-20b...');
+        final resp = await dio.post('/chat/completions', data: {
+          'model': 'openai/gpt-oss-20b',
+          'messages': messages,
+          'temperature': 0.7,
+          'max_tokens': 4096,
+          'stream': false,
+        });
+        return _parseOpenAiResponse(resp.data);
+      }
+      rethrow;
+    }
   }
 
   // ──────────────────── Gemini Provider (Google Format) ────────────────────
