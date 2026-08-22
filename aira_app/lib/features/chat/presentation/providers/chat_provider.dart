@@ -454,6 +454,53 @@ class ChatNotifier extends StateNotifier<ChatState> {
         case LaptopCommandType.webSearch:
           result = await _laptopService.autoWebSearch(command.argument ?? '');
           break;
+        case LaptopCommandType.cancelShutdown:
+          await _laptopService.cancelShutdown();
+          result = {'success': true};
+          break;
+        case LaptopCommandType.setBrightness:
+          final arg = command.argument ?? '70';
+          if (arg == 'up') {
+            result = await _laptopService.runCommand('powershell -Command "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, [math]::min(100, (Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightness).CurrentBrightness + 20))"');
+          } else if (arg == 'down') {
+            result = await _laptopService.runCommand('powershell -Command "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, [math]::max(0, (Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightness).CurrentBrightness - 20))"');
+          } else {
+            await _laptopService.setBrightness(int.tryParse(arg) ?? 70);
+            result = {'success': true};
+          }
+          break;
+        case LaptopCommandType.setVolume:
+          await _laptopService.setVolume(int.tryParse(command.argument ?? '50') ?? 50);
+          result = {'success': true};
+          break;
+        case LaptopCommandType.paste:
+          await _laptopService.sendHotkey(['ctrl', 'v']);
+          result = {'success': true};
+          break;
+        case LaptopCommandType.copy:
+          await _laptopService.sendHotkey(['ctrl', 'c']);
+          result = {'success': true};
+          break;
+        case LaptopCommandType.minimizeWindow:
+          await _laptopService.sendHotkey(['super', 'down']);
+          result = {'success': true};
+          break;
+        case LaptopCommandType.maximizeWindow:
+          await _laptopService.sendHotkey(['super', 'up']);
+          result = {'success': true};
+          break;
+        case LaptopCommandType.closeWindow:
+          await _laptopService.sendHotkey(['alt', 'f4']);
+          result = {'success': true};
+          break;
+        case LaptopCommandType.scrollDown:
+          await _laptopService.scrollMouse(-5);
+          result = {'success': true};
+          break;
+        case LaptopCommandType.scrollUp:
+          await _laptopService.scrollMouse(5);
+          result = {'success': true};
+          break;
       }
 
       _removeLoadingMessage();

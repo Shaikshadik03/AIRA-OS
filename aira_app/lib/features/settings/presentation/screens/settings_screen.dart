@@ -12,6 +12,7 @@ import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/core/theme/theme_provider.dart';
 import 'package:aira_app/core/services/user_profile_service.dart';
 import 'package:aira_app/core/services/wake_word_service.dart';
+import 'package:aira_app/core/services/personality_engine.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -716,12 +717,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _showPersonalityDialog() {
-    final personalities = [
-      'Executive Mentor 🧠',
-      'Technical Genius 💻',
-      'Friendly Companion 🤝',
-      'Professional Assistant 💼',
-    ];
+    // Map display labels → PersonalityEngine mode keys
+    final personalities = {
+      'Friendly Companion 🤝': 'friend',
+      'Executive Mentor 🧠': 'mentor',
+      'Professional Assistant 💼': 'professional',
+      'Creative Spark ✨': 'creative',
+    };
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -744,11 +746,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: personalities.map((p) {
-            final isSelected = _selectedPersonality == p;
+          children: personalities.entries.map((entry) {
+            final label = entry.key;
+            final modeKey = entry.value;
+            final isSelected = _selectedPersonality == label;
             return ListTile(
               title: Text(
-                p,
+                label,
                 style: GoogleFonts.sourceSerif4(
                   fontSize: 14,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
@@ -756,12 +760,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: AiraColors.claudeTerracotta) : null,
-              onTap: () {
-                setState(() => _selectedPersonality = p);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('AIRA Tone set to $p')),
-                );
+              onTap: () async {
+                // Actually save to PersonalityEngine (persisted via SharedPreferences)
+                await PersonalityEngine().setMode(modeKey);
+                setState(() => _selectedPersonality = label);
+                if (context.mounted) Navigator.pop(context);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('AIRA Tone set to $label')),
+                  );
+                }
               },
             );
           }).toList(),

@@ -16,6 +16,16 @@ class LaptopIntentDetector {
       'close chrome', 'close spotify',
       'files on my laptop', 'open file',
       'clipboard', 'copy to laptop',
+      'organize downloads', 'sort downloads',
+      'take a note', 'save a note', 'write a note',
+      'search on my laptop', 'search on laptop',
+      'brightness on laptop', 'set brightness',
+      'paste on laptop', 'copy on laptop',
+      'cancel shutdown', 'abort shutdown',
+      'minimize', 'maximize', 'close window',
+      'what\'s my laptop', 'laptop wifi', 'laptop ip',
+      'set volume', 'volume to', 'increase brightness', 'decrease brightness',
+      'scroll down laptop', 'scroll up laptop',
     ];
     return laptopKeywords.any((kw) => lower.contains(kw));
   }
@@ -124,6 +134,62 @@ class LaptopIntentDetector {
       }
     }
 
+    // Cancel shutdown
+    if (lower.contains('cancel shutdown') || lower.contains('abort shutdown') || lower.contains('cancel restart')) {
+      return LaptopCommand(type: LaptopCommandType.cancelShutdown);
+    }
+
+    // Set specific brightness level
+    final brightSetMatch = RegExp(r'(?:set|change|brightness to|brightness)\s*(?:to\s*)?(\d+)\s*%?', caseSensitive: false).firstMatch(lower);
+    if ((lower.contains('brightness') || lower.contains('bright')) && brightSetMatch != null) {
+      final level = brightSetMatch.group(1) ?? '70';
+      return LaptopCommand(type: LaptopCommandType.setBrightness, argument: level);
+    }
+
+    // Increase/decrease brightness
+    if (lower.contains('increase brightness') || lower.contains('brightness up')) {
+      return LaptopCommand(type: LaptopCommandType.setBrightness, argument: 'up');
+    }
+    if (lower.contains('decrease brightness') || lower.contains('brightness down')) {
+      return LaptopCommand(type: LaptopCommandType.setBrightness, argument: 'down');
+    }
+
+    // Set specific volume level
+    final volSetMatch = RegExp(r'(?:set|volume to|volume)\s*(?:to\s*)?(\d+)\s*%?', caseSensitive: false).firstMatch(lower);
+    if ((lower.contains('volume to') || lower.contains('set volume')) && volSetMatch != null) {
+      final level = volSetMatch.group(1) ?? '50';
+      return LaptopCommand(type: LaptopCommandType.setVolume, argument: level);
+    }
+
+    // Paste on laptop
+    if (lower.contains('paste on laptop') || lower.contains('paste on my laptop') || lower.contains('paste on pc')) {
+      return LaptopCommand(type: LaptopCommandType.paste);
+    }
+
+    // Copy selected text on laptop
+    if (lower.contains('copy on laptop') || lower.contains('copy on my laptop') || lower.contains('copy on pc')) {
+      return LaptopCommand(type: LaptopCommandType.copy);
+    }
+
+    // Minimize / Maximize / Close window
+    if (lower.contains('minimize') && (lower.contains('laptop') || lower.contains('window') || lower.contains('pc'))) {
+      return LaptopCommand(type: LaptopCommandType.minimizeWindow);
+    }
+    if (lower.contains('maximize') && (lower.contains('laptop') || lower.contains('window') || lower.contains('pc'))) {
+      return LaptopCommand(type: LaptopCommandType.maximizeWindow);
+    }
+    if (lower.contains('close window') || lower.contains('close this window')) {
+      return LaptopCommand(type: LaptopCommandType.closeWindow);
+    }
+
+    // Scroll on laptop
+    if (lower.contains('scroll down') && (lower.contains('laptop') || lower.contains('pc'))) {
+      return LaptopCommand(type: LaptopCommandType.scrollDown);
+    }
+    if (lower.contains('scroll up') && (lower.contains('laptop') || lower.contains('pc'))) {
+      return LaptopCommand(type: LaptopCommandType.scrollUp);
+    }
+
     return null;
   }
 
@@ -176,6 +242,29 @@ class LaptopIntentDetector {
         return '📝 **Note Saved!** Created markdown note on your laptop Desktop: `$path`';
       case LaptopCommandType.webSearch:
         return '🌐 **Opened Browser!** Searching for "${command.argument}" on your laptop.';
+      case LaptopCommandType.cancelShutdown:
+        return '✅ **Shutdown cancelled!** Your laptop is safe.';
+      case LaptopCommandType.setBrightness:
+        final a = command.argument ?? '';
+        if (a == 'up') return '☀️ **Brightness increased** on your laptop.';
+        if (a == 'down') return '🌑 **Brightness decreased** on your laptop.';
+        return '☀️ **Brightness set to $a%** on your laptop.';
+      case LaptopCommandType.setVolume:
+        return '🔊 **Volume set to ${command.argument}%** on your laptop.';
+      case LaptopCommandType.paste:
+        return '📋 **Pasted clipboard content** on your laptop.';
+      case LaptopCommandType.copy:
+        return '📋 **Copied selected text** on your laptop.';
+      case LaptopCommandType.minimizeWindow:
+        return '⬇️ **Window minimized** on your laptop.';
+      case LaptopCommandType.maximizeWindow:
+        return '⬆️ **Window maximized** on your laptop.';
+      case LaptopCommandType.closeWindow:
+        return '❌ **Window closed** on your laptop (Alt+F4).';
+      case LaptopCommandType.scrollDown:
+        return '↕️ **Scrolled down** on your laptop.';
+      case LaptopCommandType.scrollUp:
+        return '↕️ **Scrolled up** on your laptop.';
     }
   }
 }
@@ -197,6 +286,16 @@ enum LaptopCommandType {
   organizeDownloads,
   saveNote,
   webSearch,
+  cancelShutdown,
+  setBrightness,
+  setVolume,
+  paste,
+  copy,
+  minimizeWindow,
+  maximizeWindow,
+  closeWindow,
+  scrollDown,
+  scrollUp,
 }
 
 class LaptopCommand {

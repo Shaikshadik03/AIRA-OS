@@ -357,6 +357,12 @@ class LaptopControlService {
     } catch (_) {}
   }
 
+  Future<void> scrollMouse(int amount) async {
+    try {
+      await _dio.post('/mouse/scroll', data: {'amount': amount});
+    } catch (_) {}
+  }
+
   // ── Autonomous Actions ────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> organizeDownloads() async {

@@ -3,7 +3,7 @@ title AIRA Desktop Agent
 color 0A
 echo.
 echo  =========================================
-echo    AIRA Desktop Agent v3.0.0 - Starting
+echo    AIRA Desktop Agent v4.0.0 - Starting
 echo  =========================================
 echo.
 
