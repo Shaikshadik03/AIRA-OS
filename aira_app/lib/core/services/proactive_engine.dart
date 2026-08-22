@@ -208,26 +208,63 @@ class ProactiveEngine {
     return false; // Placeholder — will be wired to PlannerProvider
   }
 
-  /// Send a proactive notification and record it
+  // Real-time in-chat message callback (wired to active ChatNotifier)
+  static Function(String title, String body)? onProactiveChatMessage;
+  static const String _pendingChatMessagesKey = 'aira_pending_proactive_chat_messages';
+
+  /// Send a proactive notification, record it, and inject as real in-chat message
   Future<void> _sendProactiveNotification({
     required String id,
     required String title,
     required String body,
   }) async {
+    // 1. Send Android system push notification
     await _notifications.showNotification(
       id: id.hashCode.abs() % 100000,
       title: 'AIRA · $title',
       body: body,
     );
 
-    // Record that this notification was sent today
+    // 2. Dispatch to live chat if open
+    onProactiveChatMessage?.call(title, body);
+
+    // 3. Queue in SharedPreferences for chat screen to display when opened
     final prefs = await SharedPreferences.getInstance();
+    final pendingRaw = prefs.getStringList(_pendingChatMessagesKey) ?? [];
+    pendingRaw.add(jsonEncode({
+      'title': title,
+      'body': body,
+      'time': DateTime.now().toIso8601String(),
+    }));
+    await prefs.setStringList(_pendingChatMessagesKey, pendingRaw);
+
+    // 4. Record that this notification was sent today
     final sentKey = '${_sentNotificationsKey}_${DateTime.now().toIso8601String().substring(0, 10)}';
     final existing = prefs.getStringList(sentKey) ?? [];
     existing.add(id);
     await prefs.setStringList(sentKey, existing);
 
-    debugPrint('[PROACTIVE] ✅ Sent: $title — $body');
+    debugPrint('[PROACTIVE] ✅ Sent & Queued in Chat: $title — $body');
+  }
+
+  /// Pop all pending proactive messages to insert into chat
+  static Future<List<Map<String, String>>> popPendingChatMessages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawList = prefs.getStringList(_pendingChatMessagesKey) ?? [];
+    if (rawList.isEmpty) return [];
+
+    await prefs.remove(_pendingChatMessagesKey);
+    final results = <Map<String, String>>[];
+    for (final str in rawList) {
+      try {
+        final map = jsonDecode(str) as Map<String, dynamic>;
+        results.add({
+          'title': map['title']?.toString() ?? '',
+          'body': map['body']?.toString() ?? '',
+        });
+      } catch (_) {}
+    }
+    return results;
   }
 
   /// Get set of notification IDs sent today
@@ -243,3 +280,4 @@ class ProactiveEngine {
     await prefs.setString('aira_last_interaction_time', DateTime.now().toIso8601String());
   }
 }
+

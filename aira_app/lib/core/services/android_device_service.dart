@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Native Android Device & System Controller Service.
 /// Provides 100% native Android capabilities via custom MethodChannel.
@@ -74,16 +75,40 @@ class AndroidDeviceService {
     required String appName,
     required String searchQuery,
   }) async {
-    final cleanApp = appName.trim();
+    final cleanApp = appName.trim().toLowerCase();
     final cleanQuery = searchQuery.trim();
     if (cleanApp.isEmpty || cleanQuery.isEmpty) {
       throw Exception('App name and search query are required.');
     }
+
+    // Direct universal deep-link launch
+    try {
+      if (cleanApp.contains('youtube') || cleanApp.contains('yt')) {
+        final uri = Uri.parse('https://www.youtube.com/results?search_query=${Uri.encodeComponent(cleanQuery)}');
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          return {'success': true, 'appName': 'YouTube', 'searchQuery': cleanQuery};
+        }
+      } else if (cleanApp.contains('spotify') || cleanApp.contains('music')) {
+        final uri = Uri.parse('spotify:search:${Uri.encodeComponent(cleanQuery)}');
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          return {'success': true, 'appName': 'Spotify', 'searchQuery': cleanQuery};
+        }
+      } else if (cleanApp.contains('google') || cleanApp.contains('chrome') || cleanApp.contains('browser')) {
+        final uri = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent(cleanQuery)}');
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          return {'success': true, 'appName': 'Browser', 'searchQuery': cleanQuery};
+        }
+      }
+    } catch (_) {}
+
     try {
       final result = await _channel.invokeMapMethod<String, dynamic>(
         'searchInApp',
         {
-          'appName': cleanApp.toLowerCase(),
+          'appName': cleanApp,
           'searchQuery': cleanQuery,
         },
       );

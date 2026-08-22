@@ -85,6 +85,22 @@ class ChatNotifier extends StateNotifier<ChatState> {
   ChatNotifier() : super(const ChatState()) {
     _initTts();
     _initWorkspaceConnection();
+    _initProactiveListener();
+  }
+
+  void _initProactiveListener() {
+    ProactiveEngine.onProactiveChatMessage = (title, body) {
+      _addSystemMessage('🔔 **AIRA · $title**\n\n$body');
+    };
+    ProactiveEngine.popPendingChatMessages().then((pending) {
+      for (final msg in pending) {
+        final title = msg['title'] ?? '';
+        final body = msg['body'] ?? '';
+        if (body.isNotEmpty) {
+          _addSystemMessage('🔔 **AIRA · $title**\n\n$body');
+        }
+      }
+    });
   }
 
   Future<void> _initWorkspaceConnection() async {

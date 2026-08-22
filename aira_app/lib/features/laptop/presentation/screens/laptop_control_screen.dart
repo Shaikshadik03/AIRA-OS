@@ -315,88 +315,146 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
 
   // ── Trackpad Tab ───────────────────────────────────────────────────────
 
+  // ── Trackpad Tab (Fixed Full-Height Ergonomic Layout) ─────────────────
+
   Widget _buildTrackpadTab(ThemeData theme, bool isDark) {
     final cardBg = isDark ? AiraColors.cardDark : AiraColors.cardLight;
     final borderColor = isDark ? AiraColors.borderDark : AiraColors.borderLight;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
       child: Column(
         children: [
-          // Trackpad Area
-          Container(
-            height: 300,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1C1B18) : const Color(0xFFF3F1EC),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AiraColors.claudeTerracotta.withValues(alpha: 0.5)),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onPanStart: (details) {
-                  _lastPos = details.localPosition;
-                },
-                onPanUpdate: (details) {
-                  final current = details.localPosition;
-                  final dx = ((current.dx - _lastPos.dx) * _sensitivity).toInt();
-                  final dy = ((current.dy - _lastPos.dy) * _sensitivity).toInt();
-                  if (dx != 0 || dy != 0) {
-                    _service.moveMouse(dx, dy);
-                    _lastPos = current;
-                  }
-                },
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  _service.leftClick();
-                },
-                onDoubleTap: () {
-                  HapticFeedback.mediumImpact();
-                  _service.doubleClick();
-                },
-                onLongPress: () {
-                  HapticFeedback.heavyImpact();
-                  _service.rightClick();
-                },
-                onSecondaryTap: () {
-                  HapticFeedback.heavyImpact();
-                  _service.rightClick();
-                },
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.touch_app_rounded,
-                          size: 44,
-                          color: AiraColors.claudeTerracotta.withValues(alpha: 0.5)),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Swipe to move cursor',
-                        style: GoogleFonts.sourceSerif4(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+          // Trackpad Surface (Full Height Expanded, Zero Scrolling Conflict)
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF181714) : const Color(0xFFF6F4EE),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AiraColors.claudeTerracotta.withValues(alpha: 0.4), width: 1.2),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Stack(
+                  children: [
+                    // Main Touch Area
+                    Positioned.fill(
+                      right: 48,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onPanStart: (details) {
+                          _lastPos = details.localPosition;
+                        },
+                        onPanUpdate: (details) {
+                          final current = details.localPosition;
+                          final dx = ((current.dx - _lastPos.dx) * _sensitivity).toInt();
+                          final dy = ((current.dy - _lastPos.dy) * _sensitivity).toInt();
+                          if (dx != 0 || dy != 0) {
+                            _service.moveMouse(dx, dy);
+                            _lastPos = current;
+                          }
+                        },
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          _service.leftClick();
+                        },
+                        onDoubleTap: () {
+                          HapticFeedback.mediumImpact();
+                          _service.doubleClick();
+                        },
+                        onLongPress: () {
+                          HapticFeedback.heavyImpact();
+                          _service.rightClick();
+                        },
+                        onSecondaryTap: () {
+                          HapticFeedback.heavyImpact();
+                          _service.rightClick();
+                        },
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.touch_app_rounded,
+                                size: 48,
+                                color: AiraColors.claudeTerracotta.withValues(alpha: 0.35),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Trackpad Surface',
+                                style: GoogleFonts.sourceSerif4(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Swipe = Move • Tap = Left Click\nDouble Tap = Open • Hold = Right Click',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.sourceSerif4(
+                                  fontSize: 12,
+                                  color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Tap = Left Click • Double Tap • Hold = Right Click',
-                        style: GoogleFonts.sourceSerif4(
-                          fontSize: 11.5,
-                          color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                    ),
+
+                    // Dedicated Right-Side Scroll Strip (Hardware style)
+                    Positioned(
+                      top: 0,
+                      bottom: 0,
+                      right: 0,
+                      width: 48,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: (isDark ? Colors.black26 : Colors.black.withValues(alpha: 0.04)),
+                          border: Border(left: BorderSide(color: borderColor, width: 0.8)),
+                        ),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onVerticalDragUpdate: (details) {
+                            if (details.delta.dy < -2) {
+                              _service.scroll(2);
+                            } else if (details.delta.dy > 2) {
+                              _service.scroll(-2);
+                            }
+                          },
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.arrow_drop_up_rounded, color: AiraColors.claudeTerracotta, size: 24),
+                              RotatedBox(
+                                quarterTurns: 1,
+                                child: Text(
+                                  'SCROLL',
+                                  style: GoogleFonts.firaCode(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.5,
+                                    color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                                  ),
+                                ),
+                              ),
+                              Icon(Icons.arrow_drop_down_rounded, color: AiraColors.claudeTerracotta, size: 24),
+                            ],
+                          ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
           const SizedBox(height: 12),
 
-          // Click Buttons
+          // Docked Mouse Buttons (Left, Right, Double Click, Type)
           Row(
             children: [
               _clickButton('Left Click', Icons.mouse_outlined, () {
@@ -413,125 +471,112 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
                 HapticFeedback.mediumImpact();
                 _service.doubleClick();
               }, cardBg, borderColor, theme),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Scroll
-          Row(
-            children: [
-              Expanded(
-                child: _actionButton('Scroll Up', Icons.keyboard_arrow_up_rounded, () {
-                  _service.scroll(3);
-                }, cardBg, borderColor, theme),
-              ),
               const SizedBox(width: 8),
               Expanded(
-                child: _actionButton('Scroll Down', Icons.keyboard_arrow_down_rounded, () {
-                  _service.scroll(-3);
+                child: _actionButton('Keyboard', Icons.keyboard_rounded, () {
+                  _showKeyboardDialog(theme, isDark);
                 }, cardBg, borderColor, theme),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
 
-          // Keyboard input
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: borderColor),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  void _showKeyboardDialog(ThemeData theme, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text('Type on Laptop',
-                    style: GoogleFonts.sourceSerif4(
-                        fontWeight: FontWeight.w700, fontSize: 13,
-                        color: theme.colorScheme.onSurface)),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _textController,
-                        style: GoogleFonts.sourceSerif4(fontSize: 14,
-                            color: theme.colorScheme.onSurface),
-                        decoration: InputDecoration(
-                          hintText: 'Type text to send to your laptop...',
-                          hintStyle: GoogleFonts.sourceSerif4(
-                              fontSize: 13,
-                              color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(color: borderColor),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: BorderSide(color: borderColor),
-                          ),
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    InkWell(
-                      onTap: () {
-                        if (_textController.text.isNotEmpty) {
-                          HapticFeedback.lightImpact();
-                          _service.typeText(_textController.text);
-                          _textController.clear();
-                        }
-                      },
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AiraColors.claudeTerracotta,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.send_rounded,
-                            color: Colors.white, size: 20),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    'Enter', 'Backspace', 'Escape', 'Tab', 'Space',
-                    'Up', 'Down', 'Left', 'Right',
-                  ].map((key) {
-                    return InkWell(
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        _service.pressKey(key.toLowerCase());
-                      },
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: isDark ? AiraColors.surfaceDark : AiraColors.surfaceLightWarm,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: borderColor),
-                        ),
-                        child: Text(key,
-                            style: GoogleFonts.firaCode(
-                                fontSize: 11.5,
-                                color: theme.colorScheme.onSurface)),
-                      ),
-                    );
-                  }).toList(),
+                const Icon(Icons.keyboard_rounded, color: AiraColors.claudeTerracotta, size: 20),
+                const SizedBox(width: 10),
+                Text(
+                  'Type on Laptop Keyboard',
+                  style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700, fontSize: 16),
                 ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    autofocus: true,
+                    style: GoogleFonts.sourceSerif4(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Enter text to type...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    onSubmitted: (val) {
+                      if (val.trim().isNotEmpty) {
+                        _service.typeText(val.trim());
+                        _textController.clear();
+                        Navigator.pop(ctx);
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    final text = _textController.text.trim();
+                    if (text.isNotEmpty) {
+                      _service.typeText(text);
+                      _textController.clear();
+                      Navigator.pop(ctx);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AiraColors.claudeTerracotta,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('Send'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                ActionChip(
+                  label: const Text('Enter ↵'),
+                  onPressed: () => _service.pressKey('enter'),
+                ),
+                ActionChip(
+                  label: const Text('Backspace ⌫'),
+                  onPressed: () => _service.pressKey('backspace'),
+                ),
+                ActionChip(
+                  label: const Text('Tab ⇥'),
+                  onPressed: () => _service.pressKey('tab'),
+                ),
+                ActionChip(
+                  label: const Text('Space ␣'),
+                  onPressed: () => _service.pressKey('space'),
+                ),
+                ActionChip(
+                  label: const Text('Esc ⎋'),
+                  onPressed: () => _service.pressKey('escape'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

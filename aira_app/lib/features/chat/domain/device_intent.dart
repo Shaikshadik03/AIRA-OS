@@ -407,9 +407,9 @@ class DeviceIntentDetector {
   }
 
   static DeviceCommand? _detectSearchInApp(String msg, String lower) {
-    // Pattern 1: open/launch/start <app> (and|to) (search|play|find|look for) <query>
+    // Pattern 1: open/launch/start <app> (and|to|then) (search|play|find|look for) <query>
     final pattern1 = RegExp(
-      r'^(?:open|launch|start)\s+([A-Za-z0-9\s]+?)\s+(?:and|to)\s+(?:search|play|find|look\s+for)\s+(.+)$',
+      r'^(?:open|launch|start)\s+(youtube|spotify|chrome|google|browser|[A-Za-z0-9\s]+?)\s+(?:and|to|then|\,)\s+(?:search\s+for|search|play\s+video\s+of|play\s+a\s+video\s+of|play\s+song|play|find|look\s+for)\s+(.+)$',
       caseSensitive: false,
     ).firstMatch(msg);
 
@@ -425,9 +425,9 @@ class DeviceIntentDetector {
       }
     }
 
-    // Pattern 2: (search|play|find|look for) <query> (on|in|using) <app>
+    // Pattern 2: (play|watch|search|find|look for) (a video of |video of |song |song of )?<query> (on|in|using) <app>
     final pattern2 = RegExp(
-      r'^(?:search|play|find|look\s+for)\s+(.+?)\s+(?:on|in|using)\s+([A-Za-z0-9\s]+)$',
+      r'^(?:search\s+for|search|play\s+a\s+video\s+of|play\s+video\s+of|play\s+song|play|watch|find|look\s+for)\s+(?:a\s+video\s+of\s+|video\s+of\s+|a\s+song\s+of\s+|song\s+of\s+)?(.+?)\s+(?:on|in|using)\s+(youtube|spotify|google|chrome|browser|[A-Za-z0-9\s]+)$',
       caseSensitive: false,
     ).firstMatch(msg);
 
@@ -438,6 +438,23 @@ class DeviceIntentDetector {
         return DeviceCommand(
           intent: DeviceIntent.searchInApp,
           params: {'appName': app, 'query': query},
+          originalMessage: msg,
+        );
+      }
+    }
+
+    // Pattern 3: (play video of |play a video of |watch video of ) <query> -> default to YouTube
+    final pattern3 = RegExp(
+      r'^(?:play\s+a\s+video\s+of|play\s+video\s+of|watch\s+video\s+of|watch)\s+(.+)$',
+      caseSensitive: false,
+    ).firstMatch(msg);
+
+    if (pattern3 != null) {
+      final query = pattern3.group(1)!.trim();
+      if (query.isNotEmpty) {
+        return DeviceCommand(
+          intent: DeviceIntent.searchInApp,
+          params: {'appName': 'youtube', 'query': query},
           originalMessage: msg,
         );
       }

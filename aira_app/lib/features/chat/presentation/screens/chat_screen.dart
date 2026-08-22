@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
+import 'package:aira_app/features/planner/presentation/providers/planner_provider.dart';
 import 'package:aira_app/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:aira_app/features/chat/presentation/widgets/typing_indicator.dart';
 import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart';
@@ -136,6 +138,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatProvider);
     final user = ref.watch(currentUserProvider);
+    final plannerState = ref.watch(plannerProvider);
+    final pendingTasks = plannerState.tasks.where((t) => !t.isCompleted).toList();
+    final todayFormatted = DateFormat('EEE, MMM d').format(DateTime.now());
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -164,40 +169,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'AIRA',
-              style: GoogleFonts.playfairDisplay(
-                fontWeight: FontWeight.w700,
-                fontSize: 21,
-                letterSpacing: 0.5,
-                color: theme.colorScheme.onSurface,
+        title: GestureDetector(
+          onTap: () => _showTaskAgendaSheet(context, plannerState),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.15 : 0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.4 : 0.25),
+                width: 0.8,
               ),
             ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.2 : 0.12),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.5 : 0.35),
-                  width: 0.8,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle_outline_rounded, size: 14, color: AiraColors.claudeTerracotta),
+                const SizedBox(width: 6),
+                Text(
+                  '${pendingTasks.length} Tasks • $todayFormatted',
+                  style: GoogleFonts.sourceSerif4(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
                 ),
-              ),
-              child: Text(
-                'OS',
-                style: GoogleFonts.sourceSerif4(
-                  color: AiraColors.claudeTerracotta,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
         centerTitle: true,
         actions: [
@@ -646,25 +645,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // Attach button
-                IconButton(
-                  icon: Icon(
-                    Icons.add_circle_outline_rounded,
-                    color: isDark ? AiraColors.textSecondary : AiraColors.textSecondaryLight,
-                    size: 22,
-                  ),
-                  tooltip: 'Attach image',
-                  onPressed: _pickImage,
-                ),
-                // Vision camera AI button
+                // Unified Claude-style Attachment Sheet Button
                 IconButton(
                   icon: const Icon(
-                    Icons.remove_red_eye_outlined,
+                    Icons.add_circle_rounded,
                     color: AiraColors.claudeTerracotta,
-                    size: 22,
+                    size: 24,
                   ),
-                  tooltip: 'AIRA Vision',
-                  onPressed: () => context.push('/vision'),
+                  tooltip: 'Attachments & Actions',
+                  onPressed: _showAttachmentMenu,
                 ),
                 // Input TextField
                 Expanded(
@@ -755,6 +744,404 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ── Claude-Style Unified Attachment & Action Sheet ─────────────────────
+
+  void _showAttachmentMenu() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.black12,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Add to Conversation',
+              style: GoogleFonts.playfairDisplay(
+                fontWeight: FontWeight.w700,
+                fontSize: 17,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 14),
+            GridView.count(
+              crossAxisCount: 3,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.0,
+              children: [
+                _buildAttachmentOption(
+                  icon: Icons.camera_alt_rounded,
+                  label: 'Camera / Vision',
+                  color: Colors.blueAccent,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context.push('/vision');
+                  },
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                _buildAttachmentOption(
+                  icon: Icons.photo_library_rounded,
+                  label: 'Photos & Gallery',
+                  color: Colors.purpleAccent,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImage();
+                  },
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                _buildAttachmentOption(
+                  icon: Icons.check_circle_outline_rounded,
+                  label: 'TickTick Tasks',
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showTaskAgendaSheet(context, ref.read(plannerProvider));
+                  },
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                _buildAttachmentOption(
+                  icon: Icons.laptop_chromebook_rounded,
+                  label: 'Send to Laptop',
+                  color: AiraColors.claudeTerracotta,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context.push('/laptop');
+                  },
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                _buildAttachmentOption(
+                  icon: Icons.cloud_outlined,
+                  label: 'Google Workspace',
+                  color: Colors.amber.shade800,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    ref.read(chatProvider.notifier).connectGoogleWorkspace();
+                  },
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                _buildAttachmentOption(
+                  icon: Icons.tune_rounded,
+                  label: 'Laptop Remote',
+                  color: Colors.teal,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context.push('/laptop');
+                  },
+                  theme: theme,
+                  isDark: isDark,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentOption({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    required ThemeData theme,
+    required bool isDark,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark ? AiraColors.borderDark : AiraColors.borderLight,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color.withValues(alpha: isDark ? 0.18 : 0.12),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.sourceSerif4(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── TickTick Task Agenda Sheet (Today & Previous History) ──────────────
+
+  void _showTaskAgendaSheet(BuildContext context, PlannerState plannerState) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final todayFormatted = DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now());
+    final pendingTasks = plannerState.tasks.where((t) => !t.isCompleted).toList();
+    final completedTasks = plannerState.tasks.where((t) => t.isCompleted).toList();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.65,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (_, scrollController) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white24 : Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'TickTick Agenda',
+                        style: GoogleFonts.playfairDisplay(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 20,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        todayFormatted,
+                        style: GoogleFonts.sourceSerif4(
+                          fontSize: 12.5,
+                          color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                        ),
+                      ),
+                    ],
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showQuickTaskDialog();
+                    },
+                    icon: const Icon(Icons.add_rounded, size: 16),
+                    label: const Text('Add Task'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AiraColors.claudeTerracotta,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  children: [
+                    Text(
+                      'PENDING TASKS (${pendingTasks.length})',
+                      style: GoogleFonts.firaCode(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                        color: AiraColors.claudeTerracotta,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (pendingTasks.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '🎉 All caught up! No pending tasks.',
+                            style: GoogleFonts.sourceSerif4(
+                              fontSize: 13,
+                              color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      ...pendingTasks.map((task) => _buildTaskRow(task, isDark, theme)),
+
+                    const SizedBox(height: 20),
+                    if (completedTasks.isNotEmpty) ...[
+                      Text(
+                        'COMPLETED & PAST HISTORY (${completedTasks.length})',
+                        style: GoogleFonts.firaCode(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                          color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...completedTasks.map((task) => _buildTaskRow(task, isDark, theme)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskRow(TaskItem task, bool isDark, ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? AiraColors.borderDark : AiraColors.borderLight,
+        ),
+      ),
+      child: Row(
+        children: [
+          Checkbox(
+            value: task.isCompleted,
+            activeColor: AiraColors.claudeTerracotta,
+            onChanged: (val) {
+              ref.read(plannerProvider.notifier).toggleTask(task.id, val ?? !task.isCompleted);
+            },
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  task.title,
+                  style: GoogleFonts.sourceSerif4(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    decoration: task.isCompleted ? TextDecoration.lineThrough : null,
+                    color: task.isCompleted
+                        ? (isDark ? AiraColors.textMuted : AiraColors.textMutedLight)
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
+                if (task.dueDate != null)
+                  Text(
+                    DateFormat('MMM d, h:mm a').format(task.dueDate!),
+                    style: GoogleFonts.firaCode(
+                      fontSize: 11,
+                      color: AiraColors.claudeTerracotta,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showQuickTaskDialog() {
+    final titleController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'New TickTick Task',
+          style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700),
+        ),
+        content: TextField(
+          controller: titleController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Task title...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = titleController.text.trim();
+              if (text.isNotEmpty) {
+                ref.read(plannerProvider.notifier).addTask(title: text);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Created task "$text"')),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AiraColors.claudeTerracotta,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Add Task'),
+          ),
+        ],
+      ),
     );
   }
 }
