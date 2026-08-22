@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +21,15 @@ class LaptopControlService {
   String? _laptopIp;
   String? _laptopPin;
   int _port = _defaultPort;
+
+  // Real-time low-latency WebSocket connection for trackpad
+  WebSocket? _ws;
+  bool get isWsConnected => _ws != null;
+
+  // Throttle HTTP fallback movements to 50fps (20ms) to avoid queue exhaustion
+  int _pendingDx = 0;
+  int _pendingDy = 0;
+  Timer? _httpMoveThrottleTimer;
 
   bool get isConfigured => _laptopIp != null && _laptopIp!.isNotEmpty;
 
@@ -88,6 +99,40 @@ class LaptopControlService {
   String get laptopIp => _laptopIp ?? '';
   String get laptopPin => _laptopPin ?? '';
 
+  // ── WebSocket Connection for 0ms Real-Time Trackpad ──────────────────
+
+  Future<bool> connectWebSocket() async {
+    if (_ws != null) return true;
+    if (!isConfigured) return false;
+
+    try {
+      final host = _sanitizeHost(_laptopIp);
+      final wsUrl = 'ws://$host:$_port/ws/trackpad';
+      _ws = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 3));
+
+      // Send auth PIN as first message
+      _ws!.add(jsonEncode({'pin': _laptopPin ?? '123456'}));
+
+      _ws!.listen(
+        (data) {},
+        onError: (_) => disconnectWebSocket(),
+        onDone: () => disconnectWebSocket(),
+        cancelOnError: true,
+      );
+      return true;
+    } catch (_) {
+      disconnectWebSocket();
+      return false;
+    }
+  }
+
+  void disconnectWebSocket() {
+    try {
+      _ws?.close();
+    } catch (_) {}
+    _ws = null;
+  }
+
   // ── Connection Test ───────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> testConnection() async {
@@ -100,6 +145,8 @@ class LaptopControlService {
 
     try {
       final res = await _dio.get('/');
+      // Also establish WebSocket in background for instantaneous trackpad
+      connectWebSocket();
       return {'success': true, 'data': res.data};
     } catch (e) {
       return {'success': false, 'error': _friendlyError(e)};
@@ -132,36 +179,100 @@ class LaptopControlService {
   // ── Mouse & Keyboard ──────────────────────────────────────────────────
 
   Future<void> moveMouse(int dx, int dy) async {
-    try {
-      await _dio.post('/mouse/move', data: {'dx': dx, 'dy': dy});
-    } catch (_) {}
+    if (dx == 0 && dy == 0) return;
+    if (_ws != null) {
+      try {
+        _ws!.add(jsonEncode({'type': 'move', 'dx': dx, 'dy': dy}));
+        return;
+      } catch (_) {
+        disconnectWebSocket();
+      }
+    }
+    _scheduleHttpMove(dx, dy);
+  }
+
+  void _scheduleHttpMove(int dx, int dy) {
+    _pendingDx += dx;
+    _pendingDy += dy;
+    if (_httpMoveThrottleTimer?.isActive ?? false) return;
+    _httpMoveThrottleTimer = Timer(const Duration(milliseconds: 20), () async {
+      final toSendDx = _pendingDx;
+      final toSendDy = _pendingDy;
+      _pendingDx = 0;
+      _pendingDy = 0;
+      if (toSendDx != 0 || toSendDy != 0) {
+        try {
+          await _dio.post('/mouse/move', data: {'dx': toSendDx, 'dy': toSendDy});
+        } catch (_) {}
+      }
+    });
   }
 
   Future<void> leftClick({int? x, int? y}) async {
+    if (_ws != null) {
+      try {
+        _ws!.add(jsonEncode({'type': 'click', 'button': 'left', 'x': x, 'y': y}));
+        return;
+      } catch (_) {
+        disconnectWebSocket();
+      }
+    }
     try {
       await _dio.post('/mouse/click', data: {'button': 'left', 'x': x, 'y': y});
     } catch (_) {}
   }
 
   Future<void> rightClick({int? x, int? y}) async {
+    if (_ws != null) {
+      try {
+        _ws!.add(jsonEncode({'type': 'click', 'button': 'right', 'x': x, 'y': y}));
+        return;
+      } catch (_) {
+        disconnectWebSocket();
+      }
+    }
     try {
       await _dio.post('/mouse/click', data: {'button': 'right', 'x': x, 'y': y});
     } catch (_) {}
   }
 
   Future<void> doubleClick() async {
+    if (_ws != null) {
+      try {
+        _ws!.add(jsonEncode({'type': 'click', 'button': 'double'}));
+        return;
+      } catch (_) {
+        disconnectWebSocket();
+      }
+    }
     try {
       await _dio.post('/mouse/click', data: {'button': 'double'});
     } catch (_) {}
   }
 
   Future<void> scroll(int amount) async {
+    if (_ws != null) {
+      try {
+        _ws!.add(jsonEncode({'type': 'scroll', 'amount': amount}));
+        return;
+      } catch (_) {
+        disconnectWebSocket();
+      }
+    }
     try {
       await _dio.post('/mouse/scroll', data: {'amount': amount});
     } catch (_) {}
   }
 
   Future<void> typeText(String text) async {
+    if (_ws != null) {
+      try {
+        _ws!.add(jsonEncode({'type': 'type', 'text': text}));
+        return;
+      } catch (_) {
+        disconnectWebSocket();
+      }
+    }
     try {
       await _dio.post('/keyboard/type', data: {'text': text});
     } catch (_) {}
@@ -174,6 +285,14 @@ class LaptopControlService {
   }
 
   Future<void> sendHotkey(List<String> keys) async {
+    if (_ws != null) {
+      try {
+        _ws!.add(jsonEncode({'type': 'hotkey', 'keys': keys}));
+        return;
+      } catch (_) {
+        disconnectWebSocket();
+      }
+    }
     try {
       await _dio.post('/keyboard/hotkey', data: {'keys': keys});
     } catch (_) {}

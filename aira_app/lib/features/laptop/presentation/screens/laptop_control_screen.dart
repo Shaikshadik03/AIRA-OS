@@ -46,6 +46,7 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
 
   @override
   void dispose() {
+    _service.disconnectWebSocket();
     _tabController.dispose();
     _textController.dispose();
     _terminalController.dispose();
@@ -322,18 +323,19 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Trackpad
+          // Trackpad Area
           Container(
-            height: 280,
+            height: 300,
             width: double.infinity,
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1C1B18) : const Color(0xFFF3F1EC),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AiraColors.claudeTerracotta.withValues(alpha: 0.4)),
+              border: Border.all(color: AiraColors.claudeTerracotta.withValues(alpha: 0.5)),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onPanStart: (details) {
                   _lastPos = details.localPosition;
                 },
@@ -341,21 +343,48 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
                   final current = details.localPosition;
                   final dx = ((current.dx - _lastPos.dx) * _sensitivity).toInt();
                   final dy = ((current.dy - _lastPos.dy) * _sensitivity).toInt();
-                  _service.moveMouse(dx, dy);
-                  _lastPos = current;
+                  if (dx != 0 || dy != 0) {
+                    _service.moveMouse(dx, dy);
+                    _lastPos = current;
+                  }
+                },
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _service.leftClick();
+                },
+                onDoubleTap: () {
+                  HapticFeedback.mediumImpact();
+                  _service.doubleClick();
+                },
+                onLongPress: () {
+                  HapticFeedback.heavyImpact();
+                  _service.rightClick();
+                },
+                onSecondaryTap: () {
+                  HapticFeedback.heavyImpact();
+                  _service.rightClick();
                 },
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.touch_app_rounded,
-                          size: 40,
-                          color: AiraColors.claudeTerracotta.withValues(alpha: 0.4)),
-                      const SizedBox(height: 8),
+                          size: 44,
+                          color: AiraColors.claudeTerracotta.withValues(alpha: 0.5)),
+                      const SizedBox(height: 10),
                       Text(
-                        'Slide to move cursor',
+                        'Swipe to move cursor',
                         style: GoogleFonts.sourceSerif4(
                           fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tap = Left Click • Double Tap • Hold = Right Click',
+                        style: GoogleFonts.sourceSerif4(
+                          fontSize: 11.5,
                           color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
                         ),
                       ),
