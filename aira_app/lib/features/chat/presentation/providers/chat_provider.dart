@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:aira_app/features/chat/domain/agentic_workflow_engine.dart';
 import 'package:aira_app/features/chat/domain/chat_models.dart';
 import 'package:aira_app/features/chat/domain/workspace_intent.dart';
 import 'package:aira_app/features/chat/domain/memory_intent.dart';
@@ -229,6 +230,34 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final laptopCommand = LaptopIntentDetector.parse(content);
       if (laptopCommand != null) {
         await _handleLaptopCommand(content, laptopCommand);
+        return;
+      }
+    }
+
+    // ── Check for Multi-Step Agentic Workflow (Milestone 16) ──
+    final agenticEngine = AgenticWorkflowEngine();
+    if (agenticEngine.isMultiStepInstruction(content)) {
+      _addUserMessage(content);
+      _addLoadingMessage('Planning and executing autonomous agentic workflow...');
+      try {
+        final steps = agenticEngine.planWorkflow(content);
+        final report = await agenticEngine.executeWorkflow(
+          steps: steps,
+          onTaskCreated: (title) async {
+            final planner = PlannerNotifier();
+            await planner.loadAll();
+            await planner.addTask(title: title);
+          },
+        );
+        _removeLoadingMessage();
+        _addSystemMessage(report);
+        if (_isVoiceEnabled) {
+          await _tts.speak('Executed your multi step task successfully.');
+        }
+        return;
+      } catch (e) {
+        _removeLoadingMessage();
+        _addSystemMessage('❌ **Agentic execution error:** $e');
         return;
       }
     }

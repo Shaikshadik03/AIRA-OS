@@ -30,17 +30,20 @@ import app_launcher
 import file_manager
 import terminal_runner
 import clipboard_sync
+import agent_runner
 
 # ── Config ────────────────────────────────────────────────────────────────
 
 # Change this PIN to anything you want. Your phone must send this to connect.
 AIRA_PIN = os.environ.get("AIRA_PIN", "123456")
 PORT = int(os.environ.get("AIRA_PORT", 8765))
-AGENT_VERSION = "4.0.0"
+AGENT_VERSION = "4.2.0"
+
+agent_engine = agent_runner.AgentRunner()
 
 app = FastAPI(
     title="AIRA Desktop Agent",
-    description="Control your laptop from AIRA OS on your phone.",
+    description="Autonomous Agentic Laptop Controller for AIRA OS.",
     version=AGENT_VERSION,
 )
 
@@ -112,6 +115,11 @@ class QuickNoteRequest(BaseModel):
 
 class WebSearchRequest(BaseModel):
     query: str
+
+class AgentTaskRequest(BaseModel):
+    prompt: str
+    steps: Optional[list] = None
+    custom_groq_key: Optional[str] = None
 
 
 # ── Info Endpoint ─────────────────────────────────────────────────────────
@@ -379,6 +387,107 @@ def auto_web_search(req: WebSearchRequest, auth: bool = Depends(verify_pin)):
         "url": url,
         "message": f"Opened search in browser: {q}",
     }
+
+
+# ── Autonomous Multi-Step Agent Endpoints ─────────────────────────────────
+
+@app.post("/agent/plan")
+def agent_plan(req: AgentTaskRequest, auth: bool = Depends(verify_pin)):
+    """Decomposes a user goal into an atomic step-by-step execution plan."""
+    if req.custom_groq_key:
+        engine = agent_runner.AgentRunner(groq_api_key=req.custom_groq_key)
+    else:
+        engine = agent_engine
+
+    steps = engine.plan_task(req.prompt)
+    return {
+        "success": True,
+        "prompt": req.prompt,
+        "total_steps": len(steps),
+        "steps": steps,
+    }
+
+
+@app.post("/agent/execute")
+def agent_execute(req: AgentTaskRequest, auth: bool = Depends(verify_pin)):
+    """Plans and executes an autonomous multi-step workflow on this laptop."""
+    if req.custom_groq_key:
+        engine = agent_runner.AgentRunner(groq_api_key=req.custom_groq_key)
+    else:
+        engine = agent_engine
+
+    steps = req.steps if req.steps else engine.plan_task(req.prompt)
+    result = engine.execute_plan(steps)
+
+    return {
+        "success": result["success"],
+        "prompt": req.prompt,
+        "total_steps": result["total_steps"],
+        "results": result["results"],
+        "message": f"Executed {result['total_steps']} steps successfully" if result["success"] else "Some steps encountered issues",
+    }
+
+
+# ── WebSocket for Live Agent Execution Progress ───────────────────────────
+
+@app.websocket("/ws/agent")
+async def agent_ws(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time autonomous task execution streaming.
+    Phone sends: {"pin": "123456", "prompt": "open youtube and search...", "custom_groq_key": "..."}
+    Server streams: {"type": "plan", "steps": [...]}, then {"type": "step_update", "step": 1, ...}, then {"type": "done", "success": true}
+    """
+    await websocket.accept()
+    try:
+        init_data = await websocket.receive_json()
+        if init_data.get("pin") != AIRA_PIN:
+            await websocket.send_json({"error": "Invalid PIN"})
+            await websocket.close()
+            return
+
+        prompt = init_data.get("prompt", "")
+        custom_key = init_data.get("custom_groq_key")
+        engine = agent_runner.AgentRunner(groq_api_key=custom_key) if custom_key else agent_engine
+
+        # 1. Generate plan
+        await websocket.send_json({"type": "status", "message": "Analyzing goal and planning execution steps..."})
+        steps = engine.plan_task(prompt)
+        await websocket.send_json({"type": "plan", "total_steps": len(steps), "steps": steps})
+
+        # 2. Execute plan with step events
+        import asyncio
+        loop = asyncio.get_event_loop()
+
+        for idx, step in enumerate(steps, start=1):
+            desc = step.get("description", f"Step {idx}")
+            await websocket.send_json({
+                "type": "step_progress",
+                "step": idx,
+                "total": len(steps),
+                "description": desc,
+                "status": "running",
+            })
+
+            # Execute single step synchronously in threadpool
+            step_result = await loop.run_in_executor(None, lambda s=step, i=idx: engine.execute_plan([s])["results"][0])
+
+            await websocket.send_json({
+                "type": "step_progress",
+                "step": idx,
+                "total": len(steps),
+                "description": desc,
+                "status": step_result["status"],
+                "output": step_result.get("output", ""),
+            })
+
+        await websocket.send_json({"type": "done", "message": "All steps executed successfully!", "success": True})
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
+            pass
 
 
 # ── WebSocket for Live Trackpad ───────────────────────────────────────────

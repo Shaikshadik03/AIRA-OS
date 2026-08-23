@@ -98,10 +98,15 @@ class ProactiveEngine {
     // ── Rule 1: Morning Wake-Up Nudge ──
     if (hour >= 6 && hour <= 9 && !sentToday.contains('morning_nudge')) {
       final greeting = _personality.getTimeGreeting(name);
+      final pendingCount = await _getPendingTaskCount();
+      final taskText = pendingCount > 0
+          ? 'You have $pendingCount tasks scheduled for today. Ready to get started?'
+          : 'Your agenda is clean today. What are we working on?';
+
       await _sendProactiveNotification(
         id: 'morning_nudge',
-        title: 'Good Morning',
-        body: '$greeting You\'ve got a fresh day ahead.',
+        title: 'Morning Briefing',
+        body: '$greeting $taskText',
       );
     }
 
@@ -115,22 +120,26 @@ class ProactiveEngine {
     // ── Rule 3: Evening Wind-Down ──
     final sleepTime = _profile.getField('sleep_time') ?? '11:00 PM';
     if (_isNearSleepTime(hour, sleepTime) && !sentToday.contains('evening_winddown')) {
+      final pendingCount = await _getPendingTaskCount();
+      final summary = pendingCount > 0
+          ? 'You still have $pendingCount pending tasks. Want me to move them to tomorrow so you can recharge?'
+          : 'You crushed all your goals today! Time to relax and recharge.';
+
       await _sendProactiveNotification(
         id: 'evening_winddown',
-        title: 'Wind Down',
-        body: 'Almost bedtime, $name. You did great today — time to recharge.',
+        title: 'Daily Wrap-Up',
+        body: 'Almost bedtime, $name. $summary',
       );
     }
 
     // ── Rule 4: Habit Streak Reminder ──
     if (hour >= 18 && hour <= 21 && !sentToday.contains('habit_reminder')) {
-      // Check if any habits haven't been checked today
-      final hasUncheckedHabits = _checkUncheckedHabits();
+      final hasUncheckedHabits = await _checkUncheckedHabits();
       if (hasUncheckedHabits) {
         await _sendProactiveNotification(
           id: 'habit_reminder',
-          title: 'Habit Check',
-          body: 'You haven\'t logged all your habits today. Keep the streak alive!',
+          title: 'Habit Tracker',
+          body: 'Hey $name, you haven\'t checked off all your daily habits yet. Keep your streak alive!',
         );
       }
     }
@@ -141,13 +150,30 @@ class ProactiveEngine {
       if (lastInteraction != null) {
         final lastTime = DateTime.tryParse(lastInteraction);
         if (lastTime != null && now.difference(lastTime).inHours >= 4) {
+          final pendingCount = await _getPendingTaskCount();
+          final msg = pendingCount > 0
+              ? 'Checking in on you! Still working on your $pendingCount tasks, or taking a well-deserved break?'
+              : 'Everything good, $name? Haven\'t heard from you in a while. I\'m right here if you need anything.';
           await _sendProactiveNotification(
             id: 'idle_checkin',
             title: 'Hey $name',
-            body: 'Everything good? Haven\'t heard from you in a while. I\'m here if you need anything.',
+            body: msg,
           );
         }
       }
+    }
+  }
+
+  /// Get count of pending tasks
+  Future<int> _getPendingTaskCount() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final tasksJson = prefs.getString('aira_local_tasks_v2');
+      if (tasksJson == null) return 0;
+      final List list = jsonDecode(tasksJson);
+      return list.where((t) => t['isCompleted'] != true && t['status'] != 'completed').length;
+    } catch (_) {
+      return 0;
     }
   }
 
@@ -183,29 +209,41 @@ class ProactiveEngine {
     }
   }
 
-  /// Check if current time is near sleep time
+  /// Check if user's sleep time is near
   bool _isNearSleepTime(int currentHour, String sleepTimeStr) {
-    // Parse sleep time like "11:00 PM" or "10:30 PM"
     try {
-      final isPM = sleepTimeStr.toUpperCase().contains('PM');
-      final timeParts = sleepTimeStr.replaceAll(RegExp(r'[APM\s]', caseSensitive: false), '').split(':');
-      int sleepHour = int.parse(timeParts[0]);
-      if (isPM && sleepHour != 12) sleepHour += 12;
-      if (!isPM && sleepHour == 12) sleepHour = 0;
+      final clean = sleepTimeStr.toLowerCase().replaceAll(' ', '');
+      final isPM = clean.contains('pm');
+      final hourMatch = RegExp(r'(\d+)').firstMatch(clean);
+      if (hourMatch == null) return currentHour == 22;
 
-      // Send notification 30 minutes before sleep time
-      return (currentHour == sleepHour - 1 && currentHour >= 18) ||
-             (currentHour == sleepHour && currentHour >= 18);
+      var hour = int.parse(hourMatch.group(1)!);
+      if (isPM && hour < 12) hour += 12;
+      if (!isPM && hour == 12) hour = 0;
+
+      return (currentHour == hour - 1 && currentHour >= 18) ||
+             (currentHour == hour && currentHour >= 18);
     } catch (_) {
-      return currentHour == 22; // Default to 10 PM
+      return currentHour == 22;
     }
   }
 
-  /// Check for unchecked habits
-  bool _checkUncheckedHabits() {
-    // Simple heuristic — habits are stored in SharedPreferences
-    // This will be enhanced when PlannerProvider is available in context
-    return false; // Placeholder — will be wired to PlannerProvider
+  /// Check if any habits are unchecked today
+  Future<bool> _checkUncheckedHabits() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final habitsJson = prefs.getString('aira_local_habits_v2');
+      if (habitsJson == null) return false;
+      final List list = jsonDecode(habitsJson);
+      final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+      for (final h in list) {
+        final completedDays = h['completedDays'] as List? ?? [];
+        if (!completedDays.contains(todayStr)) return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   // Real-time in-chat message callback (wired to active ChatNotifier)

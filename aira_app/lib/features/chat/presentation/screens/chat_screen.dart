@@ -202,6 +202,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         actions: [
           IconButton(
             icon: Icon(
+              _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+              color: _isListening ? AiraColors.error : theme.colorScheme.onSurface.withValues(alpha: 0.75),
+              size: 22,
+            ),
+            tooltip: _isListening ? 'Stop Listening' : 'Hey AIRA Voice',
+            onPressed: _listen,
+          ),
+          IconButton(
+            icon: Icon(
               Icons.edit_square,
               color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
               size: 20,

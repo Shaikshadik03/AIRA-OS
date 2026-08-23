@@ -516,6 +516,38 @@ class LaptopControlService {
     }
   }
 
+  bool get isConnected => isConfigured;
+
+  /// Execute an autonomous multi-step agent workflow on the connected laptop
+  Future<Map<String, dynamic>> executeAgentTask(String prompt, {String? customGroqKey}) async {
+    try {
+      final res = await _dio.post('/agent/execute', data: {
+        'prompt': prompt,
+        'custom_groq_key': customGroqKey,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {
+        'success': false,
+        'error': _friendlyError(e),
+        'message': _friendlyError(e),
+      };
+    }
+  }
+
+  /// Get atomic step breakdown of a goal from the laptop agent
+  Future<Map<String, dynamic>> planAgentTask(String prompt, {String? customGroqKey}) async {
+    try {
+      final res = await _dio.post('/agent/plan', data: {
+        'prompt': prompt,
+        'custom_groq_key': customGroqKey,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────
 
   String _friendlyError(dynamic e) {
