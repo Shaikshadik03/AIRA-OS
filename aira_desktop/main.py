@@ -416,15 +416,24 @@ def agent_execute(req: AgentTaskRequest, auth: bool = Depends(verify_pin)):
     else:
         engine = agent_engine
 
-    steps = req.steps if req.steps else engine.plan_task(req.prompt)
-    result = engine.execute_plan(steps)
+    if req.steps:
+        result = engine.execute_plan(req.steps)
+    else:
+        result = engine.execute_self_healing_goal(req.prompt)
+
+    msg = f"Executed {result['total_steps']} steps successfully"
+    if result.get("self_healed"):
+        msg += " (Autonomous self-healing applied to overcome initial error)"
+    elif not result["success"]:
+        msg = "Some steps encountered issues"
 
     return {
         "success": result["success"],
         "prompt": req.prompt,
         "total_steps": result["total_steps"],
         "results": result["results"],
-        "message": f"Executed {result['total_steps']} steps successfully" if result["success"] else "Some steps encountered issues",
+        "self_healed": result.get("self_healed", False),
+        "message": msg,
     }
 
 

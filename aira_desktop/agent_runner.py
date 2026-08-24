@@ -19,6 +19,7 @@ import app_launcher
 import file_manager
 import terminal_runner
 import clipboard_sync
+import vision_agent
 
 # Default Groq API key from environment or dynamic fallback
 _DEFAULT_KEY = "".join([chr(c) for c in [103, 115, 107, 95, 78, 88, 114, 74, 115, 109, 57, 106, 72, 48, 65, 73, 117, 100, 121, 99, 105, 72, 74, 114, 87, 71, 100, 121, 98, 51, 70, 89, 67, 73, 75, 89, 57, 50, 52, 98, 74, 81, 75, 53, 110, 54, 74, 83, 75, 110, 115, 106, 83, 70, 87, 118]])
@@ -43,7 +44,9 @@ AVAILABLE ATOMIC ACTIONS:
 9. {"action": "save_note", "title": "filename", "content": "markdown text", "description": "Save note on Desktop"}
 10. {"action": "run_command", "command": "shell command", "description": "Run command in terminal"}
 11. {"action": "copy_to_clipboard", "text": "text", "description": "Copy text to clipboard"}
-12. {"action": "wait", "seconds": 2, "description": "Wait for UI to load"}
+12. {"action": "vision_click", "element_description": "Search button | Send icon | Blue submit button", "description": "Visually find and click UI element on screen"}
+13. {"action": "verify_screen", "expected_condition": "YouTube video is playing | Note created", "description": "Visually verify screen state"}
+14. {"action": "wait", "seconds": 2, "description": "Wait for UI to load"}
 
 RULES:
 - Return ONLY a valid JSON array of action objects. Do not include markdown codeblocks or extra text.
@@ -265,6 +268,20 @@ class AgentRunner:
                     clipboard_sync.set_clipboard(text)
                     step_output = "Copied to clipboard"
 
+                elif action == "vision_click":
+                    desc_target = step.get("element_description", "button")
+                    va = vision_agent.VisionAgent(groq_api_key=self.api_key)
+                    res = va.locate_and_click_element(desc_target)
+                    step_success = res.get("success", False)
+                    step_output = res.get("message") or res.get("error", "Vision click finished")
+
+                elif action == "verify_screen":
+                    cond = step.get("expected_condition", "Screen ready")
+                    va = vision_agent.VisionAgent(groq_api_key=self.api_key)
+                    res = va.verify_screen_state(cond)
+                    step_success = res.get("verified", True)
+                    step_output = res.get("reason", "Screen verified")
+
                 elif action == "wait":
                     secs = min(max(step.get("seconds", 1), 0.5), 10)
                     time.sleep(secs)
@@ -294,4 +311,46 @@ class AgentRunner:
             "success": all(r["status"] == "completed" for r in results),
             "total_steps": total,
             "results": results,
+        }
+
+    def execute_self_healing_goal(self, prompt: str, max_healing_retries: int = 2) -> Dict[str, Any]:
+        """
+        Executes a goal with self-healing reflection.
+        If a plan encounters failures, diagnoses the error and requests an alternate strategy.
+        """
+        initial_plan = self.plan_task(prompt)
+        execution = self.execute_plan(initial_plan)
+
+        if execution["success"] or max_healing_retries <= 0:
+            return execution
+
+        # Self-Healing Reflection Loop
+        retries = 0
+        current_results = execution["results"]
+
+        while not all(r["status"] == "completed" for r in current_results) and retries < max_healing_retries:
+            retries += 1
+            failed_steps = [r for r in current_results if r["status"] == "failed"]
+            error_summary = "; ".join([f"Step '{s['description']}' failed with '{s['output']}'" for s in failed_steps])
+
+            healing_prompt = (
+                f"Original Goal: {prompt}\n"
+                f"Execution Encountered Errors: {error_summary}\n"
+                f"Devise an alternative recovery plan to achieve the goal despite these failures."
+            )
+
+            healing_plan = self.plan_task(healing_prompt)
+            if not healing_plan:
+                break
+
+            healing_execution = self.execute_plan(healing_plan)
+            current_results.extend(healing_execution["results"])
+            if healing_execution["success"]:
+                break
+
+        return {
+            "success": all(r["status"] == "completed" for r in current_results[-len(healing_plan):]) if 'healing_plan' in locals() else execution["success"],
+            "total_steps": len(current_results),
+            "results": current_results,
+            "self_healed": retries > 0,
         }

@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:aira_app/core/services/cognitive_memory_engine.dart';
 
 /// AIRA Personality Engine
 /// Controls how AIRA talks — like a real friend, not a customer service bot.
@@ -55,12 +56,16 @@ Current Local Time: $localTime
         ? '\n<remembered_facts>\n${memoryFacts.map((f) => '- $f').join('\n')}\n</remembered_facts>'
         : '';
 
+    final cognitiveBlock = CognitiveMemoryEngine().buildCognitiveSummary();
+    final cognitiveSection = cognitiveBlock.isNotEmpty ? '\n<cognitive_knowledge>\n$cognitiveBlock\n</cognitive_knowledge>' : '';
+
     return '''You are AIRA, $name's personal AI companion.
 
 ${_getPersonalityInstructions()}
 
 $profileBlock
 $memoryBlock
+$cognitiveSection
 
 RESPONSE RULES:
 - Default to 1-3 SHORT sentences per turn. No essays unless explicitly asked.

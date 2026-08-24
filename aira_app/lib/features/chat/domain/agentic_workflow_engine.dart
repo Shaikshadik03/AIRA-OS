@@ -1,5 +1,6 @@
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/features/laptop/data/laptop_control_service.dart';
+import 'package:aira_app/features/planner/domain/schedule_autopilot.dart';
 
 /// Single atomic step executed by the mobile Agentic Engine
 class AgenticStep {
@@ -58,6 +59,40 @@ class AgenticWorkflowEngine {
     final lower = message.toLowerCase().trim();
     final steps = <AgenticStep>[];
     int stepCounter = 1;
+
+    // ── Cross-Device Good Night / Sleep Routine ──
+    if (lower.contains('good night') || lower.contains('going to sleep') || lower.contains('bedtime routine')) {
+      steps.add(AgenticStep(
+        index: stepCounter++,
+        action: 'laptop_agent_task',
+        description: 'Lock laptop and sleep',
+        params: {'prompt': 'Lock laptop and sleep screen'},
+      ));
+      steps.add(AgenticStep(
+        index: stepCounter++,
+        action: 'set_alarm',
+        description: 'Set morning alarm for 6:30 AM',
+        params: {'time': '6:30 AM'},
+      ));
+      steps.add(AgenticStep(
+        index: stepCounter++,
+        action: 'toggle_flashlight',
+        description: 'Turn off phone flashlight',
+        params: {'enable': false},
+      ));
+      return steps;
+    }
+
+    // ── Schedule Autopilot Intent ──
+    if (lower.contains('plan my day') || lower.contains('schedule my day') || lower.contains('time block') || lower.contains('autopilot schedule')) {
+      steps.add(AgenticStep(
+        index: stepCounter++,
+        action: 'autopilot_schedule',
+        description: 'Generate optimized time-blocked daily agenda',
+        params: {},
+      ));
+      return steps;
+    }
 
     // ── Laptop Multi-Step Goal ──
     if (lower.contains('laptop') || lower.contains('pc') || lower.contains('on my computer')) {
@@ -197,6 +232,10 @@ class AgenticWorkflowEngine {
           await _deviceService.toggleFlashlight(enable: enable);
           step.status = 'completed';
           step.resultMessage = 'Flashlight ${enable ? "ON" : "OFF"}';
+        } else if (step.action == 'autopilot_schedule') {
+          final slots = await ScheduleAutopilot().generateOptimalSchedule();
+          step.status = 'completed';
+          step.resultMessage = 'Generated ${slots.length} time-blocked slots for today:\n${ScheduleAutopilot().formatScheduleMarkdown(slots)}';
         }
 
         onStepUpdate?.call(step);

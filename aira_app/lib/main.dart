@@ -9,6 +9,7 @@ import 'package:aira_app/core/services/chat_cache_service.dart';
 import 'package:aira_app/core/services/personality_engine.dart';
 import 'package:aira_app/core/services/user_profile_service.dart';
 import 'package:aira_app/core/services/memory_engine.dart';
+import 'package:aira_app/core/services/cognitive_memory_engine.dart';
 import 'package:aira_app/core/services/proactive_engine.dart';
 import 'package:aira_app/core/services/wake_word_service.dart';
 import 'package:aira_app/app.dart';
@@ -38,10 +39,11 @@ void main() async {
   // Initialize offline chat cache (was missing — caused silent cache failures)
   await ChatCacheService.init();
 
-  // Initialize AIRA Brain: Personality, Profile, and Memory
+  // Initialize AIRA Brain: Personality, Profile, Memory, and Cognitive Graph
   await PersonalityEngine().load();
   await UserProfileService().load();
   await MemoryEngine().load();
+  await CognitiveMemoryEngine().init();
 
   // Initialize Notification Service for local alerts
   await NotificationService().initialize();
