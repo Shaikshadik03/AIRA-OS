@@ -1,3 +1,6 @@
+import 'package:aira_app/core/agent/plan_models.dart';
+import 'package:aira_app/core/agent/action_guardrail_manager.dart';
+
 /// Chat message model used in the Flutter app.
 class ChatMessage {
   final String id;
@@ -7,6 +10,8 @@ class ChatMessage {
   final DateTime createdAt;
   final bool isStreaming;
   final String? base64Image;
+  final AgentGoalPlan? plan;
+  final PendingApprovalAction? pendingApproval;
 
   const ChatMessage({
     required this.id,
@@ -16,6 +21,8 @@ class ChatMessage {
     required this.createdAt,
     this.isStreaming = false,
     this.base64Image,
+    this.plan,
+    this.pendingApproval,
   });
 
   bool get isUser => role == 'user';
@@ -31,6 +38,10 @@ class ChatMessage {
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
       base64Image: json['base64Image'],
+      plan: json['plan'] != null ? AgentGoalPlan.fromJson(Map<String, dynamic>.from(json['plan'] as Map)) : null,
+      pendingApproval: json['pendingApproval'] != null
+          ? PendingApprovalAction.fromJson(Map<String, dynamic>.from(json['pendingApproval'] as Map))
+          : null,
     );
   }
 
@@ -42,6 +53,8 @@ class ChatMessage {
       'content': content,
       'created_at': createdAt.toIso8601String(),
       'base64Image': base64Image,
+      'plan': plan?.toJson(),
+      'pendingApproval': pendingApproval?.toJson(),
     };
   }
 

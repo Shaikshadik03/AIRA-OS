@@ -7,6 +7,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/features/chat/domain/chat_models.dart';
 import 'package:aira_app/features/chat/presentation/screens/artifact_canvas_screen.dart';
+import 'package:aira_app/features/chat/presentation/widgets/plan_execution_card.dart';
+import 'package:aira_app/features/chat/presentation/widgets/action_approval_card.dart';
+import 'package:aira_app/core/agent/action_guardrail_manager.dart';
 
 /// Pure Claude-Style Message Bubble with Live Artifacts:
 /// - User messages: Right-aligned compact bubble with warm surface tone and soft border.
@@ -229,6 +232,28 @@ class _MessageBubbleState extends State<MessageBubble>
           ),
 
           // Rendered Markdown
+          // ── Autonomous Goal Execution Plan Card ──
+          if (widget.message.plan != null)
+            PlanExecutionCard(plan: widget.message.plan!),
+
+          // ── Human-in-the-Loop Action Approval Card ──
+          if (widget.message.pendingApproval != null)
+            ActionApprovalCard(
+              action: widget.message.pendingApproval!,
+              onApprove: () {
+                widget.message.pendingApproval!.status = ApprovalStatus.approved;
+                setState(() {});
+              },
+              onEdit: (newContent) {
+                widget.message.pendingApproval!.status = ApprovalStatus.approved;
+                setState(() {});
+              },
+              onReject: () {
+                widget.message.pendingApproval!.status = ApprovalStatus.rejected;
+                setState(() {});
+              },
+            ),
+
           MarkdownBody(
             data: _streamedText,
             styleSheet: MarkdownStyleSheet(

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:aira_app/core/agent/goal_planner_engine.dart';
 import 'package:aira_app/features/chat/domain/agentic_workflow_engine.dart';
 import 'package:aira_app/features/chat/domain/chat_models.dart';
 import 'package:aira_app/features/chat/domain/workspace_intent.dart';
@@ -230,6 +231,81 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final laptopCommand = LaptopIntentDetector.parse(content);
       if (laptopCommand != null) {
         await _handleLaptopCommand(content, laptopCommand);
+        return;
+      }
+    }
+
+    // ── Phase 1: High-Level Autonomous Goal Planning & Live Stream ──
+    final goalPlanner = GoalPlannerEngine();
+    if (goalPlanner.isHighLevelGoal(content)) {
+      _addUserMessage(content);
+      _addLoadingMessage('🧠 Formulating multi-step execution plan...');
+      try {
+        final plan = await goalPlanner.generatePlan(content);
+        _removeLoadingMessage();
+
+        // Create a live message with the plan attached
+        final messageId = _uuid.v4();
+        final initialMsg = ChatMessage(
+          id: messageId,
+          conversationId: state.activeConversationId ?? 'local',
+          role: 'assistant',
+          content: 'I have formulated an execution plan for your goal. Executing subtasks...',
+          createdAt: DateTime.now(),
+          plan: plan,
+        );
+
+        state = state.copyWith(messages: [...state.messages, initialMsg]);
+
+        // Execute plan with live UI step updates
+        final report = await goalPlanner.executePlan(
+          plan,
+          onStepUpdate: (updatedStep) {
+            final updatedMessages = state.messages.map((m) {
+              if (m.id == messageId) {
+                return ChatMessage(
+                  id: m.id,
+                  conversationId: m.conversationId,
+                  role: m.role,
+                  content: m.content,
+                  createdAt: m.createdAt,
+                  plan: plan,
+                );
+              }
+              return m;
+            }).toList();
+            state = state.copyWith(messages: updatedMessages);
+          },
+          onTaskCreated: (title) async {
+            final planner = PlannerNotifier();
+            await planner.loadAll();
+            await planner.addTask(title: title);
+          },
+        );
+
+        // Update with final execution report
+        final finalMessages = state.messages.map((m) {
+          if (m.id == messageId) {
+            return ChatMessage(
+              id: m.id,
+              conversationId: m.conversationId,
+              role: m.role,
+              content: report,
+              createdAt: m.createdAt,
+              plan: plan,
+            );
+          }
+          return m;
+        }).toList();
+        state = state.copyWith(messages: finalMessages);
+
+        if (_isVoiceEnabled) {
+          await _tts.speak('Goal plan executed successfully.');
+        }
+        return;
+      } catch (e) {
+        _removeLoadingMessage();
+        _addSystemMessage('❌ **Goal planning error:** $e');
         return;
       }
     }
