@@ -33,10 +33,15 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
   final _terminalController = TextEditingController();
   final _terminalOutputController = TextEditingController();
 
+  // AI Agent Tab
+  final _aiAgentInputController = TextEditingController();
+  final List<Map<String, dynamic>> _aiAgentMessages = [];
+  bool _isAiAgentExecuting = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _service.loadConfig().then((_) {
       if (_service.isConfigured) {
         _testConnection();
@@ -51,6 +56,7 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
     _textController.dispose();
     _terminalController.dispose();
     _terminalOutputController.dispose();
+    _aiAgentInputController.dispose();
     super.dispose();
   }
 
@@ -187,6 +193,7 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
           unselectedLabelStyle:
               GoogleFonts.sourceSerif4(fontSize: 12),
           tabs: const [
+            Tab(icon: Icon(Icons.psychology_rounded, size: 18), text: 'AI Agent'),
             Tab(icon: Icon(Icons.touch_app_rounded, size: 18), text: 'Trackpad'),
             Tab(icon: Icon(Icons.screenshot_monitor_rounded, size: 18), text: 'Screen'),
             Tab(icon: Icon(Icons.terminal_rounded, size: 18), text: 'Terminal'),
@@ -199,6 +206,7 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
           : TabBarView(
               controller: _tabController,
               children: [
+                _buildAiAgentTab(theme, isDark),
                 _buildTrackpadTab(theme, isDark),
                 _buildScreenTab(theme, isDark),
                 _buildTerminalTab(theme, isDark),
@@ -313,7 +321,310 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
     );
   }
 
-  // ── Trackpad Tab ───────────────────────────────────────────────────────
+  // ── AI Agent Tab (Autonomous Multi-Step Laptop Brain) ────────────────
+
+  Widget _buildAiAgentTab(ThemeData theme, bool isDark) {
+    final cardBg = isDark ? AiraColors.cardDark : AiraColors.cardLight;
+    final borderColor = isDark ? AiraColors.borderDark : AiraColors.borderLight;
+
+    return Column(
+      children: [
+        // Quick Action Suggestion Chips
+        Container(
+          height: 44,
+          margin: const EdgeInsets.only(top: 8, bottom: 4),
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            children: [
+              _buildSuggestionChip('▶️ Play Hanuman Chalisa on YouTube', isDark),
+              _buildSuggestionChip('🔍 Search React documentation in Chrome', isDark),
+              _buildSuggestionChip('📝 Create note on Desktop: Roadmap', isDark),
+              _buildSuggestionChip('📸 Screenshot and check screen', isDark),
+              _buildSuggestionChip('📁 Organize Downloads folder', isDark),
+              _buildSuggestionChip('🔒 Lock laptop & sleep', isDark),
+            ],
+          ),
+        ),
+
+        // Message & Action Execution Log
+        Expanded(
+          child: _aiAgentMessages.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(28),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.18 : 0.1),
+                          ),
+                          child: const Icon(
+                            Icons.psychology_rounded,
+                            size: 42,
+                            color: AiraColors.claudeTerracotta,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Autonomous Laptop AI',
+                          style: GoogleFonts.playfairDisplay(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tell AIRA any complex goal. The AI will reason, call tools, and execute multi-step actions on your laptop.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.sourceSerif4(
+                            fontSize: 13,
+                            color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+                  itemCount: _aiAgentMessages.length,
+                  itemBuilder: (context, idx) {
+                    final msg = _aiAgentMessages[idx];
+                    final isUser = msg['role'] == 'user';
+                    final steps = (msg['steps'] as List?) ?? [];
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        crossAxisAlignment:
+                            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: isUser
+                                  ? AiraColors.claudeTerracotta
+                                  : (isDark ? AiraColors.cardDark : AiraColors.cardLight),
+                              borderRadius: BorderRadius.circular(16),
+                              border: isUser
+                                  ? null
+                                  : Border.all(color: borderColor),
+                            ),
+                            child: Text(
+                              msg['content'] as String,
+                              style: GoogleFonts.sourceSerif4(
+                                fontSize: 13.5,
+                                color: isUser ? Colors.white : theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                          if (!isUser && steps.isNotEmpty)
+                            Container(
+                              margin: const EdgeInsets.only(top: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF141310) : const Color(0xFFFAF9F5),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: borderColor),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'ACTION PLAN EXECUTION (${steps.length} STEPS)',
+                                    style: GoogleFonts.firaCode(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.2,
+                                      color: AiraColors.claudeTerracotta,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...steps.map((st) {
+                                    final stepMap = st as Map;
+                                    final status = stepMap['status'] ?? 'completed';
+                                    final desc = stepMap['description'] ?? '';
+                                    final output = stepMap['output'] ?? '';
+                                    final isOk = status == 'completed';
+
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(isOk ? '✅' : '❌', style: const TextStyle(fontSize: 13)),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  desc,
+                                                  style: GoogleFonts.sourceSerif4(
+                                                    fontSize: 12.5,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: theme.colorScheme.onSurface,
+                                                  ),
+                                                ),
+                                                if (output.toString().isNotEmpty)
+                                                  Text(
+                                                    output.toString(),
+                                                    style: GoogleFonts.firaCode(
+                                                      fontSize: 11,
+                                                      color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+
+        // Thinking Indicator
+        if (_isAiAgentExecuting)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.15 : 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AiraColors.claudeTerracotta.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AiraColors.claudeTerracotta),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '🧠 Reasoning & calling tools on laptop...',
+                  style: GoogleFonts.sourceSerif4(fontSize: 12.5, color: AiraColors.claudeTerracotta, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+
+        // Bottom Input Bar
+        Container(
+          padding: EdgeInsets.fromLTRB(14, 8, 14, MediaQuery.of(context).padding.bottom + 8),
+          decoration: BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+            border: Border(top: BorderSide(color: borderColor, width: 0.8)),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _aiAgentInputController,
+                    style: GoogleFonts.sourceSerif4(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Tell laptop AI what to do...',
+                      hintStyle: GoogleFonts.sourceSerif4(
+                        fontSize: 13.5,
+                        color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    ),
+                    onSubmitted: _sendAiAgentTask,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.arrow_upward_rounded, size: 20, color: Colors.white),
+                  style: IconButton.styleFrom(
+                    backgroundColor: AiraColors.claudeTerracotta,
+                    padding: const EdgeInsets.all(8),
+                  ),
+                  onPressed: () => _sendAiAgentTask(_aiAgentInputController.text),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSuggestionChip(String label, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      child: ActionChip(
+        label: Text(label, style: GoogleFonts.sourceSerif4(fontSize: 11.5)),
+        backgroundColor: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        onPressed: () => _sendAiAgentTask(label.substring(3).trim()),
+      ),
+    );
+  }
+
+  Future<void> _sendAiAgentTask(String prompt) async {
+    final text = prompt.trim();
+    if (text.isEmpty || _isAiAgentExecuting) return;
+
+    _aiAgentInputController.clear();
+    setState(() {
+      _aiAgentMessages.add({
+        'role': 'user',
+        'content': text,
+        'time': DateTime.now(),
+      });
+      _isAiAgentExecuting = true;
+    });
+
+    try {
+      final result = await _service.executeAgentTask(text);
+      final success = result['success'] == true;
+      final results = (result['results'] as List?) ?? [];
+      final message = result['message'] ?? (success ? 'Task executed successfully on laptop' : 'Some steps encountered issues');
+
+      setState(() {
+        _isAiAgentExecuting = false;
+        _aiAgentMessages.add({
+          'role': 'assistant',
+          'content': message,
+          'success': success,
+          'steps': results,
+          'time': DateTime.now(),
+        });
+      });
+    } catch (e) {
+      setState(() {
+        _isAiAgentExecuting = false;
+        _aiAgentMessages.add({
+          'role': 'assistant',
+          'content': 'Error executing task on laptop: $e',
+          'success': false,
+          'time': DateTime.now(),
+        });
+      });
+    }
+  }
 
   // ── Trackpad Tab (Fixed Full-Height Ergonomic Layout) ─────────────────
 

@@ -439,6 +439,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
       String? base64Image;
 
       switch (command.type) {
+        case LaptopCommandType.agentTask:
+          result = await _laptopService.executeAgentTask(command.argument ?? content);
+          break;
         case LaptopCommandType.screenshot:
           final bytes = await _laptopService.captureScreenshot();
           if (bytes != null) {

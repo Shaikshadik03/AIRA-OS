@@ -34,6 +34,19 @@ class LaptopIntentDetector {
   static LaptopCommand? parse(String message) {
     final lower = message.toLowerCase().trim();
 
+    // Multi-step compound Agentic Task on laptop
+    final isCompound = lower.contains(' and ') ||
+        lower.contains(' then ') ||
+        lower.contains(' also ') ||
+        lower.contains(' after that ') ||
+        (lower.contains('play') && lower.contains('youtube')) ||
+        (lower.contains('search') && lower.contains('note')) ||
+        (lower.contains('open') && lower.contains('search'));
+
+    if (isCompound && (lower.contains('laptop') || lower.contains('pc') || lower.contains('computer') || lower.contains('desktop'))) {
+      return LaptopCommand(type: LaptopCommandType.agentTask, argument: message);
+    }
+
     // Screenshot
     if (lower.contains('screenshot') || lower.contains('screen of my laptop') || lower.contains('what\'s on my laptop')) {
       return LaptopCommand(type: LaptopCommandType.screenshot);
@@ -265,11 +278,16 @@ class LaptopIntentDetector {
         return '↕️ **Scrolled down** on your laptop.';
       case LaptopCommandType.scrollUp:
         return '↕️ **Scrolled up** on your laptop.';
+      case LaptopCommandType.agentTask:
+        final total = result?['total_steps'] ?? 0;
+        final msg = result?['message'] ?? 'Executed multi-step task';
+        return '🤖 **Laptop Agent Task Executed ($total steps)**\n\n$msg';
     }
   }
 }
 
 enum LaptopCommandType {
+  agentTask,
   screenshot,
   lock,
   sleep,
