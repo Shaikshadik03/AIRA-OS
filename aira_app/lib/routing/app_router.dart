@@ -14,6 +14,7 @@ import 'package:aira_app/features/voice_notes/presentation/screens/voice_note_sc
 import 'package:aira_app/features/overlay/presentation/screens/overlay_settings_screen.dart';
 import 'package:aira_app/features/briefing/presentation/screens/briefing_screen.dart';
 import 'package:aira_app/features/laptop/presentation/screens/laptop_control_screen.dart';
+import 'package:aira_app/features/monitor/presentation/screens/monitor_screen.dart';
 
 
 final GoRouter appRouter = GoRouter(
@@ -175,6 +176,19 @@ final GoRouter appRouter = GoRouter(
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             SlideTransition(
           position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
+          child: child,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/monitor',
+      pageBuilder: (context, state) => CustomTransitionPage(
+        key: state.pageKey,
+        child: const MonitorScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
               .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
           child: child,
         ),

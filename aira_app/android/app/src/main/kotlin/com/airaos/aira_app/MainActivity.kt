@@ -35,6 +35,7 @@ import kotlin.concurrent.thread
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.aira.os/device_control"
     private val EVENT_CHANNEL = "com.aira.os/wakeword_events"
+    private val NOTIF_EVENT_CHANNEL = "com.aira.os/notification_events"
 
     private var eventSink: EventChannel.EventSink? = null
     @Volatile private var isAudioRecordListening = false
@@ -144,6 +145,18 @@ class MainActivity : FlutterActivity() {
                 override fun onCancel(arguments: Any?) {
                     stopNativeAudioRecordStream()
                     eventSink = null
+                }
+            }
+        )
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIF_EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    AiraNotificationListenerService.eventSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    AiraNotificationListenerService.eventSink = null
                 }
             }
         )
@@ -587,6 +600,34 @@ class MainActivity : FlutterActivity() {
                             "Good evening! Review your completed tasks and plan for tomorrow.",
                             22, 0
                         )
+                        result.success(true)
+                    }
+
+                    // ── Notification Intelligence Listener ──
+                    "isNotificationListenerEnabled" -> {
+                        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                        val isEnabled = flat != null && flat.contains(packageName)
+                        result.success(isEnabled)
+                    }
+
+                    "openNotificationListenerSettings" -> {
+                        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                            Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                        } else {
+                            Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+                        }
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                        result.success(true)
+                    }
+
+                    "getRecentNotifications" -> {
+                        val list = AiraNotificationListenerService.getNotificationsList()
+                        result.success(list)
+                    }
+
+                    "clearRecentNotifications" -> {
+                        AiraNotificationListenerService.clearNotifications()
                         result.success(true)
                     }
 

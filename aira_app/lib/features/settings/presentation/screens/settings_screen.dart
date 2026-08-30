@@ -200,6 +200,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onTap: () => context.push('/briefing'),
           ),
           _settingsTile(
+            Icons.notifications_active_outlined,
+            'Intelligence & Monitor',
+            'Summarize phone notifications & outside world trends',
+            iconColor: AiraColors.claudeTerracotta,
+            onTap: () => context.push('/monitor'),
+          ),
+          _settingsTile(
             Icons.remove_red_eye_outlined,
             'AIRA Vision (Camera AI)',
             'Analyze photos, code, documents & objects',

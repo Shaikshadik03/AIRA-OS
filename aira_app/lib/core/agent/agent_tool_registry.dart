@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:aira_app/core/services/web_search_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
+import 'package:aira_app/core/services/notification_monitor_service.dart';
+import 'package:aira_app/core/services/social_world_monitor_service.dart';
 import 'package:aira_app/features/laptop/data/laptop_control_service.dart';
 
 /// Specification definition for a callable Agent Tool
@@ -85,6 +87,18 @@ class AgentToolRegistry {
       parameterSchema: {'phone': 'Phone number', 'message': 'Text message'},
       isApprovalRequired: true,
     ),
+    'notification_digest': const AgentToolDefinition(
+      name: 'notification_digest',
+      description: 'Read and summarize intercepted phone notifications (WhatsApp, Telegram, Gmail, Banking, Delivery).',
+      parameterSchema: {'category': 'Optional filter: messaging, email_work, finance, delivery_transport, social, all'},
+      isApprovalRequired: false,
+    ),
+    'world_social_radar': const AgentToolDefinition(
+      name: 'world_social_radar',
+      description: 'Fetch real-time outside world news, tech breakthroughs, and trending social debates from Hacker News, Reddit, and global feeds.',
+      parameterSchema: {'category': 'Optional filter: ai, tech, india, all'},
+      isApprovalRequired: false,
+    ),
   };
 
   List<AgentToolDefinition> get availableTools => _tools.values.toList();
@@ -93,9 +107,13 @@ class AgentToolRegistry {
   String selectOptimalTool(String subtaskTitle, {String? context}) {
     final lower = '$subtaskTitle ${context ?? ""}'.toLowerCase();
 
-    if (lower.contains('search') || lower.contains('news') || lower.contains('who is') || lower.contains('latest') || lower.contains('online') || lower.contains('article') || lower.contains('documentation') || lower.contains('weather')) {
-      return 'web_search';
+    if (lower.contains('notification') || lower.contains('notif') || lower.contains('unread message') || lower.contains('what did i miss') || lower.contains('whatsapp message') || lower.contains('summarize my alerts') || lower.contains('alert')) {
+      return 'notification_digest';
     }
+    if (lower.contains('outside world') || lower.contains('what is happening outside') || lower.contains('social media trend') || lower.contains('trending topic') || lower.contains('hacker news') || lower.contains('reddit trend') || lower.contains('world radar')) {
+      return 'world_social_radar';
+    }
+
     if (lower.contains('n8n') || lower.contains('webhook') || lower.contains('pipeline') || lower.contains('automation workflow')) {
       return 'n8n_workflow';
     }
@@ -105,7 +123,7 @@ class AgentToolRegistry {
     if (lower.contains('flashlight') || lower.contains('torch')) {
       return 'device_flashlight';
     }
-    if (lower.contains('open ') || lower.contains('launch ') || lower.contains('app')) {
+    if (lower.contains('open app') || lower.contains('launch app') || lower.contains('open ') || lower.contains('launch ')) {
       return 'device_app_launch';
     }
     if (lower.contains('laptop') || lower.contains('pc') || lower.contains('desktop') || lower.contains('browser tab') || lower.contains('vs code')) {
@@ -117,6 +135,9 @@ class AgentToolRegistry {
     if (lower.contains('sms') || lower.contains('text message')) {
       return 'send_sms';
     }
+    if (lower.contains('search') || lower.contains('news') || lower.contains('who is') || lower.contains('latest') || lower.contains('online') || lower.contains('article') || lower.contains('documentation') || lower.contains('weather')) {
+      return 'web_search';
+    }
 
     return 'web_search'; // Default to web search for general queries
   }
@@ -124,6 +145,13 @@ class AgentToolRegistry {
   /// Dispatch execution for a selected tool
   Future<String> executeTool(String toolName, Map<String, dynamic> params) async {
     switch (toolName) {
+      case 'notification_digest':
+        final cat = params['category'] as String?;
+        return await NotificationMonitorService().generateSmartDigest(categoryFilter: cat);
+
+      case 'world_social_radar':
+        return await SocialWorldMonitorService().generateExecutiveWorldDigest();
+
       case 'web_search':
         final query = params['query'] as String? ?? 'AIRA news';
         return await _webSearch.search(query);

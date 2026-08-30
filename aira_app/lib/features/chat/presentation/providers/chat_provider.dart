@@ -27,6 +27,8 @@ import 'package:aira_app/core/services/fact_extractor.dart';
 import 'package:aira_app/core/services/memory_engine.dart';
 import 'package:aira_app/core/services/implicit_reminder_detector.dart';
 import 'package:aira_app/core/services/proactive_engine.dart';
+import 'package:aira_app/core/services/notification_monitor_service.dart';
+import 'package:aira_app/core/services/social_world_monitor_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -233,6 +235,18 @@ class ChatNotifier extends StateNotifier<ChatState> {
         await _handleLaptopCommand(content, laptopCommand);
         return;
       }
+    }
+
+    // ── Check for Notification Intelligence / Digest Intent ──
+    if (_isNotificationDigestQuery(content)) {
+      await _handleNotificationDigestCommand(content);
+      return;
+    }
+
+    // ── Check for Social World Radar Intent ──
+    if (_isWorldSocialRadarQuery(content)) {
+      await _handleWorldSocialRadarCommand(content);
+      return;
     }
 
     // ── Phase 1: High-Level Autonomous Goal Planning & Live Stream ──
@@ -1406,6 +1420,95 @@ class ChatNotifier extends StateNotifier<ChatState> {
   void _removeLoadingMessage() {
     final msgs = state.messages.where((m) => m.id != 'workspace-loading').toList();
     state = state.copyWith(messages: msgs, isSending: false);
+  }
+
+  // ──────────────────── Notification & World Radar Handlers ────────────────────
+
+  bool _isNotificationDigestQuery(String text) {
+    final lower = text.toLowerCase().trim();
+    return lower.contains('summarize my notification') ||
+        lower.contains('summarise my notification') ||
+        lower.contains('summarize notification') ||
+        lower.contains('summarise notification') ||
+        lower.contains('what notifications') ||
+        lower.contains('check my notifications') ||
+        lower.contains('check notifications') ||
+        lower.contains('check my alerts') ||
+        lower.contains('any unread message') ||
+        lower.contains('what did i miss on whatsapp') ||
+        lower.contains('what did i miss') ||
+        lower.contains('my notifs');
+  }
+
+  bool _isWorldSocialRadarQuery(String text) {
+    final lower = text.toLowerCase().trim();
+    return lower.contains('outside world') ||
+        lower.contains('happening in outside') ||
+        lower.contains('happening outside') ||
+        lower.contains('trending on social') ||
+        lower.contains('social media trend') ||
+        lower.contains('world radar') ||
+        lower.contains('world briefing') ||
+        lower.contains('whats trending') ||
+        lower.contains("what's trending") ||
+        lower.contains('what is trending') ||
+        lower.contains('hacker news trend') ||
+        lower.contains('tech news today');
+  }
+
+  Future<void> _handleNotificationDigestCommand(String content) async {
+    _addUserMessage(content);
+    _addLoadingMessage('🔔 Reading incoming notifications & synthesizing AI digest...');
+
+    try {
+      final notifService = NotificationMonitorService();
+      final hasPerm = await notifService.isPermissionGranted();
+      if (!hasPerm) {
+        _removeLoadingMessage();
+        _addSystemMessage(
+          '⚠️ **Notification Access Required**\n\n'
+          'AIRA needs permission to read notifications on your device.\n'
+          'Please open **Intelligence & Monitor** from the menu or settings and tap **Grant Notification Access**.',
+        );
+        if (_isVoiceEnabled) {
+          await _tts.speak('Please grant notification access in AIRA settings to summarize your alerts.');
+        }
+        return;
+      }
+
+      final digest = await notifService.generateSmartDigest();
+      _removeLoadingMessage();
+      _addSystemMessage('### 🔔 AIRA Notification Intelligence Digest\n\n$digest');
+
+      if (_isVoiceEnabled) {
+        // Speak first 2 sentences
+        final spoken = digest.split('\n').firstWhere((l) => l.trim().isNotEmpty, orElse: () => 'Here is your notification summary.');
+        await _tts.speak(spoken.replaceAll('*', '').replaceAll('#', ''));
+      }
+    } catch (e) {
+      _removeLoadingMessage();
+      _addSystemMessage('❌ **Notification Digest Error:** $e');
+    }
+  }
+
+  Future<void> _handleWorldSocialRadarCommand(String content) async {
+    _addUserMessage(content);
+    _addLoadingMessage('🌐 Scanning Hacker News, Reddit & India tech signals...');
+
+    try {
+      final worldService = SocialWorldMonitorService();
+      final digest = await worldService.generateExecutiveWorldDigest();
+      _removeLoadingMessage();
+      _addSystemMessage('### 🌐 Outside World & Social Radar\n\n$digest');
+
+      if (_isVoiceEnabled) {
+        final spoken = digest.split('\n').firstWhere((l) => l.trim().isNotEmpty, orElse: () => 'Here is what is happening in the outside world.');
+        await _tts.speak(spoken.replaceAll('*', '').replaceAll('#', ''));
+      }
+    } catch (e) {
+      _removeLoadingMessage();
+      _addSystemMessage('❌ **World Radar Error:** $e');
+    }
   }
 
   void clearChat() {

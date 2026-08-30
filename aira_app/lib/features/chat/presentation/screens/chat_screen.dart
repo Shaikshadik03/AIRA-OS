@@ -847,6 +847,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   isDark: isDark,
                 ),
                 _buildAttachmentOption(
+                  icon: Icons.notifications_active_outlined,
+                  label: 'Intelligence Monitor',
+                  color: AiraColors.claudeTerracotta,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context.push('/monitor');
+                  },
+                  theme: theme,
+                  isDark: isDark,
+                ),
+                _buildAttachmentOption(
                   icon: Icons.cloud_outlined,
                   label: 'Google Workspace',
                   color: Colors.amber.shade800,

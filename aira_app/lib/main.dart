@@ -12,6 +12,8 @@ import 'package:aira_app/core/services/memory_engine.dart';
 import 'package:aira_app/core/services/cognitive_memory_engine.dart';
 import 'package:aira_app/core/services/proactive_engine.dart';
 import 'package:aira_app/core/services/wake_word_service.dart';
+import 'package:aira_app/core/services/notification_monitor_service.dart';
+import 'package:aira_app/core/services/social_world_monitor_service.dart';
 import 'package:aira_app/app.dart';
 
 void main() async {
@@ -55,6 +57,10 @@ void main() async {
 
   // Initialize Wake Word Service (Hey AIRA hands-free)
   await WakeWordService().load();
+
+  // Initialize Notification Intelligence & Social World Radar
+  await NotificationMonitorService().init();
+  await SocialWorldMonitorService().init();
 
   runApp(
     const ProviderScope(

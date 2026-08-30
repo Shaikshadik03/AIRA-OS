@@ -56,6 +56,17 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- AIRA Notification Intelligence Listener Service -->
+        <service
+            android:name=".AiraNotificationListenerService"
+            android:label="AIRA Notification Intelligence"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- AIRA Native Daily Alarm Receiver -->
         <receiver
             android:name=".AlarmReceiver"

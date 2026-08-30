@@ -104,6 +104,24 @@ User Goal ("Handle my morning")
 
 ---
 
+## 📡 Superpower: Notification Intelligence & Social World Radar
+
+AIRA-OS includes dedicated on-device intelligence for capturing and synthesizing incoming alerts and public web signals:
+
+1. **Android Notification Interceptor & Smart Digest (`AiraNotificationListenerService.kt` & `notification_monitor_service.dart`)**:
+   - Intercepts incoming Android notifications across all apps (WhatsApp, Telegram, Gmail, SMS, Banking, Swiggy, Instagram).
+   - Real-time categorizer groups alerts into 5 dedicated buckets: `💬 Chats`, `📧 Email & Work`, `💳 Finance & OTPs`, `🍔 Delivery`, and `📢 Social`.
+   - On-demand AI synthesis: Turn 50+ messy notifications into a structured 4-bullet executive briefing with one tap or chat command (*"Summarize my notifications"*).
+
+2. **Social World & Tech Radar (`social_world_monitor_service.dart`)**:
+   - Zero-auth public feed aggregator streaming live signals from **Hacker News Firebase API**, **Reddit r/technology / r/artificial**, and **National Tech Feeds**.
+   - Generates daily 4-bullet executive briefings covering AI breakthroughs, India tech ecosystem updates, and actionable takeaways for developers.
+
+3. **Intelligence & Monitor Command Center (`MonitorScreen`)**:
+   - Dedicated 2D Serif dual-tab command center accessible via Settings or the Chat `+` sheet.
+
+---
+
 ## 📂 Project Directory Structure
 
 ```
