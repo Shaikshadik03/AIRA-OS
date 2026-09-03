@@ -14,6 +14,8 @@ class InterceptedNotification {
   final String subText;
   final int timestamp;
   final String category;
+  final bool canReply;
+  final String? replyKey;
 
   InterceptedNotification({
     required this.id,
@@ -24,6 +26,8 @@ class InterceptedNotification {
     required this.subText,
     required this.timestamp,
     required this.category,
+    this.canReply = false,
+    this.replyKey,
   });
 
   factory InterceptedNotification.fromMap(Map<dynamic, dynamic> map) {
@@ -38,6 +42,8 @@ class InterceptedNotification {
           ? map['timestamp']
           : int.tryParse(map['timestamp']?.toString() ?? '0') ?? DateTime.now().millisecondsSinceEpoch,
       category: map['category']?.toString() ?? 'general',
+      canReply: map['canReply'] == true,
+      replyKey: map['replyKey']?.toString(),
     );
   }
 
@@ -51,6 +57,8 @@ class InterceptedNotification {
       'subText': subText,
       'timestamp': timestamp,
       'category': category,
+      'canReply': canReply,
+      'replyKey': replyKey,
     };
   }
 }
@@ -64,12 +72,14 @@ class NotificationMonitorService {
   static const EventChannel _eventChannel = EventChannel('com.aira.os/notification_events');
 
   final List<InterceptedNotification> _notifications = [];
+  final StreamController<InterceptedNotification> _notificationStreamController = StreamController<InterceptedNotification>.broadcast();
   StreamSubscription? _subscription;
   String _cachedDigest = '';
   DateTime? _lastDigestTime;
   bool _isListening = false;
 
   List<InterceptedNotification> get notifications => List.unmodifiable(_notifications);
+  Stream<InterceptedNotification> get onNotificationReceived => _notificationStreamController.stream;
   String get cachedDigest => _cachedDigest;
   DateTime? get lastDigestTime => _lastDigestTime;
   bool get isListening => _isListening;
@@ -142,6 +152,7 @@ class NotificationMonitorService {
       if (save) {
         _persistNotifications();
       }
+      _notificationStreamController.add(notif);
     }
   }
 

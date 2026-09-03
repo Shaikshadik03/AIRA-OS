@@ -1,17 +1,34 @@
 package com.airaos.aira_app
 
+import android.app.Notification
+import android.app.PendingIntent
+import android.app.RemoteInput
+import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import io.flutter.plugin.common.EventChannel
+
+data class ReplyActionHolder(
+    val replyKey: String,
+    val pendingIntent: PendingIntent,
+    val remoteInput: RemoteInput,
+    val packageName: String,
+    val sender: String,
+    val text: String,
+    val timestamp: Long
+)
 
 class AiraNotificationListenerService : NotificationListenerService() {
 
     companion object {
         var eventSink: EventChannel.EventSink? = null
         val capturedNotifications = mutableListOf<Map<String, Any>>()
+        val replyHolders = mutableMapOf<String, ReplyActionHolder>()
         private const val MAX_SAVED = 100
+        private const val MAX_REPLY_HOLDERS = 50
 
         fun getNotificationsList(): List<Map<String, Any>> {
             return capturedNotifications.toList()
@@ -19,6 +36,21 @@ class AiraNotificationListenerService : NotificationListenerService() {
 
         fun clearNotifications() {
             capturedNotifications.clear()
+            replyHolders.clear()
+        }
+
+        fun sendReply(context: Context, replyKey: String, replyText: String): Boolean {
+            val holder = synchronized(replyHolders) { replyHolders[replyKey] } ?: return false
+            return try {
+                val intent = Intent()
+                val bundle = Bundle()
+                bundle.putCharSequence(holder.remoteInput.resultKey, replyText)
+                RemoteInput.addResultsToIntent(arrayOf(holder.remoteInput), intent, bundle)
+                holder.pendingIntent.send(context, 0, intent)
+                true
+            } catch (e: Exception) {
+                false
+            }
         }
     }
 
@@ -72,6 +104,42 @@ class AiraNotificationListenerService : NotificationListenerService() {
                 else -> "general"
             }
 
+            // Inspect for RemoteInput Quick-Reply action (WhatsApp, Telegram, Signal, SMS)
+            var canReply = false
+            var replyKey = ""
+            val actions = sbn.notification.actions
+            if (actions != null) {
+                for (action in actions) {
+                    val remoteInputs = action.remoteInputs
+                    if (remoteInputs != null && remoteInputs.isNotEmpty()) {
+                        for (ri in remoteInputs) {
+                            if (ri.allowFreeFormInput && action.actionIntent != null) {
+                                val key = "${packageName}_${sbn.id}_${sbn.postTime}"
+                                synchronized(replyHolders) {
+                                    replyHolders[key] = ReplyActionHolder(
+                                        replyKey = key,
+                                        pendingIntent = action.actionIntent,
+                                        remoteInput = ri,
+                                        packageName = packageName,
+                                        sender = title,
+                                        text = if (bigText.isNotEmpty()) bigText else text,
+                                        timestamp = sbn.postTime
+                                    )
+                                    if (replyHolders.size > MAX_REPLY_HOLDERS) {
+                                        val oldestKey = replyHolders.keys.firstOrNull()
+                                        if (oldestKey != null) replyHolders.remove(oldestKey)
+                                    }
+                                }
+                                canReply = true
+                                replyKey = key
+                                break
+                            }
+                        }
+                    }
+                    if (canReply) break
+                }
+            }
+
             val notifData = mapOf(
                 "id" to sbn.id,
                 "packageName" to packageName,
@@ -80,7 +148,9 @@ class AiraNotificationListenerService : NotificationListenerService() {
                 "text" to (if (bigText.isNotEmpty()) bigText else text),
                 "subText" to subText,
                 "timestamp" to sbn.postTime,
-                "category" to category
+                "category" to category,
+                "canReply" to canReply,
+                "replyKey" to replyKey
             )
 
             synchronized(capturedNotifications) {

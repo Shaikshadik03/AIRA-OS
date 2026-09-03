@@ -6,6 +6,8 @@ import '../../../../core/theme/aira_colors.dart';
 import '../../../../core/theme/aira_typography.dart';
 import '../../../../core/services/notification_monitor_service.dart';
 import '../../../../core/services/social_world_monitor_service.dart';
+import '../../../../core/services/smart_reply_service.dart';
+import 'package:aira_app/features/chat/presentation/widgets/pending_reply_card.dart';
 
 class MonitorScreen extends ConsumerStatefulWidget {
   const MonitorScreen({super.key});
@@ -189,6 +191,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> with SingleTicker
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _buildPendingReplyDraftsSection(isDark),
           _buildAiDigestCard(isDark),
           const SizedBox(height: 16),
           _buildCategoryFilterChips(isDark),
@@ -263,6 +266,41 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> with SingleTicker
             ...notifs.map((n) => _buildNotificationItem(n, isDark)),
         ],
       ),
+    );
+  }
+
+  Widget _buildPendingReplyDraftsSection(bool isDark) {
+    return AnimatedBuilder(
+      animation: SmartReplyService(),
+      builder: (context, _) {
+        final drafts = SmartReplyService().activePendingDrafts;
+        if (drafts.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.reply_all_rounded, size: 18, color: Color(0xFF25D366)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Pending Reply Drafts (${drafts.length})',
+                    style: GoogleFonts.playfairDisplay(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...drafts.map((d) => PendingReplyCard(draft: d)),
+            ],
+          ),
+        );
+      },
     );
   }
 

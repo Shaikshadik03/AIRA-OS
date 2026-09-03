@@ -14,6 +14,7 @@ import 'package:aira_app/core/services/proactive_engine.dart';
 import 'package:aira_app/core/services/wake_word_service.dart';
 import 'package:aira_app/core/services/notification_monitor_service.dart';
 import 'package:aira_app/core/services/social_world_monitor_service.dart';
+import 'package:aira_app/core/services/smart_reply_service.dart';
 import 'package:aira_app/app.dart';
 
 void main() async {
@@ -61,6 +62,7 @@ void main() async {
   // Initialize Notification Intelligence & Social World Radar
   await NotificationMonitorService().init();
   await SocialWorldMonitorService().init();
+  await SmartReplyService().init();
 
   runApp(
     const ProviderScope(

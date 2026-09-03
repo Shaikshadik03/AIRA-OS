@@ -631,6 +631,17 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
 
+                    "sendNotificationReply" -> {
+                        val replyKey = call.argument<String>("replyKey") ?: ""
+                        val replyText = call.argument<String>("replyText") ?: ""
+                        if (replyKey.isEmpty() || replyText.isEmpty()) {
+                            result.error("INVALID_ARGS", "replyKey and replyText must not be empty", null)
+                            return@setMethodCallHandler
+                        }
+                        val success = AiraNotificationListenerService.sendReply(this, replyKey, replyText)
+                        result.success(mapOf("success" to success))
+                    }
+
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {

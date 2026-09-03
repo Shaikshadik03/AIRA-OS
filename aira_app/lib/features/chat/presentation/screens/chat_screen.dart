@@ -15,6 +15,8 @@ import 'package:aira_app/features/chat/presentation/widgets/message_bubble.dart'
 import 'package:aira_app/features/chat/presentation/widgets/typing_indicator.dart';
 import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:aira_app/core/services/smart_reply_service.dart';
+import 'package:aira_app/features/chat/presentation/widgets/pending_reply_card.dart';
 import 'package:go_router/go_router.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -223,6 +225,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: Column(
         children: [
+          // Pending Smart Reply Drafts (WhatsApp / Telegram / SMS Review-before-send)
+          _buildPendingRepliesSection(),
           // Messages or empty state
           Expanded(
             child: chatState.messages.isEmpty
@@ -264,6 +268,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _buildInputBar(chatState.isSending),
         ],
       ),
+    );
+  }
+
+  Widget _buildPendingRepliesSection() {
+    return AnimatedBuilder(
+      animation: SmartReplyService(),
+      builder: (context, _) {
+        final drafts = SmartReplyService().activePendingDrafts;
+        if (drafts.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: drafts.map((draft) => PendingReplyCard(draft: draft)).toList(),
+          ),
+        );
+      },
     );
   }
 
