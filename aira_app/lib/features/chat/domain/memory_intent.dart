@@ -58,10 +58,14 @@ class MemoryIntentDetector {
         msg.startsWith('remember ') ||
         msg.startsWith('note that ') ||
         msg.startsWith('save memory ') ||
-        msg.startsWith('keep in mind ')) {
+        msg.startsWith('keep in mind ') ||
+        msg.startsWith('gurthupettuko ') ||
+        msg.startsWith('gurthunchuko ') ||
+        msg.startsWith('gurthu pettuko ') ||
+        msg.startsWith('gurthu unchuko ')) {
       
       final cleanText = message
-          .replaceAll(RegExp(r'^(remember that|remember my|remember|note that|save memory|keep in mind)\s+', caseSensitive: false), '')
+          .replaceAll(RegExp(r'^(remember that|remember my|remember|note that|save memory|keep in mind|gurthupettuko|gurthunchuko|gurthu pettuko|gurthu unchuko)\s+', caseSensitive: false), '')
           .trim();
 
       String category = 'general';
