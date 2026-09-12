@@ -16,6 +16,7 @@ import 'package:aira_app/core/services/notification_monitor_service.dart';
 import 'package:aira_app/core/services/social_world_monitor_service.dart';
 import 'package:aira_app/core/services/smart_reply_service.dart';
 import 'package:aira_app/app.dart';
+import 'package:aira_app/routing/app_router.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +51,13 @@ void main() async {
 
   // Initialize Notification Service for local alerts
   await NotificationService().initialize();
+
+  // Navigate to planner when a task/reminder notification is tapped
+  NotificationService.onNotificationTapped = (payload) {
+    try {
+      appRouter.go('/planner');
+    } catch (_) {}
+  };
 
   // Initialize Proactive Intelligence Engine (auto-reminders, nudges)
   final proactive = ProactiveEngine();

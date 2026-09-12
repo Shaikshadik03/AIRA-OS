@@ -123,6 +123,65 @@ class ImplicitReminderDetector {
       ));
     }
 
+    // Pattern 5 (Telugu): "nenu [action] chestanu rathri/repu/tonight/tomorrow"
+    final teluguSelfPattern = RegExp(
+      r"nenu\s+(.+?)\s+(?:chestanu|chestha|cheyali|cheyyali)\s*(rathri|repu|tonight|tomorrow|ee roju|madhyahnam|saayantram)?",
+      caseSensitive: false,
+    );
+    final teluguSelfMatch = teluguSelfPattern.firstMatch(lower);
+    if (teluguSelfMatch != null) {
+      final action = teluguSelfMatch.group(1)?.trim() ?? '';
+      final timeRef = teluguSelfMatch.group(2)?.trim() ?? 'later';
+      if (action.isNotEmpty) {
+        // Map Telugu time words to English equivalents for _inferReminderTime
+        String mappedTime = timeRef;
+        if (timeRef == 'rathri') mappedTime = 'tonight';
+        if (timeRef == 'repu') mappedTime = 'tomorrow';
+        if (timeRef == 'ee roju') mappedTime = 'today';
+        if (timeRef == 'madhyahnam') mappedTime = 'afternoon';
+        if (timeRef == 'saayantram') mappedTime = 'evening';
+        commitments.add(_ImplicitCommitment(
+          action: action,
+          timeReference: mappedTime,
+          nudgeMessage: 'You mentioned wanting to $action. Ready to start?',
+          type: _CommitmentType.selfTask,
+        ));
+      }
+    }
+
+    // Pattern 6 (Telugu): "naa [subject] exam repu/Friday undi"
+    final teluguDeadlinePattern = RegExp(
+      r"naa\s+(\w+(?:\s+\w+)?)\s+(?:exam|test|presentation|deadline|submission|interview)\s+(?:repu|tomorrow|(\w+))\s*(?:undi|undhi)?",
+      caseSensitive: false,
+    );
+    final teluguDeadlineMatch = teluguDeadlinePattern.firstMatch(lower);
+    if (teluguDeadlineMatch != null) {
+      final subject = teluguDeadlineMatch.group(1)?.trim() ?? '';
+      final when = teluguDeadlineMatch.group(2)?.trim() ?? 'tomorrow';
+      commitments.add(_ImplicitCommitment(
+        action: '$subject exam/test',
+        timeReference: when,
+        nudgeMessage: 'Your $subject exam is coming up. How\'s the prep going?',
+        type: _CommitmentType.deadline,
+      ));
+    }
+
+    // Pattern 7 (Telugu): "nenu [person]ki call cheyyali / phone cheyyali"
+    final teluguContactPattern = RegExp(
+      r"nenu\s+(\w+)\s*(?:ki|ni|tho)\s+(?:call|phone|msg|message)\s+(?:cheyyali|cheyali|chestha|chestanu)",
+      caseSensitive: false,
+    );
+    final teluguContactMatch = teluguContactPattern.firstMatch(lower);
+    if (teluguContactMatch != null) {
+      final person = teluguContactMatch.group(1)?.trim() ?? '';
+      commitments.add(_ImplicitCommitment(
+        action: 'contact $person',
+        timeReference: 'soon',
+        nudgeMessage: 'Did you get a chance to reach out to $person?',
+        type: _CommitmentType.contactAction,
+      ));
+    }
+
     return commitments;
   }
 

@@ -291,9 +291,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
             state = state.copyWith(messages: updatedMessages);
           },
           onTaskCreated: (title) async {
-            final planner = PlannerNotifier();
-            await planner.loadAll();
-            await planner.addTask(title: title);
+            await PlannerNotifier.active.addTask(title: title);
           },
         );
 
@@ -334,9 +332,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         final report = await agenticEngine.executeWorkflow(
           steps: steps,
           onTaskCreated: (title) async {
-            final planner = PlannerNotifier();
-            await planner.loadAll();
-            await planner.addTask(title: title);
+            await PlannerNotifier.active.addTask(title: title);
           },
         );
         _removeLoadingMessage();
@@ -425,8 +421,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     _addLoadingMessage('Updating task manager...');
 
     try {
-      final plannerNotifier = PlannerNotifier();
-      await plannerNotifier.loadAll();
+      final plannerNotifier = PlannerNotifier.active;
 
       String result = '';
 

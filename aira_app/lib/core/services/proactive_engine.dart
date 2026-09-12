@@ -187,9 +187,9 @@ class ProactiveEngine {
     final now = DateTime.now();
 
     for (final task in tasks) {
-      if (task['isCompleted'] == true) continue;
+      if (task['status'] == 'completed') continue;
 
-      final dueDate = task['dueDate'];
+      final dueDate = task['due_date'];
       if (dueDate == null) continue;
 
       final due = DateTime.tryParse(dueDate);
@@ -237,8 +237,8 @@ class ProactiveEngine {
       final List list = jsonDecode(habitsJson);
       final todayStr = DateTime.now().toIso8601String().substring(0, 10);
       for (final h in list) {
-        final completedDays = h['completedDays'] as List? ?? [];
-        if (!completedDays.contains(todayStr)) return true;
+        final lastChecked = h['last_checked'] as String?;
+        if (lastChecked == null || !lastChecked.startsWith(todayStr)) return true;
       }
       return false;
     } catch (_) {

@@ -16,6 +16,14 @@ class NotificationService {
 
   bool _initialized = false;
 
+  /// Static callback for notification taps — set by the app's root widget
+  /// to navigate to the planner or relevant screen.
+  static Function(String? payload)? onNotificationTapped;
+
+  void _onNotificationTapped(NotificationResponse details) {
+    onNotificationTapped?.call(details.payload);
+  }
+
   Future<void> initialize() async {
     if (_initialized) return;
 
@@ -32,7 +40,7 @@ class NotificationService {
       await _notificationsPlugin.initialize(
         initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse details) {
-          // Handle notification tap
+          _onNotificationTapped(details);
         },
       );
 

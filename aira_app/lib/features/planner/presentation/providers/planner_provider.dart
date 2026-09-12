@@ -207,7 +207,16 @@ class PlannerState {
 // ──────────────────── Notifier ────────────────────
 
 class PlannerNotifier extends StateNotifier<PlannerState> {
+  /// Singleton accessor for non-Riverpod code (e.g. ChatNotifier, GoalPlannerEngine).
+  /// The Riverpod provider creates the canonical instance; this just exposes it.
+  static PlannerNotifier? _activeInstance;
+  static PlannerNotifier get active {
+    _activeInstance ??= PlannerNotifier();
+    return _activeInstance!;
+  }
+
   PlannerNotifier() : super(const PlannerState()) {
+    _activeInstance = this; // Register so .active always returns the Riverpod-managed instance
     loadAll();
   }
 

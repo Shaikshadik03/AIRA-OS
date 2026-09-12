@@ -4,12 +4,19 @@ class TaskIntentDetector {
     final lower = message.toLowerCase().trim();
 
     final triggers = [
+      // English triggers
       'add task', 'create task', 'new task', 'add to task', 'add to my task',
       'add to ticktick', 'ticktick', 'remind me', 'set reminder', 'set alarm for task',
       'show my tasks', 'show tasks', 'list tasks', 'my tasks', 'today tasks',
       'what are my tasks', 'show my agenda', 'show ticktick',
       'complete task', 'mark task as done', 'mark as completed', 'finish task',
       'delete task', 'remove task',
+      // Telugu & code-mixed triggers
+      'task add cheyyi', 'task pettuko', 'task pettu', 'naku remind cheyyi',
+      'gurthupettu', 'gurthu pettu', 'naa tasks chupinchu', 'tasks chupinchu',
+      'tasks kanipinchu', 'ee roju tasks', 'naa tasks', 'task complete cheyyi',
+      'task aipoyindi', 'task ayipoyindi', 'task finish cheyyi',
+      'task delete cheyyi', 'task teeseyyi', 'task teesey',
     ];
 
     return triggers.any((t) => lower.contains(t));
@@ -18,7 +25,7 @@ class TaskIntentDetector {
   static TaskCommand? parse(String message) {
     final lower = message.toLowerCase().trim();
 
-    // ── Show Tasks ──
+    // ── Show Tasks (English + Telugu) ──
     if (lower.contains('show my tasks') ||
         lower.contains('show tasks') ||
         lower.contains('list tasks') ||
@@ -26,24 +33,35 @@ class TaskIntentDetector {
         lower.contains('what are my tasks') ||
         lower.contains('show my agenda') ||
         lower.contains('show ticktick') ||
-        lower.contains('today tasks')) {
+        lower.contains('today tasks') ||
+        lower.contains('naa tasks chupinchu') ||
+        lower.contains('tasks chupinchu') ||
+        lower.contains('tasks kanipinchu') ||
+        lower.contains('ee roju tasks') ||
+        lower.contains('naa tasks')) {
       return const TaskCommand(type: TaskCommandType.listTasks);
     }
 
-    // ── Complete Task ──
+    // ── Complete Task (English + Telugu) ──
     if (lower.contains('complete task') ||
         lower.contains('mark task as done') ||
         lower.contains('mark as completed') ||
-        lower.contains('finish task')) {
+        lower.contains('finish task') ||
+        lower.contains('task complete cheyyi') ||
+        lower.contains('task aipoyindi') ||
+        lower.contains('task ayipoyindi') ||
+        lower.contains('task finish cheyyi')) {
       var title = lower;
-      title = title.replaceAll(RegExp(r'^(complete task|mark task as done|mark task|finish task|mark as completed)\s*'), '');
+      title = title.replaceAll(RegExp(r'^(complete task|mark task as done|mark task|finish task|mark as completed|task complete cheyyi|task aipoyindi|task ayipoyindi|task finish cheyyi)\s*'), '');
       return TaskCommand(type: TaskCommandType.completeTask, title: title.trim());
     }
 
-    // ── Delete Task ──
-    if (lower.contains('delete task') || lower.contains('remove task')) {
+    // ── Delete Task (English + Telugu) ──
+    if (lower.contains('delete task') || lower.contains('remove task') ||
+        lower.contains('task delete cheyyi') || lower.contains('task teeseyyi') ||
+        lower.contains('task teesey')) {
       var title = lower;
-      title = title.replaceAll(RegExp(r'^(delete task|remove task)\s*'), '');
+      title = title.replaceAll(RegExp(r'^(delete task|remove task|task delete cheyyi|task teeseyyi|task teesey)\s*'), '');
       return TaskCommand(type: TaskCommandType.deleteTask, title: title.trim());
     }
 
@@ -86,7 +104,7 @@ class TaskIntentDetector {
       if (period == 'am' && hour == 12) hour = 0;
 
       int dayOffset = 0;
-      if (lower.contains('tomorrow')) dayOffset = 1;
+      if (lower.contains('tomorrow') || lower.contains('repu')) dayOffset = 1;
 
       final targetTime = DateTime(now.year, now.month, now.day + dayOffset, hour, minute);
       dueDate = targetTime.isBefore(now) && dayOffset == 0
@@ -96,10 +114,10 @@ class TaskIntentDetector {
       hasAlarm = lower.contains('alarm') || lower.contains('remind') || lower.contains('alert');
     }
 
-    // Extract Title
+    // Extract Title (strip English + Telugu add-task prefixes)
     String cleanTitle = message;
-    cleanTitle = cleanTitle.replaceAll(RegExp(r'^(add task|create task|new task|add to task|add to my task|add to ticktick|ticktick add|remind me to|set reminder for|set alarm for)\s*', caseSensitive: false), '');
-    cleanTitle = cleanTitle.replaceAll(RegExp(r'\s+(tomorrow|today|at\s+\d{1,2}(:\d{2})?\s*(am|pm)?|by\s+\d{1,2}(:\d{2})?\s*(am|pm)?|with\s+(high|urgent|low|medium)\s+priority)', caseSensitive: false), '');
+    cleanTitle = cleanTitle.replaceAll(RegExp(r'^(add task|create task|new task|add to task|add to my task|add to ticktick|ticktick add|remind me to|set reminder for|set alarm for|task add cheyyi|task pettuko|task pettu|naku remind cheyyi|gurthupettu|gurthu pettu)\s*', caseSensitive: false), '');
+    cleanTitle = cleanTitle.replaceAll(RegExp(r'\s+(tomorrow|today|repu|at\s+\d{1,2}(:\d{2})?\s*(am|pm)?|by\s+\d{1,2}(:\d{2})?\s*(am|pm)?|with\s+(high|urgent|low|medium)\s+priority)', caseSensitive: false), '');
     cleanTitle = cleanTitle.trim();
 
     if (cleanTitle.isNotEmpty) {
