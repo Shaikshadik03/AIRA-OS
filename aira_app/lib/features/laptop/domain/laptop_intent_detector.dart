@@ -6,7 +6,9 @@ class LaptopIntentDetector {
     final lower = message.toLowerCase();
     final laptopKeywords = [
       'laptop', 'pc', 'computer', 'desktop', 'windows',
-      'open chrome', 'open vs code', 'open spotify',
+      'laptop lo', 'laptop ni', 'open cheyyi', 'lock cheyyi', 'chey', 'theeyi', 'penchu', 'thagginchu',
+      'pair laptop', 'connect laptop', 'pair phone', 'pair cheyyi', 'laptop pair',
+      'open chrome', 'open vs code', 'open spotify', 'open notepad',
       'take a screenshot', 'screenshot of my laptop',
       'lock my laptop', 'lock the laptop',
       'mute my laptop', 'volume up', 'volume down',
@@ -34,6 +36,55 @@ class LaptopIntentDetector {
   static LaptopCommand? parse(String message) {
     final lower = message.toLowerCase().trim();
 
+    // ── Pair / Device Bridge Intent ──
+    if (lower.contains('pair laptop') ||
+        lower.contains('connect laptop') ||
+        lower.contains('pair with laptop') ||
+        lower.contains('pair phone') ||
+        lower.contains('laptop pair') ||
+        lower.contains('pair cheyyi') ||
+        lower.contains('connect cheyyi')) {
+      return const LaptopCommand(type: LaptopCommandType.pair);
+    }
+
+    // ── Telugu Triggers ──
+    // Telugu Open App: "laptop lo notepad open cheyyi" / "laptop lo chrome open cheyi"
+    final teluguOpenMatch = RegExp(
+      r'laptop\s+(?:lo|meeda|pai)\s+([a-zA-Z0-9\s]+?)\s+(?:open|start)\s*(?:cheyyi|cheyi|chey)?',
+      caseSensitive: false,
+    ).firstMatch(lower);
+    if (teluguOpenMatch != null) {
+      final appName = teluguOpenMatch.group(1)?.trim() ?? '';
+      if (appName.isNotEmpty && !appName.contains('file')) {
+        return LaptopCommand(type: LaptopCommandType.openApp, argument: appName);
+      }
+    }
+
+    // Telugu Lock: "laptop lock cheyyi" / "laptop ni lock cheyyi"
+    if (lower.contains('laptop') &&
+        (lower.contains('lock cheyyi') || lower.contains('lock cheyi') || lower.contains('lock chey'))) {
+      return const LaptopCommand(type: LaptopCommandType.lock);
+    }
+
+    // Telugu Volume up: "laptop volume penchu"
+    if (lower.contains('laptop') &&
+        (lower.contains('volume penchu') || lower.contains('sound penchu') || lower.contains('penchu'))) {
+      return const LaptopCommand(type: LaptopCommandType.volumeUp);
+    }
+
+    // Telugu Volume down: "laptop volume thagginchu"
+    if (lower.contains('laptop') &&
+        (lower.contains('volume thagginchu') || lower.contains('sound thagginchu') || lower.contains('thagginchu'))) {
+      return const LaptopCommand(type: LaptopCommandType.volumeDown);
+    }
+
+    // Telugu Screenshot: "laptop screenshot theeyi"
+    if (lower.contains('screenshot theeyi') ||
+        lower.contains('screenshot theey') ||
+        (lower.contains('laptop') && lower.contains('theeyi'))) {
+      return const LaptopCommand(type: LaptopCommandType.screenshot);
+    }
+
     // Multi-step compound Agentic Task on laptop
     final isCompound = lower.contains(' and ') ||
         lower.contains(' then ') ||
@@ -49,47 +100,47 @@ class LaptopIntentDetector {
 
     // Screenshot
     if (lower.contains('screenshot') || lower.contains('screen of my laptop') || lower.contains('what\'s on my laptop')) {
-      return LaptopCommand(type: LaptopCommandType.screenshot);
+      return const LaptopCommand(type: LaptopCommandType.screenshot);
     }
 
     // Lock
     if (lower.contains('lock my laptop') || lower.contains('lock the laptop') || lower.contains('lock screen')) {
-      return LaptopCommand(type: LaptopCommandType.lock);
+      return const LaptopCommand(type: LaptopCommandType.lock);
     }
 
     // Sleep
     if (lower.contains('sleep') && (lower.contains('laptop') || lower.contains('pc'))) {
-      return LaptopCommand(type: LaptopCommandType.sleep);
+      return const LaptopCommand(type: LaptopCommandType.sleep);
     }
 
     // Shutdown
     if ((lower.contains('shut down') || lower.contains('shutdown') || lower.contains('turn off')) &&
         (lower.contains('laptop') || lower.contains('pc') || lower.contains('computer'))) {
-      return LaptopCommand(type: LaptopCommandType.shutdown);
+      return const LaptopCommand(type: LaptopCommandType.shutdown);
     }
 
     // Restart
     if (lower.contains('restart') && (lower.contains('laptop') || lower.contains('pc'))) {
-      return LaptopCommand(type: LaptopCommandType.restart);
+      return const LaptopCommand(type: LaptopCommandType.restart);
     }
 
     // Mute
     if (lower.contains('mute') && (lower.contains('laptop') || lower.contains('pc') || lower.contains('volume'))) {
-      return LaptopCommand(type: LaptopCommandType.mute);
+      return const LaptopCommand(type: LaptopCommandType.mute);
     }
 
     // Volume up
     if (lower.contains('volume up') || (lower.contains('increase') && lower.contains('volume'))) {
-      return LaptopCommand(type: LaptopCommandType.volumeUp);
+      return const LaptopCommand(type: LaptopCommandType.volumeUp);
     }
 
     // Volume down
     if (lower.contains('volume down') || (lower.contains('decrease') && lower.contains('volume'))) {
-      return LaptopCommand(type: LaptopCommandType.volumeDown);
+      return const LaptopCommand(type: LaptopCommandType.volumeDown);
     }
 
-    // Open app
-    final openMatch = RegExp(r'open\s+([a-zA-Z\s]+?)(?:\s+on my laptop|\s+on my pc|\s+on my computer|$)').firstMatch(lower);
+    // Open app (English)
+    final openMatch = RegExp(r'open\s+([a-zA-Z0-9\s]+?)(?:\s+on my laptop|\s+on laptop|\s+on my pc|\s+on pc|\s+on my computer|$)').firstMatch(lower);
     if (openMatch != null) {
       final appName = openMatch.group(1)?.trim() ?? '';
       if (appName.isNotEmpty && !appName.contains('laptop') && !appName.contains('file')) {
@@ -278,6 +329,12 @@ class LaptopIntentDetector {
         return '↕️ **Scrolled down** on your laptop.';
       case LaptopCommandType.scrollUp:
         return '↕️ **Scrolled up** on your laptop.';
+      case LaptopCommandType.pair:
+        final paired = result?['success'] == true;
+        final host = result?['hostname'] ?? 'Laptop';
+        return paired
+            ? '🔗 **Paired successfully!** Connected to **$host** with cryptographic device token.'
+            : '❌ **Pairing failed.** Please verify the 6-digit PIN shown on your laptop terminal.';
       case LaptopCommandType.agentTask:
         final total = result?['total_steps'] ?? 0;
         final msg = result?['message'] ?? 'Executed multi-step task';
@@ -287,6 +344,7 @@ class LaptopIntentDetector {
 }
 
 enum LaptopCommandType {
+  pair,
   agentTask,
   screenshot,
   lock,

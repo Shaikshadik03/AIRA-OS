@@ -54,7 +54,7 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _initSpeechAndTts();
     _service.loadConfig().then((_) {
       if (_service.isConfigured) {
@@ -180,7 +180,7 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
                   _connecting
                       ? 'Connecting...'
                       : (_connected
-                          ? (_systemInfo?['hostname'] as String? ?? 'Connected')
+                          ? (_service.hostname ?? _systemInfo?['hostname'] as String? ?? 'Connected')
                           : 'Not Connected'),
                   style: GoogleFonts.sourceSerif4(
                     fontSize: 11.5,
@@ -188,6 +188,41 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (_connected) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: _service.isPaired
+                          ? Colors.green.withValues(alpha: 0.15)
+                          : Colors.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: _service.isPaired ? Colors.green : Colors.amber,
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _service.isPaired ? Icons.lock_outline_rounded : Icons.lock_open_rounded,
+                          size: 9,
+                          color: _service.isPaired ? Colors.green : Colors.amber,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          _service.isPaired ? 'PAIRED' : 'PIN AUTH',
+                          style: GoogleFonts.firaCode(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.bold,
+                            color: _service.isPaired ? Colors.green : Colors.amber,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ],
@@ -225,7 +260,7 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
             icon: Icon(Icons.settings_outlined,
                 color: theme.colorScheme.onSurface, size: 20),
             onPressed: _showConnectDialog,
-            tooltip: 'Connection Settings',
+            tooltip: 'Pairing & Settings',
           ),
           const SizedBox(width: 4),
         ],
@@ -246,6 +281,7 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
             Tab(icon: Icon(Icons.screenshot_monitor_rounded, size: 18), text: 'Screen'),
             Tab(icon: Icon(Icons.terminal_rounded, size: 18), text: 'Terminal'),
             Tab(icon: Icon(Icons.tune_rounded, size: 18), text: 'Controls'),
+            Tab(icon: Icon(Icons.security_rounded, size: 18), text: 'Bridge'),
           ],
         ),
       ),
@@ -259,6 +295,7 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
                 _buildScreenTab(theme, isDark),
                 _buildTerminalTab(theme, isDark),
                 _buildControlsTab(theme, isDark),
+                _buildDeviceBridgeTab(theme, isDark),
               ],
             ),
     );
@@ -1523,59 +1560,513 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
     final ipController = TextEditingController(text: _service.laptopIp);
     final pinController = TextEditingController(text: _service.laptopPin);
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: theme.scaffoldBackgroundColor,
-        title: Text('Connect to Laptop',
-            style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700,
-                color: theme.colorScheme.onSurface)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        title: Row(
           children: [
-            TextField(
-              controller: ipController,
-              decoration: InputDecoration(
-                labelText: 'Laptop IP Address',
-                hintText: '192.168.1.100',
-                labelStyle: GoogleFonts.sourceSerif4(),
-                hintStyle: GoogleFonts.sourceSerif4(),
-                border: const OutlineInputBorder(),
+            const Icon(Icons.security_rounded, color: AiraColors.claudeTerracotta, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              'Pair Laptop Bridge',
+              style: GoogleFonts.playfairDisplay(
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.onSurface,
+                fontSize: 18,
               ),
-              style: GoogleFonts.firaCode(),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: pinController,
-              decoration: InputDecoration(
-                labelText: 'PIN (default: 123456)',
-                labelStyle: GoogleFonts.sourceSerif4(),
-                border: const OutlineInputBorder(),
-              ),
-              style: GoogleFonts.firaCode(),
-              obscureText: true,
-              keyboardType: TextInputType.number,
             ),
           ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Pair phone with your laptop agent via 6-digit one-time code or PIN.',
+                style: GoogleFonts.sourceSerif4(
+                  fontSize: 12.5,
+                  color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: ipController,
+                decoration: InputDecoration(
+                  labelText: 'Laptop IP Address',
+                  hintText: '192.168.1.100',
+                  prefixIcon: const Icon(Icons.wifi_rounded, size: 18),
+                  labelStyle: GoogleFonts.sourceSerif4(),
+                  hintStyle: GoogleFonts.sourceSerif4(),
+                  border: const OutlineInputBorder(),
+                ),
+                style: GoogleFonts.firaCode(fontSize: 13),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: pinController,
+                decoration: InputDecoration(
+                  labelText: '6-Digit Pairing PIN',
+                  hintText: 'e.g. 123456 or terminal PIN',
+                  prefixIcon: const Icon(Icons.key_rounded, size: 18),
+                  helperText: 'Read 6-digit PIN from desktop terminal or use 123456',
+                  helperMaxLines: 2,
+                  labelStyle: GoogleFonts.sourceSerif4(),
+                  border: const OutlineInputBorder(),
+                ),
+                style: GoogleFonts.firaCode(fontSize: 14, letterSpacing: 2),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AiraColors.claudeTerracotta.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded, size: 16, color: AiraColors.claudeTerracotta),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Pairing issues a cryptographic Bearer token with 30s replay-protected commands.',
+                        style: GoogleFonts.sourceSerif4(fontSize: 11, color: AiraColors.claudeTerracotta),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text('Cancel', style: GoogleFonts.sourceSerif4()),
           ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.verified_user_rounded, size: 16, color: Colors.white),
+            label: Text('Pair Securely', style: GoogleFonts.sourceSerif4(color: Colors.white, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AiraColors.claudeTerracotta,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+            onPressed: () async {
+              final ip = ipController.text.trim();
+              final pin = pinController.text.trim();
+              if (ip.isEmpty) {
+                _showSnackBar('Please enter laptop IP address.', isError: true);
+                return;
+              }
+
+              Navigator.pop(ctx);
+              _showSnackBar('🔐 Handshaking with laptop $ip...');
+              final res = await _service.pairDevice(ip, pin);
+              if (res['success'] == true) {
+                _showSnackBar('✅ Securely paired with ${res['hostname'] ?? "Laptop"}!');
+                _testConnection();
+              } else {
+                // Fallback to static config if pair/confirm fails
+                await _service.saveConfig(ip, pin);
+                _testConnection();
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Stage I: Device Bridge & Action Receipts Tab ───────────────────────────
+
+  Widget _buildDeviceBridgeTab(ThemeData theme, bool isDark) {
+    final cardBg = isDark ? AiraColors.cardDark : AiraColors.cardLight;
+    final borderColor = isDark ? AiraColors.borderDark : AiraColors.borderLight;
+    final receipts = _service.actionReceipts;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Security Status Banner
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _service.isPaired
+                  ? const Color(0xFF1E8E3E).withValues(alpha: isDark ? 0.15 : 0.08)
+                  : Colors.amber.withValues(alpha: isDark ? 0.15 : 0.08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: _service.isPaired
+                    ? const Color(0xFF1E8E3E).withValues(alpha: 0.4)
+                    : Colors.amber.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _service.isPaired ? Icons.verified_user_rounded : Icons.gpp_maybe_rounded,
+                  size: 32,
+                  color: _service.isPaired ? const Color(0xFF1E8E3E) : Colors.amber.shade700,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _service.isPaired ? 'Cryptographic Device Bridge Active' : 'Unpaired / PIN Fallback Mode',
+                        style: GoogleFonts.sourceSerif4(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: _service.isPaired ? const Color(0xFF1E8E3E) : Colors.amber.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _service.isPaired
+                            ? 'Protected with short-lived TTL, idempotency caching, and per-device Bearer token.'
+                            : 'Static PIN mode active. Run Pairing Wizard to upgrade to tokenized security.',
+                        style: GoogleFonts.sourceSerif4(
+                          fontSize: 11.5,
+                          color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Host & Bridge Metadata Card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: borderColor),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bridge Connection Details',
+                  style: GoogleFonts.playfairDisplay(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _bridgeInfoRow('Laptop Host', _service.hostname ?? _systemInfo?['hostname'] as String? ?? 'AIRA Host', isDark),
+                _bridgeInfoRow('IP & Port', '${_service.laptopIp}:8765', isDark),
+                _bridgeInfoRow('Device ID', _service.deviceId ?? 'Not assigned', isDark),
+                _bridgeInfoRow(
+                  'Device Token',
+                  _service.deviceToken != null && _service.deviceToken!.length > 12
+                      ? '${_service.deviceToken!.substring(0, 8)}...${_service.deviceToken!.substring(_service.deviceToken!.length - 6)}'
+                      : 'None (Unpaired)',
+                  isDark,
+                ),
+                const Divider(height: 24),
+                // Pause Remote Execution Toggle Switch
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Pause Remote Execution',
+                            style: GoogleFonts.sourceSerif4(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          Text(
+                            'Temporarily freeze remote command execution on host',
+                            style: GoogleFonts.sourceSerif4(
+                              fontSize: 11,
+                              color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: _service.isRemotePaused,
+                      activeThumbColor: Colors.amber.shade700,
+                      onChanged: (val) async {
+                        HapticFeedback.selectionClick();
+                        await _service.toggleRemotePause(val);
+                        setState(() {});
+                        _showSnackBar(val ? '🔕 Remote execution paused on laptop' : '🔔 Remote execution active on laptop');
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Actions Row: Pair Wizard / Revoke Pairing
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.qr_code_scanner_rounded, size: 16, color: Colors.white),
+                  label: Text('Pairing Wizard', style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AiraColors.claudeTerracotta,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _showConnectDialog,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.link_off_rounded, size: 16, color: Colors.red),
+                  label: Text('Revoke / Unpair', style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.red.withValues(alpha: 0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _confirmUnpair,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Durable Action Receipts Section
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Durable Action Receipts',
+                    style: GoogleFonts.playfairDisplay(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    'Idempotent audit log with replay & TTL verification',
+                    style: GoogleFonts.sourceSerif4(
+                      fontSize: 11,
+                      color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                    ),
+                  ),
+                ],
+              ),
+              if (receipts.isNotEmpty)
+                TextButton(
+                  onPressed: () async {
+                    await _service.clearActionReceipts();
+                    setState(() {});
+                  },
+                  child: Text('Clear', style: GoogleFonts.sourceSerif4(fontSize: 12, color: AiraColors.claudeTerracotta)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          if (receipts.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.receipt_long_outlined, size: 36, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                  const SizedBox(height: 8),
+                  Text(
+                    'No commands executed yet',
+                    style: GoogleFonts.sourceSerif4(fontSize: 13, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Send commands from Chat, Voice, or Controls to see live receipts here.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.sourceSerif4(fontSize: 11, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                  ),
+                ],
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: receipts.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (ctx, index) {
+                final r = receipts[index];
+                final status = r['status']?.toString() ?? 'unknown';
+                final isReplayed = r['replayed'] == true;
+                final tool = r['tool']?.toString() ?? 'action';
+                final output = r['output']?.toString() ?? '';
+                final duration = r['duration_ms'] ?? 0;
+                final cmdId = r['command_id']?.toString() ?? '';
+                final timeMs = r['executed_at'] as int? ?? 0;
+                final timeStr = timeMs > 0 ? DateTime.fromMillisecondsSinceEpoch(timeMs).toLocal().toString().substring(11, 19) : '';
+
+                Color statusColor = Colors.green;
+                String statusLabel = 'Executed ($duration ms)';
+                IconData statusIcon = Icons.check_circle_outline_rounded;
+
+                if (isReplayed) {
+                  statusColor = Colors.amber;
+                  statusLabel = 'Idempotent Replay';
+                  statusIcon = Icons.sync_rounded;
+                } else if (status == 'expired') {
+                  statusColor = Colors.orange;
+                  statusLabel = 'Expired (TTL)';
+                  statusIcon = Icons.timer_off_outlined;
+                } else if (status == 'failed') {
+                  statusColor = Colors.red;
+                  statusLabel = 'Failed';
+                  statusIcon = Icons.error_outline_rounded;
+                }
+
+                return Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AiraColors.claudeTerracotta.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  tool.toUpperCase(),
+                                  style: GoogleFonts.firaCode(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: AiraColors.claudeTerracotta,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                timeStr,
+                                style: GoogleFonts.firaCode(fontSize: 10.5, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(statusIcon, size: 11, color: statusColor),
+                                const SizedBox(width: 3),
+                                Text(
+                                  statusLabel,
+                                  style: GoogleFonts.sourceSerif4(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        output.isNotEmpty ? output : '(No output)',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.sourceSerif4(fontSize: 12, color: theme.colorScheme.onSurface),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'ID: $cmdId',
+                        style: GoogleFonts.firaCode(fontSize: 9.5, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bridgeInfoRow(String label, String value, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: GoogleFonts.sourceSerif4(fontSize: 12, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight)),
+          Text(value, style: GoogleFonts.firaCode(fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  void _confirmUnpair() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Unpair Laptop Bridge?', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700)),
+        content: Text(
+          'This will revoke your phone\'s cryptographic token on the laptop host and drop active connections immediately.',
+          style: GoogleFonts.sourceSerif4(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await _service.saveConfig(
-                  ipController.text, pinController.text);
-              _testConnection();
+              await _service.unpairDevice();
+              setState(() {
+                _connected = false;
+                _systemInfo = null;
+              });
+              _showSnackBar('🚫 Laptop pairing revoked successfully.');
             },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AiraColors.claudeTerracotta),
-            child: Text('Connect',
-                style: GoogleFonts.sourceSerif4(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text('Unpair Now', style: GoogleFonts.sourceSerif4(color: Colors.white)),
           ),
         ],
       ),

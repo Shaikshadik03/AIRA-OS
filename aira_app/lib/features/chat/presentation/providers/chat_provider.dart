@@ -726,11 +726,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
     _addLoadingMessage('Sending command to laptop...');
 
     await _laptopService.loadConfig();
-    if (!_laptopService.isConfigured) {
+    if (!_laptopService.isConfigured && command.type != LaptopCommandType.pair) {
       _removeLoadingMessage();
       _addSystemMessage(
         '⚠️ **Laptop not configured yet.**\n\n'
-        'Please go to **Drawer ☰ → Laptop Remote** to enter your laptop\'s Wi-Fi IP address and PIN.',
+        'Please go to **Drawer ☰ → Laptop Remote** to pair securely with your laptop.',
       );
       return;
     }
@@ -740,6 +740,24 @@ class ChatNotifier extends StateNotifier<ChatState> {
       String? base64Image;
 
       switch (command.type) {
+        case LaptopCommandType.pair:
+          if (!_laptopService.isConfigured) {
+            result = {
+              'success': false,
+              'output': 'Laptop IP is not set. Open Laptop Remote to initiate secure 6-digit pairing.',
+            };
+          } else {
+            final status = await _laptopService.getPairingStatus();
+            if (status['success'] == true) {
+              result = {
+                'success': true,
+                'hostname': _laptopService.hostname ?? 'AIRA Laptop Host',
+              };
+            } else {
+              result = status;
+            }
+          }
+          break;
         case LaptopCommandType.agentTask:
           result = await _laptopService.executeAgentTask(command.argument ?? content);
           break;
@@ -751,8 +769,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
           }
           break;
         case LaptopCommandType.lock:
-          await _laptopService.lockScreen();
-          result = {'success': true};
+          if (_laptopService.isPaired) {
+            result = await _laptopService.executeDurableCommand(
+              tool: 'system_control',
+              arguments: {'action': 'lock'},
+            );
+          } else {
+            await _laptopService.lockScreen();
+            result = {'success': true};
+          }
           break;
         case LaptopCommandType.sleep:
           await _laptopService.sleepLaptop();
@@ -779,17 +804,38 @@ class ChatNotifier extends StateNotifier<ChatState> {
           result = {'success': true};
           break;
         case LaptopCommandType.openApp:
-          result = await _laptopService.openApp(command.argument ?? '');
+          if (_laptopService.isPaired) {
+            result = await _laptopService.executeDurableCommand(
+              tool: 'open_app',
+              arguments: {'app_name': command.argument ?? ''},
+            );
+          } else {
+            result = await _laptopService.openApp(command.argument ?? '');
+          }
           break;
         case LaptopCommandType.closeApp:
           result = await _laptopService.closeApp(command.argument ?? '');
           break;
         case LaptopCommandType.type:
-          await _laptopService.typeText(command.argument ?? '');
-          result = {'success': true};
+          if (_laptopService.isPaired) {
+            result = await _laptopService.executeDurableCommand(
+              tool: 'type_text',
+              arguments: {'text': command.argument ?? ''},
+            );
+          } else {
+            await _laptopService.typeText(command.argument ?? '');
+            result = {'success': true};
+          }
           break;
         case LaptopCommandType.terminal:
-          result = await _laptopService.runCommand(command.argument ?? '');
+          if (_laptopService.isPaired) {
+            result = await _laptopService.executeDurableCommand(
+              tool: 'terminal',
+              arguments: {'command': command.argument ?? ''},
+            );
+          } else {
+            result = await _laptopService.runCommand(command.argument ?? '');
+          }
           break;
         case LaptopCommandType.systemStats:
           result = await _laptopService.getSystemStats();
@@ -798,10 +844,27 @@ class ChatNotifier extends StateNotifier<ChatState> {
           result = await _laptopService.organizeDownloads();
           break;
         case LaptopCommandType.saveNote:
-          result = await _laptopService.saveQuickNote('AIRA_Note_${DateTime.now().millisecondsSinceEpoch}', command.argument ?? '');
+          if (_laptopService.isPaired) {
+            result = await _laptopService.executeDurableCommand(
+              tool: 'quick_note',
+              arguments: {
+                'title': 'AIRA_Note_${DateTime.now().millisecondsSinceEpoch}',
+                'content': command.argument ?? '',
+              },
+            );
+          } else {
+            result = await _laptopService.saveQuickNote('AIRA_Note_${DateTime.now().millisecondsSinceEpoch}', command.argument ?? '');
+          }
           break;
         case LaptopCommandType.webSearch:
-          result = await _laptopService.autoWebSearch(command.argument ?? '');
+          if (_laptopService.isPaired) {
+            result = await _laptopService.executeDurableCommand(
+              tool: 'web_search',
+              arguments: {'query': command.argument ?? ''},
+            );
+          } else {
+            result = await _laptopService.autoWebSearch(command.argument ?? '');
+          }
           break;
         case LaptopCommandType.cancelShutdown:
           await _laptopService.cancelShutdown();
@@ -853,7 +916,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
 
       _removeLoadingMessage();
-      final responseText = LaptopIntentDetector.getResponse(command, result);
+      String responseText = LaptopIntentDetector.getResponse(command, result);
+      if (result?['replayed'] == true) {
+        responseText += '\n\n*(🔄 Idempotent: Returned cached receipt; no re-execution)*';
+      } else if (result?['status'] == 'expired') {
+        responseText = '⚠️ **Command Expired:** Action exceeded 30s TTL window and was discarded to prevent stale remote execution.';
+      }
 
       if (base64Image != null) {
         final assistantMsg = ChatMessage(

@@ -16,11 +16,21 @@ class LaptopControlService {
   static const String _ipKey = 'aira_laptop_ip';
   static const String _pinKey = 'aira_laptop_pin';
   static const String _portKey = 'aira_laptop_port';
+  static const String _deviceTokenKey = 'aira_device_token';
+  static const String _deviceIdKey = 'aira_device_id';
+  static const String _hostnameKey = 'aira_laptop_hostname';
+  static const String _isRemotePausedKey = 'aira_remote_paused';
+  static const String _actionReceiptsKey = 'aira_action_receipts';
   static const int _defaultPort = 8765;
 
   String? _laptopIp;
   String? _laptopPin;
   int _port = _defaultPort;
+  String? _deviceToken;
+  String? _deviceId;
+  String? _hostname;
+  bool _isRemotePaused = false;
+  List<Map<String, dynamic>> _actionReceipts = [];
 
   // Real-time low-latency WebSocket connection for trackpad
   WebSocket? _ws;
@@ -32,17 +42,30 @@ class LaptopControlService {
   Timer? _httpMoveThrottleTimer;
 
   bool get isConfigured => _laptopIp != null && _laptopIp!.isNotEmpty;
+  bool get isPaired => _deviceToken != null && _deviceToken!.isNotEmpty && isConfigured;
+
+  String get laptopIp => _laptopIp ?? '';
+  String get laptopPin => _laptopPin ?? '';
+  String? get deviceToken => _deviceToken;
+  String? get deviceId => _deviceId;
+  String? get hostname => _hostname;
+  bool get isRemotePaused => _isRemotePaused;
+  List<Map<String, dynamic>> get actionReceipts => List.unmodifiable(_actionReceipts);
 
   Dio get _dio {
     final baseUrl = 'http://${_sanitizeHost(_laptopIp)}:$_port';
+    final headers = <String, dynamic>{
+      'Content-Type': 'application/json',
+      'X-AIRA-PIN': _laptopPin ?? '123456',
+    };
+    if (_deviceToken != null && _deviceToken!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $_deviceToken';
+    }
     return Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 4),
       receiveTimeout: const Duration(seconds: 8),
-      headers: {
-        'X-AIRA-PIN': _laptopPin ?? '123456',
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
     ));
   }
 
@@ -64,13 +87,35 @@ class LaptopControlService {
     _laptopIp = prefs.getString(_ipKey);
     _laptopPin = prefs.getString(_pinKey) ?? '123456';
     _port = prefs.getInt(_portKey) ?? _defaultPort;
+    _deviceToken = prefs.getString(_deviceTokenKey);
+    _hostname = prefs.getString(_hostnameKey);
+    _isRemotePaused = prefs.getBool(_isRemotePausedKey) ?? false;
+
+    // Persistent Device Identifier
+    _deviceId = prefs.getString(_deviceIdKey);
+    if (_deviceId == null || _deviceId!.isEmpty) {
+      _deviceId = 'phone_${DateTime.now().millisecondsSinceEpoch.toRadixString(16)}';
+      await prefs.setString(_deviceIdKey, _deviceId!);
+    }
+
+    // Load action receipts cache
+    final receiptsJson = prefs.getString(_actionReceiptsKey);
+    if (receiptsJson != null && receiptsJson.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(receiptsJson) as List;
+        _actionReceipts = decoded
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+      } catch (_) {
+        _actionReceipts = [];
+      }
+    }
   }
 
   Future<void> saveConfig(String ip, String pin, {int port = _defaultPort}) async {
     var rawIp = ip.trim();
     int targetPort = port;
 
-    // Sanitize user input (e.g. "http://192.168.1.15:8765" -> host="192.168.1.15", port=8765)
     var clean = rawIp.replaceAll(RegExp(r'^https?:\/\/'), '').replaceAll(RegExp(r'\/.*$'), '');
     if (clean.contains(':')) {
       final parts = clean.split(':');
@@ -91,13 +136,14 @@ class LaptopControlService {
   Future<void> clearConfig() async {
     _laptopIp = null;
     _laptopPin = null;
+    _deviceToken = null;
+    _hostname = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_ipKey);
     await prefs.remove(_pinKey);
+    await prefs.remove(_deviceTokenKey);
+    await prefs.remove(_hostnameKey);
   }
-
-  String get laptopIp => _laptopIp ?? '';
-  String get laptopPin => _laptopPin ?? '';
 
   // ── WebSocket Connection for 0ms Real-Time Trackpad ──────────────────
 
@@ -151,6 +197,209 @@ class LaptopControlService {
     } catch (e) {
       return {'success': false, 'error': _friendlyError(e)};
     }
+  }
+
+  // ── Stage I: Device Pairing & Security Bridge ─────────────────────────
+
+  /// Request a one-time 6-digit pairing PIN from the laptop host
+  Future<Map<String, dynamic>> requestPairingPin(String ip, {int port = _defaultPort}) async {
+    final host = _sanitizeHost(ip);
+    final dio = Dio(BaseOptions(
+      baseUrl: 'http://$host:$port',
+      connectTimeout: const Duration(seconds: 4),
+      receiveTimeout: const Duration(seconds: 8),
+    ));
+
+    try {
+      final res = await dio.post('/pair/request', data: {
+        'device_id': _deviceId ?? 'phone_${DateTime.now().millisecondsSinceEpoch.toRadixString(16)}',
+        'device_name': 'AIRA Android Phone',
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
+  /// Pair device using 6-digit PIN and obtain cryptographic Bearer token
+  Future<Map<String, dynamic>> pairDevice(
+    String ip,
+    String pin, {
+    int port = _defaultPort,
+    String? deviceName,
+  }) async {
+    final host = _sanitizeHost(ip);
+    final dio = Dio(BaseOptions(
+      baseUrl: 'http://$host:$port',
+      connectTimeout: const Duration(seconds: 4),
+      receiveTimeout: const Duration(seconds: 8),
+    ));
+
+    try {
+      final devId = _deviceId ?? 'phone_${DateTime.now().millisecondsSinceEpoch.toRadixString(16)}';
+      final res = await dio.post('/pair/confirm', data: {
+        'pin': pin.trim(),
+        'device_id': devId,
+        'device_name': deviceName ?? 'AIRA Android Phone',
+        'platform': 'android',
+      });
+
+      final data = Map<String, dynamic>.from(res.data);
+      if (data['success'] == true) {
+        final token = data['device_token'] as String?;
+        final hostName = data['hostname'] as String?;
+
+        await saveConfig(host, pin, port: port);
+        _deviceToken = token;
+        _hostname = hostName;
+
+        final prefs = await SharedPreferences.getInstance();
+        if (token != null) {
+          await prefs.setString(_deviceTokenKey, token);
+        }
+        if (hostName != null) {
+          await prefs.setString(_hostnameKey, hostName);
+        }
+
+        // Establish WS connection with new pairing credentials
+        connectWebSocket();
+      }
+      return data;
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
+  /// Check pairing heartbeat, pause state, and latency
+  Future<Map<String, dynamic>> getPairingStatus() async {
+    try {
+      final res = await _dio.get('/pair/status');
+      final data = Map<String, dynamic>.from(res.data);
+      if (data.containsKey('is_paused')) {
+        _isRemotePaused = data['is_paused'] == true;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_isRemotePausedKey, _isRemotePaused);
+      }
+      if (data.containsKey('hostname')) {
+        _hostname = data['hostname'] as String?;
+      }
+      return {'success': true, 'data': data};
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
+  /// Revoke pairing immediately; drops connection and revokes access on laptop
+  Future<Map<String, dynamic>> unpairDevice() async {
+    try {
+      if (isConfigured && _deviceToken != null) {
+        await _dio.post('/pair/revoke', data: {
+          'device_token': _deviceToken,
+          'device_id': _deviceId,
+        });
+      }
+    } catch (_) {}
+
+    disconnectWebSocket();
+    await clearConfig();
+    return {'success': true, 'message': 'Device unpaired successfully.'};
+  }
+
+  /// Toggle remote control pause on laptop host
+  Future<Map<String, dynamic>> toggleRemotePause(bool pause) async {
+    try {
+      final res = await _dio.post('/pair/pause', data: {'pause': pause});
+      _isRemotePaused = pause;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_isRemotePausedKey, _isRemotePaused);
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
+  /// Clear stored action receipts
+  Future<void> clearActionReceipts() async {
+    _actionReceipts.clear();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_actionReceiptsKey);
+  }
+
+  // ── Stage I: Durable Idempotent Remote Command Pipeline ────────────────
+
+  /// Execute an idempotent, durable command on the laptop with replay prevention & 30s TTL
+  Future<Map<String, dynamic>> executeDurableCommand({
+    required String tool,
+    required Map<String, dynamic> arguments,
+    int ttlSeconds = 30,
+    String? explicitCommandId,
+  }) async {
+    if (!isConfigured) {
+      return {
+        'success': false,
+        'status': 'unconfigured',
+        'output': 'Laptop is not configured. Please pair first.',
+      };
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final expiresAt = now + (ttlSeconds * 1000);
+    final cmdId = explicitCommandId ?? 'cmd_${DateTime.now().microsecondsSinceEpoch}_$tool';
+    final devId = _deviceId ?? 'phone_default';
+
+    final payload = {
+      'command_id': cmdId,
+      'device_id': devId,
+      'tool': tool,
+      'arguments': arguments,
+      'created_at': now,
+      'expires_at': expiresAt,
+    };
+
+    try {
+      final res = await _dio.post('/command/execute', data: payload);
+      final receipt = Map<String, dynamic>.from(res.data);
+
+      // Record receipt in cache (keep last 50 receipts)
+      _recordReceipt(receipt);
+
+      return {
+        'success': receipt['status'] == 'executed' || receipt['status'] == 'cached',
+        'status': receipt['status'],
+        'receipt': receipt,
+        'output': receipt['output'],
+        'replayed': receipt['replayed'] ?? false,
+      };
+    } catch (e) {
+      final failureReceipt = {
+        'command_id': cmdId,
+        'device_id': devId,
+        'tool': tool,
+        'status': 'failed',
+        'output': _friendlyError(e),
+        'executed_at': now,
+        'duration_ms': 0,
+        'replayed': false,
+      };
+      _recordReceipt(failureReceipt);
+      return {
+        'success': false,
+        'status': 'failed',
+        'receipt': failureReceipt,
+        'error': _friendlyError(e),
+        'output': _friendlyError(e),
+      };
+    }
+  }
+
+  void _recordReceipt(Map<String, dynamic> receipt) {
+    _actionReceipts.insert(0, receipt);
+    if (_actionReceipts.length > 50) {
+      _actionReceipts = _actionReceipts.sublist(0, 50);
+    }
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString(_actionReceiptsKey, jsonEncode(_actionReceipts));
+    });
   }
 
   Future<Map<String, dynamic>> getInfo() async {

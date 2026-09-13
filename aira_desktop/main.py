@@ -16,6 +16,10 @@ import base64
 import shutil
 import webbrowser
 import urllib.parse
+import secrets
+import time
+import json
+import random
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -56,16 +60,127 @@ app.add_middleware(
 )
 
 
-# ── Auth ──────────────────────────────────────────────────────────────────
+# ── Persistent Pairing & Durable Command State (Stage 8 / Stage I) ─────────
 
-def verify_pin(x_aira_pin: Optional[str] = Header(None, alias="X-AIRA-PIN")):
-    """PIN-based authentication via X-AIRA-PIN HTTP header."""
-    if x_aira_pin != AIRA_PIN:
-        raise HTTPException(status_code=401, detail="Invalid AIRA PIN. Check your PIN in Settings.")
-    return True
+PAIRED_DEVICES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "paired_devices.json")
+COMMAND_RECEIPTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "command_receipts.json")
+
+# In-memory active pairing PIN state with TTL
+active_pairing_state = {
+    "pin": AIRA_PIN,
+    "expires_at": time.time() + 300,
+    "client_name": None,
+    "device_id": None,
+}
+is_remote_paused = False
+
+def get_paired_devices() -> dict:
+    if os.path.exists(PAIRED_DEVICES_FILE):
+        try:
+            with open(PAIRED_DEVICES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_paired_devices(devices: dict):
+    try:
+        with open(PAIRED_DEVICES_FILE, "w", encoding="utf-8") as f:
+            json.dump(devices, f, indent=2)
+    except Exception:
+        pass
+
+def get_command_receipts() -> dict:
+    if os.path.exists(COMMAND_RECEIPTS_FILE):
+        try:
+            with open(COMMAND_RECEIPTS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_command_receipt(command_id: str, receipt: dict):
+    try:
+        receipts = get_command_receipts()
+        receipts[command_id] = receipt
+        # Keep buffer bounded to last 250 receipts
+        if len(receipts) > 250:
+            keys = list(receipts.keys())
+            for k in keys[:-250]:
+                del receipts[k]
+        with open(COMMAND_RECEIPTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(receipts, f, indent=2)
+    except Exception:
+        pass
+
+
+# ── Auth & Security Verification ──────────────────────────────────────────
+
+def verify_auth(
+    authorization: Optional[str] = Header(None),
+    x_aira_pin: Optional[str] = Header(None, alias="X-AIRA-PIN"),
+):
+    """
+    Dual-mode authentication:
+    1. Cryptographically secure per-device Bearer token (Primary - Stage 8/Stage I)
+    2. Legacy X-AIRA-PIN header (Fallback for backward compatibility)
+    """
+    global is_remote_paused
+    if is_remote_paused:
+        raise HTTPException(status_code=423, detail="Remote control is temporarily paused by laptop host.")
+
+    # 1. Bearer Token Verification
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1].strip()
+        devices = get_paired_devices()
+        if token in devices:
+            device = devices[token]
+            if device.get("is_revoked", False):
+                raise HTTPException(status_code=403, detail="Device has been revoked.")
+            device["last_seen"] = int(time.time() * 1000)
+            save_paired_devices(devices)
+            return device
+        raise HTTPException(status_code=401, detail="Invalid or unrecognized device token.")
+
+    # 2. Legacy / Fallback PIN Auth
+    if x_aira_pin == AIRA_PIN:
+        return {"device_id": "legacy_client", "device_name": "PIN Client", "is_legacy": True}
+
+    raise HTTPException(status_code=401, detail="Authentication required: Provide valid Bearer token or X-AIRA-PIN.")
+
+def verify_pin(x_aira_pin: Optional[str] = Header(None, alias="X-AIRA-PIN"), authorization: Optional[str] = Header(None)):
+    """Maintain backward-compatibility for existing endpoints."""
+    return verify_auth(authorization=authorization, x_aira_pin=x_aira_pin)
 
 
 # ── Request Models ────────────────────────────────────────────────────────
+
+class PairRequest(BaseModel):
+    client_name: str = "AIRA Phone"
+    device_id: str
+    platform: str = "android"
+
+class PairConfirmRequest(BaseModel):
+    pin: str
+    device_id: str
+    device_name: str = "AIRA Phone"
+    platform: str = "android"
+
+class RevokeDeviceRequest(BaseModel):
+    device_token: Optional[str] = None
+    device_id: Optional[str] = None
+
+class PauseControlRequest(BaseModel):
+    pause: bool
+
+class DurableCommandRequest(BaseModel):
+    command_id: str
+    device_id: str
+    tool: str
+    arguments: dict = {}
+    created_at: int
+    expires_at: int
+    owner_id: Optional[str] = "arshan"
 
 class MouseMoveRequest(BaseModel):
     dx: int = 0
@@ -125,6 +240,257 @@ class AgentTaskRequest(BaseModel):
 class LiveDesktopCommandRequest(BaseModel):
     command: str
     custom_groq_key: Optional[str] = None
+
+
+# ── Secure Phone-Laptop Pairing Endpoints (Stage 8 / Stage I) ─────────────
+
+@app.post("/pair/request")
+def request_pairing(req: PairRequest):
+    """
+    Generate a short-lived 6-digit one-time pairing code approved on the laptop.
+    Expires in 5 minutes (300 seconds).
+    """
+    global active_pairing_state
+    code = f"{random.randint(100000, 999999)}"
+    active_pairing_state = {
+        "pin": code,
+        "expires_at": time.time() + 300,
+        "client_name": req.client_name,
+        "device_id": req.device_id,
+    }
+    print("\n" + "─"*50)
+    print(f"  🔐  [AIRA PAIRING REQUEST] From: {req.client_name} ({req.device_id})")
+    print(f"  👉  One-Time Approval PIN:  >>>  {code}  <<<")
+    print(f"  ⏳  Valid for: 5 minutes")
+    print("─"*50 + "\n")
+
+    return {
+        "status": "waiting_approval",
+        "ttl_seconds": 300,
+        "hint": "Enter the 6-digit PIN displayed on your laptop terminal.",
+    }
+
+
+@app.post("/pair/confirm")
+def confirm_pairing(req: PairConfirmRequest):
+    """
+    Exchanges one-time PIN or master PIN for a permanent, cryptographically
+    secure per-device Bearer token bound to the owner.
+    """
+    global active_pairing_state
+    now = time.time()
+    valid_pin = False
+
+    # 1. Check active one-time pairing PIN
+    if active_pairing_state.get("expires_at", 0) > now:
+        if req.pin.strip() == active_pairing_state.get("pin", "").strip():
+            valid_pin = True
+
+    # 2. Check master AIRA_PIN fallback
+    if req.pin.strip() == AIRA_PIN.strip():
+        valid_pin = True
+
+    if not valid_pin:
+        raise HTTPException(status_code=401, detail="Invalid or expired pairing PIN. Request a new PIN.")
+
+    token = secrets.token_hex(24)
+    devices = get_paired_devices()
+    devices[token] = {
+        "device_id": req.device_id,
+        "device_name": req.device_name,
+        "platform": req.platform,
+        "paired_at": int(now * 1000),
+        "last_seen": int(now * 1000),
+        "is_revoked": False,
+    }
+    save_paired_devices(devices)
+
+    print(f"\n  ✅  [AIRA PAIRING SUCCESS] Paired '{req.device_name}' ({req.device_id})")
+    return {
+        "success": True,
+        "device_token": token,
+        "owner_id": "arshan",
+        "hostname": socket.gethostname(),
+        "paired_at": int(now * 1000),
+    }
+
+
+@app.get("/pair/status")
+def pairing_status(auth: dict = Depends(verify_auth)):
+    """Check pairing state, latency, and online heartbeat."""
+    return {
+        "status": "authenticated",
+        "paired": True,
+        "hostname": socket.gethostname(),
+        "is_paused": is_remote_paused,
+        "device": auth,
+        "server_time": int(time.time() * 1000),
+    }
+
+
+@app.post("/pair/revoke")
+def revoke_device(req: RevokeDeviceRequest, auth: dict = Depends(verify_auth)):
+    """Revoke a paired device immediately. Revoked phones lose control instantaneously."""
+    devices = get_paired_devices()
+    revoked_count = 0
+    for tok, d in list(devices.items()):
+        if (req.device_token and tok == req.device_token) or (req.device_id and d.get("device_id") == req.device_id):
+            d["is_revoked"] = True
+            revoked_count += 1
+    save_paired_devices(devices)
+    print(f"\n  🚫  [AIRA REVOCATION] Revoked {revoked_count} device connection(s).")
+    return {"success": True, "revoked_count": revoked_count, "message": "Device pairing revoked."}
+
+
+@app.post("/pair/pause")
+def toggle_pause(req: PauseControlRequest):
+    """Host or client toggle to pause/resume remote command execution."""
+    global is_remote_paused
+    is_remote_paused = req.pause
+    state_str = "PAUSED 🔕" if is_remote_paused else "RESUMED 🔔"
+    print(f"\n  ⚠️   [AIRA REMOTE CONTROL] Status: {state_str}")
+    return {"success": True, "is_paused": is_remote_paused}
+
+
+@app.get("/pair/devices")
+def list_paired_devices(auth: dict = Depends(verify_auth)):
+    """List paired devices, last seen timestamps, and active revocation states."""
+    devices = get_paired_devices()
+    now_ms = int(time.time() * 1000)
+    device_list = []
+    for tok, d in devices.items():
+        last_seen = d.get("last_seen", 0)
+        is_online = (now_ms - last_seen) < 120000 and not d.get("is_revoked", False)
+        device_list.append({
+            "device_id": d.get("device_id"),
+            "device_name": d.get("device_name"),
+            "platform": d.get("platform"),
+            "paired_at": d.get("paired_at"),
+            "last_seen": last_seen,
+            "is_online": is_online,
+            "is_revoked": d.get("is_revoked", False),
+        })
+    return {"devices": device_list, "is_paused": is_remote_paused}
+
+
+# ── Durable Idempotent Remote Command Pipeline ────────────────────────────
+
+@app.post("/command/execute")
+def execute_durable_command(cmd: DurableCommandRequest, auth: dict = Depends(verify_auth)):
+    """
+    Durable, idempotent remote command execution:
+    1. Authenticates device and checks host pause status
+    2. Replay & Expiry Check: rejects if now > expires_at (prevents stale actions on reconnect)
+    3. Idempotency Check: returns existing cached receipt if command_id already ran
+    4. Executes whitelisted tool and records receipt
+    """
+    start_time = time.time()
+    now_ms = int(start_time * 1000)
+
+    # 1. Expiry Check (reject actions safe-to-defer that expired, e.g. stale clicks)
+    if now_ms > cmd.expires_at:
+        print(f"  ⚠️  [EXPIRED COMMAND] '{cmd.tool}' ({cmd.command_id}) expired {now_ms - cmd.expires_at}ms ago. Skipped.")
+        return {
+            "command_id": cmd.command_id,
+            "status": "expired",
+            "output": f"Command expired {now_ms - cmd.expires_at}ms ago. Discarded to prevent stale execution.",
+            "executed_at": now_ms,
+            "duration_ms": 0,
+            "replayed": False,
+        }
+
+    # 2. Idempotency Check (Duplicate command prevention on reconnect)
+    receipts = get_command_receipts()
+    if cmd.command_id in receipts:
+        cached = receipts[cmd.command_id]
+        cached["replayed"] = True
+        print(f"  🔄  [IDEMPOTENT REPLAY] Returned cached receipt for '{cmd.command_id}' without re-executing.")
+        return cached
+
+    # 3. Tool Execution
+    tool = cmd.tool.lower().strip()
+    args = cmd.arguments
+    output = ""
+    status = "executed"
+
+    try:
+        if tool == "open_app":
+            app_name = args.get("app_name", "")
+            output = app_launcher.launch_app(app_name)
+        elif tool == "mouse_click":
+            x = args.get("x")
+            y = args.get("y")
+            btn = args.get("button", "left")
+            if btn == "right":
+                mouse_control.right_click(x, y)
+            elif btn == "double":
+                mouse_control.double_click(x, y)
+            else:
+                mouse_control.left_click(x, y)
+            output = f"Mouse clicked ({btn}) at ({x}, {y})"
+        elif tool == "type_text":
+            text = args.get("text", "")
+            mouse_control.type_text(text)
+            output = f"Typed: {text}"
+        elif tool == "hotkey":
+            keys = args.get("keys", [])
+            mouse_control.hotkey(*keys)
+            output = f"Executed hotkey: {keys}"
+        elif tool == "system_control":
+            action = args.get("action", "")
+            if action == "lock":
+                system_control.lock_screen()
+                output = "Screen locked"
+            elif action == "mute":
+                system_control.mute_volume()
+                output = "Audio muted"
+            elif action == "volume":
+                level = args.get("level", 50)
+                system_control.set_volume(level)
+                output = f"Volume set to {level}%"
+            elif action == "sleep":
+                system_control.sleep_system()
+                output = "System put to sleep"
+            else:
+                output = f"System action '{action}' executed"
+        elif tool == "terminal":
+            command_str = args.get("command", "")
+            output = terminal_runner.run_command(command_str)
+        elif tool == "quick_note":
+            title = args.get("title", "AIRA_Note")
+            content = args.get("content", "")
+            output = file_manager.save_quick_note(title, content)
+        elif tool == "web_search":
+            query = args.get("query", "")
+            webbrowser.open(f"https://www.google.com/search?q={urllib.parse.quote(query)}")
+            output = f"Opened web search for '{query}'"
+        elif tool == "screen_capture":
+            b64 = screen_capture.capture_screenshot(quality=args.get("quality", 55), scale=args.get("scale", 0.45))
+            output = "Screenshot captured successfully"
+        else:
+            status = "unsupported_tool"
+            output = f"Tool '{tool}' is not in the allowed remote execution registry."
+
+    except Exception as e:
+        status = "failed"
+        output = f"Error: {str(e)}"
+
+    duration_ms = int((time.time() - start_time) * 1000)
+    receipt = {
+        "command_id": cmd.command_id,
+        "device_id": cmd.device_id,
+        "tool": cmd.tool,
+        "status": status,
+        "output": str(output),
+        "executed_at": now_ms,
+        "duration_ms": duration_ms,
+        "replayed": False,
+    }
+
+    # Save receipt for idempotency
+    save_command_receipt(cmd.command_id, receipt)
+    print(f"  ⚡  [DURABLE COMMAND EXECUTED] Tool: {cmd.tool} | ID: {cmd.command_id} | Status: {status} ({duration_ms}ms)")
+    return receipt
 
 
 # ── Info Endpoint ─────────────────────────────────────────────────────────
