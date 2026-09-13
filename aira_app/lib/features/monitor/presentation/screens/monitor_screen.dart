@@ -85,6 +85,11 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> with SingleTicker
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.shield_outlined, color: AiraColors.claudeTerracotta),
+            tooltip: 'App Whitelist & Privacy',
+            onPressed: () => _showAppWhitelistSheet(context, isDark),
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh, color: AiraColors.claudeTerracotta),
             tooltip: 'Refresh Feeds',
             onPressed: () {
@@ -191,6 +196,8 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> with SingleTicker
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _buildPrivacyAndFocusControlBar(isDark),
+          const SizedBox(height: 12),
           _buildPendingReplyDraftsSection(isDark),
           _buildAiDigestCard(isDark),
           const SizedBox(height: 16),
@@ -237,7 +244,7 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> with SingleTicker
           const SizedBox(height: 8),
           if (notifs.isEmpty)
             Container(
-              padding: const EdgeInsets.all(32),
+              padding: const EdgeInsets.all(28),
               alignment: Alignment.center,
               child: Column(
                 children: [
@@ -253,10 +260,25 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> with SingleTicker
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Incoming alerts will appear here in real-time.',
+                    'Incoming alerts from whitelisted apps will appear here in real-time.',
                     style: TextStyle(
                       color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
                       fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      _notifService.loadSandboxSamples();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.science_outlined, size: 16, color: Colors.white),
+                    label: const Text('Load Test Alerts (Sandbox)', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AiraColors.claudeTerracotta,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ],
@@ -774,4 +796,292 @@ class _MonitorScreenState extends ConsumerState<MonitorScreen> with SingleTicker
       ),
     );
   }
+
+  // ── Focus Mode & Privacy Control Bar (Stage H) ──
+  Widget _buildPrivacyAndFocusControlBar(bool isDark) {
+    final isFocus = _notifService.isFocusModeActive;
+    final isPaused = _notifService.isMonitoringPaused;
+    final allowedCount = _notifService.allowedPackages.length;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? AiraColors.cardDark : AiraColors.cardLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isFocus ? AiraColors.claudeAmber.withValues(alpha: 0.5) : AiraColors.claudeTerracotta.withValues(alpha: 0.3),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isFocus ? Icons.do_not_disturb_on_rounded : Icons.notifications_active_rounded,
+                size: 18,
+                color: isFocus ? AiraColors.claudeAmber : AiraColors.claudeTerracotta,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isFocus ? 'Focus Mode Active' : 'Notification Assistant Active',
+                      style: GoogleFonts.playfairDisplay(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                      ),
+                    ),
+                    Text(
+                      isFocus
+                          ? 'Silencing social/promotional pings. Direct DMs remain active.'
+                          : 'Summarizing whitelisted apps & redacting auth codes.',
+                      style: GoogleFonts.sourceSerif4(
+                        fontSize: 11,
+                        color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: isFocus,
+                activeThumbColor: AiraColors.claudeAmber,
+                onChanged: (val) async {
+                  await _notifService.toggleFocusMode(val);
+                  setState(() {});
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Whitelist App Manager Button
+              InkWell(
+                onTap: () => _showAppWhitelistSheet(context, isDark),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.tune_rounded, size: 14, color: AiraColors.claudeTerracotta),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Allowed Apps ($allowedCount)',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AiraColors.claudeTerracotta,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Security Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.lock_outline, size: 11, color: Colors.green),
+                    SizedBox(width: 4),
+                    Text(
+                      'OTPs Redacted 🔒',
+                      style: TextStyle(color: Colors.green, fontSize: 10.5, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              // Pause / Resume Monitoring Toggle
+              InkWell(
+                onTap: () {
+                  _notifService.toggleMonitoringPause(!isPaused);
+                  setState(() {});
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                        size: 14,
+                        color: isPaused ? Colors.green : AiraColors.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isPaused ? 'Resume' : 'Pause',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isPaused ? Colors.green : (isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── App Inclusion Whitelist Sheet (Stage H) ──
+  void _showAppWhitelistSheet(BuildContext context, bool isDark) {
+    final knownApps = [
+      {'name': 'WhatsApp', 'pkg': 'com.whatsapp', 'icon': Icons.chat_bubble_outline, 'color': const Color(0xFF25D366)},
+      {'name': 'Telegram', 'pkg': 'org.telegram.messenger', 'icon': Icons.send_rounded, 'color': const Color(0xFF0088CC)},
+      {'name': 'Gmail', 'pkg': 'com.google.android.gm', 'icon': Icons.mail_outline, 'color': const Color(0xFFEA4335)},
+      {'name': 'Google Messages (SMS)', 'pkg': 'com.google.android.apps.messaging', 'icon': Icons.message_outlined, 'color': const Color(0xFF1A73E8)},
+      {'name': 'Slack', 'pkg': 'com.slack', 'icon': Icons.work_outline, 'color': const Color(0xFF4A154B)},
+      {'name': 'Microsoft Teams', 'pkg': 'com.microsoft.teams', 'icon': Icons.groups_outlined, 'color': const Color(0xFF6264A7)},
+      {'name': 'Discord', 'pkg': 'com.discord', 'icon': Icons.forum_outlined, 'color': const Color(0xFF5865F2)},
+      {'name': 'Signal', 'pkg': 'org.thoughtcrime.securesms', 'icon': Icons.lock_outline, 'color': const Color(0xFF3A76F0)},
+      {'name': 'Paytm Banking', 'pkg': 'net.one97.paytm', 'icon': Icons.account_balance_wallet_outlined, 'color': const Color(0xFF00BAF2)},
+      {'name': 'PhonePe', 'pkg': 'com.phonepe.app', 'icon': Icons.payment_outlined, 'color': const Color(0xFF5F259F)},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? AiraColors.canvasDark : AiraColors.canvasLight,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          return Container(
+            padding: const EdgeInsets.all(20),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.75,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Selected-App Whitelist',
+                          style: GoogleFonts.playfairDisplay(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Non-whitelisted apps are dropped at the system boundary.',
+                          style: GoogleFonts.sourceSerif4(
+                            fontSize: 11,
+                            color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: knownApps.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (ctx, idx) {
+                      final app = knownApps[idx];
+                      final pkg = app['pkg'] as String;
+                      final name = app['name'] as String;
+                      final icon = app['icon'] as IconData;
+                      final color = app['color'] as Color;
+                      final isAllowed = _notifService.isAppAllowed(pkg);
+
+                      return SwitchListTile(
+                        value: isAllowed,
+                        activeThumbColor: AiraColors.claudeTerracotta,
+                        secondary: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(icon, color: color, size: 20),
+                        ),
+                        title: Text(
+                          name,
+                          style: GoogleFonts.sourceSerif4(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                          ),
+                        ),
+                        subtitle: Text(
+                          pkg,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                          ),
+                        ),
+                        onChanged: (val) async {
+                          await _notifService.setAppAllowed(pkg, val);
+                          setSheetState(() {});
+                          setState(() {});
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton(
+                      onPressed: () async {
+                        await _notifService.resetAllowedPackages();
+                        setSheetState(() {});
+                        setState(() {});
+                      },
+                      child: const Text('Reset Defaults', style: TextStyle(color: AiraColors.claudeTerracotta)),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AiraColors.claudeTerracotta,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text('Done'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
+

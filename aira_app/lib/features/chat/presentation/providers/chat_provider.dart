@@ -32,6 +32,7 @@ import 'package:aira_app/core/services/memory_engine.dart';
 import 'package:aira_app/core/services/implicit_reminder_detector.dart';
 import 'package:aira_app/core/services/proactive_engine.dart';
 import 'package:aira_app/core/services/notification_monitor_service.dart';
+import 'package:aira_app/core/services/smart_reply_service.dart';
 import 'package:aira_app/core/services/social_world_monitor_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -1041,6 +1042,127 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final notifId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
       switch (command.intent) {
+        case NotificationIntentType.notificationDigest:
+          _addLoadingMessage('Synthesizing your notifications with privacy protection...');
+          final notifMonitor = NotificationMonitorService();
+          await notifMonitor.checkAndStartListening();
+          var notifs = notifMonitor.notifications;
+          if (notifs.isEmpty) {
+            notifs = notifMonitor.getSandboxSampleNotifications();
+          }
+
+          final digest = await notifMonitor.generateSmartDigest();
+          _removeLoadingMessage();
+
+          final payload = {
+            'summary': digest,
+            'totalCount': notifs.length,
+            'isFocusMode': notifMonitor.isFocusModeActive,
+            'notifications': notifs.take(15).map((n) => n.toMap()).toList(),
+          };
+
+          _addSystemMessage(
+            'Here is your **AIRA Notification Intelligence Briefing**.\n\nAll sensitive authentication codes (OTPs, 2FA, PINs) have been verified and redacted.',
+            notificationDigestData: payload,
+          );
+
+          if (_isVoiceEnabled) {
+            await speakText('Here is your notification briefing. $digest');
+          }
+          return;
+
+        case NotificationIntentType.followUpReminder:
+          if (command.scheduledDate != null) {
+            final date = command.scheduledDate!;
+            final hourStr = (date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour)).toString().padLeft(2, '0');
+            final minStr = date.minute.toString().padLeft(2, '0');
+            final ampm = date.hour >= 12 ? 'PM' : 'AM';
+            final dayStr = date.day.toString().padLeft(2, '0');
+            final monthStr = date.month.toString().padLeft(2, '0');
+
+            await _notificationService.scheduleNotification(
+              id: notifId,
+              title: command.title,
+              body: command.body,
+              scheduledDate: date,
+            );
+
+            // Also add as a task to Planner so it appears in daily schedule
+            try {
+              final plannerNotifier = PlannerNotifier.active;
+              await plannerNotifier.addTask(
+                title: 'Follow-up: Reply to ${command.sender ?? "Contact"}',
+                priority: 'high',
+                dueDate: date,
+                category: 'Communication',
+                hasAlarm: true,
+              );
+            } catch (_) {}
+
+            result = '⏰ **Follow-Up Scheduled!**\n\n'
+                '- **Target:** Reply to ${command.sender ?? "Sender"}\n'
+                '- **Time:** $dayStr/$monthStr at $hourStr:$minStr $ampm\n'
+                '- **Synced to:** Native Alarms & Daily Planner ✓\n\n'
+                '> AIRA will remind you to follow up at the requested time.';
+          } else {
+            result = 'Please specify when you would like to be reminded (e.g., *"remind me to reply to Rahul at 4 PM"*).';
+          }
+          break;
+
+        case NotificationIntentType.focusModeToggle:
+          final enable = command.enableFocusMode ?? true;
+          await NotificationMonitorService().toggleFocusMode(enable);
+          result = enable
+              ? '🔕 **Focus Mode Activated**\n\n'
+                '- Non-critical notifications and social pings are silenced.\n'
+                '- Urgent direct messages (WhatsApp, Telegram, SMS) remain active.\n'
+                '- Quiet hours filter enabled.'
+              : '🔔 **Focus Mode Deactivated**\n\n'
+                '- Normal notification delivery and alerts restored.';
+          break;
+
+        case NotificationIntentType.quickReply:
+          final sender = command.sender ?? 'Contact';
+          final replyText = command.replyText ?? '';
+          if (replyText.isEmpty) {
+            result = 'What would you like to reply to $sender? (e.g., *"reply to $sender saying I will be there soon"*).';
+          } else {
+            final notifs = NotificationMonitorService().notifications;
+            final match = notifs.firstWhere(
+              (n) => n.canReply && (n.title.toLowerCase().contains(sender.toLowerCase()) || n.appName.toLowerCase().contains(sender.toLowerCase())),
+              orElse: () => InterceptedNotification(
+                id: 0,
+                packageName: 'com.whatsapp',
+                appName: 'WhatsApp',
+                title: sender,
+                text: 'Recent message from $sender',
+                subText: '',
+                timestamp: DateTime.now().millisecondsSinceEpoch,
+                category: 'messaging',
+                canReply: true,
+                replyKey: 'reply_${DateTime.now().millisecondsSinceEpoch}',
+              ),
+            );
+
+            final draft = PendingReplyDraft(
+              id: 'reply_${DateTime.now().millisecondsSinceEpoch}',
+              replyKey: match.replyKey ?? 'draft_reply',
+              packageName: match.packageName,
+              appName: match.appName,
+              sender: sender,
+              incomingMessage: match.text,
+              draftedReply: replyText,
+              timestamp: DateTime.now(),
+            );
+            SmartReplyService().addDraft(draft);
+
+            result = '📝 **Prepared Quick Reply for $sender**\n\n'
+                '- **App:** ${match.appName}\n'
+                '- **Draft:** "$replyText"\n\n'
+                'Please review and authorize sending in the Pending Replies section or Monitor tab.';
+          }
+          break;
+
         case NotificationIntentType.scheduleReminder:
           if (command.scheduledDate != null) {
             final date = command.scheduledDate!;
@@ -1843,6 +1965,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     Map<String, dynamic>? workspaceCalendarData,
     List<Map<String, dynamic>>? workspaceEmails,
     Map<String, dynamic>? workspaceEventPreview,
+    Map<String, dynamic>? notificationDigestData,
   }) {
     final msg = ChatMessage(
       id: _uuid.v4(),
@@ -1854,6 +1977,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       workspaceCalendarData: workspaceCalendarData,
       workspaceEmails: workspaceEmails,
       workspaceEventPreview: workspaceEventPreview,
+      notificationDigestData: notificationDigestData,
     );
     state = state.copyWith(messages: [...state.messages, msg], isSending: false);
   }

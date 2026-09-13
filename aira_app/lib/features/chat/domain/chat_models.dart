@@ -15,6 +15,7 @@ class ChatMessage {
   final Map<String, dynamic>? workspaceCalendarData;
   final List<Map<String, dynamic>>? workspaceEmails;
   final Map<String, dynamic>? workspaceEventPreview;
+  final Map<String, dynamic>? notificationDigestData;
 
   const ChatMessage({
     required this.id,
@@ -29,6 +30,7 @@ class ChatMessage {
     this.workspaceCalendarData,
     this.workspaceEmails,
     this.workspaceEventPreview,
+    this.notificationDigestData,
   });
 
   bool get isUser => role == 'user';
@@ -51,6 +53,7 @@ class ChatMessage {
       workspaceCalendarData: json['workspaceCalendarData'] != null ? Map<String, dynamic>.from(json['workspaceCalendarData'] as Map) : null,
       workspaceEmails: json['workspaceEmails'] != null ? (json['workspaceEmails'] as List).cast<Map<String, dynamic>>() : null,
       workspaceEventPreview: json['workspaceEventPreview'] != null ? Map<String, dynamic>.from(json['workspaceEventPreview'] as Map) : null,
+      notificationDigestData: json['notificationDigestData'] != null ? Map<String, dynamic>.from(json['notificationDigestData'] as Map) : null,
     );
   }
 
@@ -67,6 +70,7 @@ class ChatMessage {
       'workspaceCalendarData': workspaceCalendarData,
       'workspaceEmails': workspaceEmails,
       'workspaceEventPreview': workspaceEventPreview,
+      'notificationDigestData': notificationDigestData,
     };
   }
 
@@ -100,6 +104,7 @@ class ChatMessage {
     Map<String, dynamic>? workspaceCalendarData,
     List<Map<String, dynamic>>? workspaceEmails,
     Map<String, dynamic>? workspaceEventPreview,
+    Map<String, dynamic>? notificationDigestData,
   }) {
     return ChatMessage(
       id: id,
@@ -114,6 +119,7 @@ class ChatMessage {
       workspaceCalendarData: workspaceCalendarData ?? this.workspaceCalendarData,
       workspaceEmails: workspaceEmails ?? this.workspaceEmails,
       workspaceEventPreview: workspaceEventPreview ?? this.workspaceEventPreview,
+      notificationDigestData: notificationDigestData ?? this.notificationDigestData,
     );
   }
 }
