@@ -36,6 +36,7 @@ import terminal_runner
 import clipboard_sync
 import agent_runner
 import vision_agent
+import task_execution_engine
 
 # ── Config ────────────────────────────────────────────────────────────────
 
@@ -231,6 +232,31 @@ class QuickNoteRequest(BaseModel):
 
 class WebSearchRequest(BaseModel):
     query: str
+
+class SearchFilesRequest(BaseModel):
+    directory: Optional[str] = "downloads"
+    query: Optional[str] = ""
+    extensions: Optional[list[str]] = None
+    max_results: Optional[int] = 25
+
+class OrganizeFolderRequest(BaseModel):
+    directory: Optional[str] = "downloads"
+    preview: Optional[bool] = False
+
+class UndoOrganizationRequest(BaseModel):
+    directory: Optional[str] = "downloads"
+
+class PrepareDocumentRequest(BaseModel):
+    title: str
+    content: str
+    doc_format: Optional[str] = "txt"
+    open_after: Optional[bool] = True
+
+class SupervisedScreenActionRequest(BaseModel):
+    target_description: str
+    action: Optional[str] = "click"
+    text: Optional[str] = None
+    expected_outcome: Optional[str] = None
 
 class AgentTaskRequest(BaseModel):
     prompt: str
@@ -467,6 +493,31 @@ def execute_durable_command(cmd: DurableCommandRequest, auth: dict = Depends(ver
         elif tool == "screen_capture":
             b64 = screen_capture.capture_screenshot(quality=args.get("quality", 55), scale=args.get("scale", 0.45))
             output = "Screenshot captured successfully"
+        elif tool == "search_files":
+            directory = args.get("directory", "downloads")
+            query = args.get("query", "")
+            extensions = args.get("extensions")
+            max_results = args.get("max_results", 25)
+            output = task_execution_engine.search_files(directory, query, extensions, max_results)
+        elif tool == "organize_folder":
+            directory = args.get("directory", "downloads")
+            preview = args.get("preview", False)
+            output = task_execution_engine.organize_folder(directory, preview=preview)
+        elif tool == "undo_organization":
+            directory = args.get("directory", "downloads")
+            output = task_execution_engine.undo_organization(directory)
+        elif tool == "prepare_document":
+            title = args.get("title", "AIRA_Note")
+            content = args.get("content", "")
+            doc_format = args.get("doc_format", "txt")
+            open_after = args.get("open_after", True)
+            output = task_execution_engine.prepare_document(title, content, doc_format=doc_format, open_after=open_after)
+        elif tool == "supervised_screen_action":
+            target = args.get("target_description", "")
+            action = args.get("action", "click")
+            text = args.get("text")
+            expected = args.get("expected_outcome")
+            output = task_execution_engine.execute_supervised_screen_action(target, action=action, text=text, expected_outcome=expected)
         else:
             status = "unsupported_tool"
             output = f"Tool '{tool}' is not in the allowed remote execution registry."
@@ -758,6 +809,54 @@ def auto_web_search(req: WebSearchRequest, auth: bool = Depends(verify_pin)):
         "url": url,
         "message": f"Opened search in browser: {q}",
     }
+
+
+# ── Stage J: Windows Digital Task Execution Endpoints ──────────────────────
+
+@app.post("/task/search_files")
+def api_search_files(req: SearchFilesRequest, auth: dict = Depends(verify_auth)):
+    """Scoped file search across user directories (Downloads, Documents, Desktop, etc.)."""
+    return task_execution_engine.search_files(
+        directory=req.directory,
+        query=req.query,
+        extensions=req.extensions,
+        max_results=req.max_results,
+    )
+
+@app.post("/task/organize_folder")
+def api_organize_folder(req: OrganizeFolderRequest, auth: dict = Depends(verify_auth)):
+    """Reversible folder organization with undo manifest generation."""
+    return task_execution_engine.organize_folder(
+        directory=req.directory,
+        preview=req.preview,
+    )
+
+@app.post("/task/undo_organization")
+def api_undo_organization(req: UndoOrganizationRequest, auth: dict = Depends(verify_auth)):
+    """Safely restores organized files back to their original folder locations."""
+    return task_execution_engine.undo_organization(
+        directory=req.directory,
+    )
+
+@app.post("/task/prepare_document")
+def api_prepare_document(req: PrepareDocumentRequest, auth: dict = Depends(verify_auth)):
+    """Prepares structured document in Documents/AIRA_Documents and opens in Notepad."""
+    return task_execution_engine.prepare_document(
+        title=req.title,
+        content=req.content,
+        doc_format=req.doc_format,
+        open_after=req.open_after,
+    )
+
+@app.post("/task/supervised_screen_action")
+def api_supervised_screen_action(req: SupervisedScreenActionRequest, auth: dict = Depends(verify_auth)):
+    """Supervised screen action loop: Observe -> Target -> Validate -> Act -> Verify."""
+    return task_execution_engine.execute_supervised_screen_action(
+        target_description=req.target_description,
+        action=req.action,
+        text=req.text,
+        expected_outcome=req.expected_outcome,
+    )
 
 
 # ── Autonomous Multi-Step Agent Endpoints ─────────────────────────────────

@@ -814,6 +814,146 @@ class LaptopControlService {
     }
   }
 
+  // ── Stage J: Windows Digital Task Execution ───────────────────────────
+
+  /// Scoped file search across user folders (Downloads, Documents, Desktop, etc.)
+  Future<Map<String, dynamic>> searchFiles({
+    String? directory = 'downloads',
+    String? query = '',
+    List<String>? extensions,
+    int maxResults = 25,
+  }) async {
+    if (isPaired) {
+      return executeDurableCommand(
+        tool: 'search_files',
+        arguments: {
+          'directory': directory,
+          'query': query,
+          'extensions': extensions,
+          'max_results': maxResults,
+        },
+      );
+    }
+    try {
+      final res = await _dio.post('/task/search_files', data: {
+        'directory': directory,
+        'query': query,
+        'extensions': extensions,
+        'max_results': maxResults,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e), 'files': []};
+    }
+  }
+
+  /// Reversible folder organization with undo manifest generation
+  Future<Map<String, dynamic>> organizeFolderReversible({
+    required String directory,
+    bool preview = false,
+  }) async {
+    if (isPaired) {
+      return executeDurableCommand(
+        tool: 'organize_folder',
+        arguments: {
+          'directory': directory,
+          'preview': preview,
+        },
+      );
+    }
+    try {
+      final res = await _dio.post('/task/organize_folder', data: {
+        'directory': directory,
+        'preview': preview,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
+  /// Reverses a previous folder organization using the _aira_undo_manifest.json
+  Future<Map<String, dynamic>> undoFolderOrganization({required String directory}) async {
+    if (isPaired) {
+      return executeDurableCommand(
+        tool: 'undo_organization',
+        arguments: {
+          'directory': directory,
+        },
+      );
+    }
+    try {
+      final res = await _dio.post('/task/undo_organization', data: {
+        'directory': directory,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
+  /// Prepare document in Documents/AIRA_Documents and open in Notepad
+  Future<Map<String, dynamic>> prepareDocument({
+    required String title,
+    required String content,
+    String docFormat = 'txt',
+    bool openAfter = true,
+  }) async {
+    if (isPaired) {
+      return executeDurableCommand(
+        tool: 'prepare_document',
+        arguments: {
+          'title': title,
+          'content': content,
+          'doc_format': docFormat,
+          'open_after': openAfter,
+        },
+      );
+    }
+    try {
+      final res = await _dio.post('/task/prepare_document', data: {
+        'title': title,
+        'content': content,
+        'doc_format': docFormat,
+        'open_after': openAfter,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
+  /// Supervised screen execution loop: Observe -> Target -> Validate -> Act -> Verify
+  Future<Map<String, dynamic>> executeSupervisedScreenAction({
+    required String targetDescription,
+    String action = 'click',
+    String? text,
+    String? expectedOutcome,
+  }) async {
+    if (isPaired) {
+      return executeDurableCommand(
+        tool: 'supervised_screen_action',
+        arguments: {
+          'target_description': targetDescription,
+          'action': action,
+          'text': text,
+          'expected_outcome': expectedOutcome,
+        },
+      );
+    }
+    try {
+      final res = await _dio.post('/task/supervised_screen_action', data: {
+        'target_description': targetDescription,
+        'action': action,
+        'text': text,
+        'expected_outcome': expectedOutcome,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────
 
   String _friendlyError(dynamic e) {

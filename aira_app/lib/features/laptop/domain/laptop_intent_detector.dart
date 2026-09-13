@@ -8,6 +8,9 @@ class LaptopIntentDetector {
       'laptop', 'pc', 'computer', 'desktop', 'windows',
       'laptop lo', 'laptop ni', 'open cheyyi', 'lock cheyyi', 'chey', 'theeyi', 'penchu', 'thagginchu',
       'pair laptop', 'connect laptop', 'pair phone', 'pair cheyyi', 'laptop pair',
+      'search files', 'find files', 'find pdf', 'vethuku', 'raayi', 'prepare document', 'prepare notes',
+      'undo organization', 'undo last organization', 'undo folder', 'organization undo',
+      'click button', 'press button', 'green button', 'click the', 'click on laptop',
       'open chrome', 'open vs code', 'open spotify', 'open notepad',
       'take a screenshot', 'screenshot of my laptop',
       'lock my laptop', 'lock the laptop',
@@ -18,7 +21,7 @@ class LaptopIntentDetector {
       'close chrome', 'close spotify',
       'files on my laptop', 'open file',
       'clipboard', 'copy to laptop',
-      'organize downloads', 'sort downloads',
+      'organize downloads', 'sort downloads', 'organize desktop',
       'take a note', 'save a note', 'write a note',
       'search on my laptop', 'search on laptop',
       'brightness on laptop', 'set brightness',
@@ -45,6 +48,86 @@ class LaptopIntentDetector {
         lower.contains('pair cheyyi') ||
         lower.contains('connect cheyyi')) {
       return const LaptopCommand(type: LaptopCommandType.pair);
+    }
+
+    // ── Undo Folder Organization ──
+    if (lower.contains('undo organization') ||
+        lower.contains('undo last organization') ||
+        lower.contains('undo folder') ||
+        lower.contains('organization undo') ||
+        lower.contains('organization undo cheyyi')) {
+      final dir = lower.contains('desktop') ? 'desktop' : 'downloads';
+      return LaptopCommand(type: LaptopCommandType.undoOrganization, argument: dir);
+    }
+
+    // ── Supervised Screen Action (English + Telugu) ──
+    // e.g. "click the green button on laptop", "laptop lo green button click cheyyi"
+    final teluguClickMatch = RegExp(
+      r'laptop\s+(?:lo|meeda)\s+(.+?)\s+(?:click|press)\s*(?:cheyyi|cheyi|chey)?',
+      caseSensitive: false,
+    ).firstMatch(lower);
+    if (teluguClickMatch != null && (lower.contains('button') || lower.contains('icon') || lower.contains('link') || lower.contains('green'))) {
+      final target = teluguClickMatch.group(1)?.trim() ?? '';
+      if (target.isNotEmpty) {
+        return LaptopCommand(type: LaptopCommandType.supervisedScreenAction, argument: target);
+      }
+    }
+
+    final screenClickMatch = RegExp(
+      r'(?:click|press|tap)\s+(?:the\s+|on\s+)?(.+?)(?:\s+on my laptop|\s+on laptop|\s+on pc|\s+on screen|$)',
+      caseSensitive: false,
+    ).firstMatch(lower);
+    if (screenClickMatch != null && (lower.contains('button') || lower.contains('icon') || lower.contains('green') || lower.contains('submit') || lower.contains('close dialog'))) {
+      final target = screenClickMatch.group(1)?.trim() ?? '';
+      if (target.isNotEmpty) {
+        return LaptopCommand(type: LaptopCommandType.supervisedScreenAction, argument: target);
+      }
+    }
+
+    // ── Document Preparation (English + Telugu) ──
+    // e.g. "prepare meeting notes in notepad", "notepad lo meeting notes raayi"
+    final teluguDocMatch = RegExp(
+      r'notepad\s+lo\s+(.+?)\s+(?:raayi|rayi|prepare\s+cheyyi|type\s+cheyyi)',
+      caseSensitive: false,
+    ).firstMatch(lower);
+    if (teluguDocMatch != null) {
+      final title = teluguDocMatch.group(1)?.trim() ?? 'Meeting Notes';
+      return LaptopCommand(type: LaptopCommandType.prepareDocument, argument: title);
+    }
+
+    if (lower.contains('prepare document') ||
+        lower.contains('prepare meeting notes') ||
+        lower.contains('prepare notes') ||
+        lower.contains('draft notes in notepad')) {
+      var cleaned = lower
+          .replaceFirst(RegExp(r'(?:prepare|draft)\s+(?:document|notes|meeting notes)', caseSensitive: false), '')
+          .replaceFirst(RegExp(r'\s*in notepad\s*', caseSensitive: false), ' ')
+          .replaceFirst(RegExp(r'^(?:\s*about|\s*for|\s*titled)\s*', caseSensitive: false), '')
+          .trim();
+      final title = cleaned.isNotEmpty ? cleaned : 'Meeting Notes';
+      return LaptopCommand(type: LaptopCommandType.prepareDocument, argument: title);
+    }
+
+    // ── Scoped File Search (English + Telugu) ──
+    // e.g. "search for project files in downloads", "downloads lo project files vethuku"
+    final teluguSearchMatch = RegExp(
+      r'([a-zA-Z]+)\s+lo\s+(.+?)\s+(?:vethuku|vetuku|search\s+cheyyi|find\s+cheyyi)',
+      caseSensitive: false,
+    ).firstMatch(lower);
+    if (teluguSearchMatch != null) {
+      final dir = teluguSearchMatch.group(1)?.trim() ?? 'downloads';
+      final query = teluguSearchMatch.group(2)?.trim() ?? '';
+      return LaptopCommand(type: LaptopCommandType.searchFiles, argument: '$dir|$query');
+    }
+
+    final fileSearchMatch = RegExp(
+      r'(?:search|find)\s+(?:for\s+)?(.+?)\s+(?:files\s+)?in\s+([a-zA-Z]+)',
+      caseSensitive: false,
+    ).firstMatch(lower);
+    if (fileSearchMatch != null && (lower.contains('downloads') || lower.contains('documents') || lower.contains('desktop') || lower.contains('pictures'))) {
+      final query = fileSearchMatch.group(1)?.trim().replaceAll('files', '').trim() ?? '';
+      final dir = fileSearchMatch.group(2)?.trim() ?? 'downloads';
+      return LaptopCommand(type: LaptopCommandType.searchFiles, argument: '$dir|$query');
     }
 
     // ── Telugu Triggers ──
@@ -175,9 +258,16 @@ class LaptopIntentDetector {
       return LaptopCommand(type: LaptopCommandType.systemStats);
     }
 
-    // Organize downloads
-    if (lower.contains('organize downloads') || lower.contains('sort downloads') || lower.contains('clean downloads')) {
-      return LaptopCommand(type: LaptopCommandType.organizeDownloads);
+    // Organize folder / downloads (English + Telugu)
+    if (lower.contains('organize downloads') ||
+        lower.contains('sort downloads') ||
+        lower.contains('clean downloads') ||
+        lower.contains('clean up desktop') ||
+        lower.contains('organize') && (lower.contains('folder') || lower.contains('desktop') || lower.contains('downloads')) ||
+        lower.contains('organize cheyyi') ||
+        lower.contains('organize cheyi')) {
+      final folder = lower.contains('desktop') ? 'desktop' : (lower.contains('document') ? 'documents' : 'downloads');
+      return LaptopCommand(type: LaptopCommandType.organizeDownloads, argument: folder);
     }
 
     // Quick note / save note on laptop
@@ -335,6 +425,29 @@ class LaptopIntentDetector {
         return paired
             ? '🔗 **Paired successfully!** Connected to **$host** with cryptographic device token.'
             : '❌ **Pairing failed.** Please verify the 6-digit PIN shown on your laptop terminal.';
+      case LaptopCommandType.searchFiles:
+        final count = result?['count'] ?? (result?['files'] as List?)?.length ?? 0;
+        final dir = result?['directory'] ?? 'selected folder';
+        final fileList = (result?['files'] as List?) ?? [];
+        final snippet = fileList.take(5).map((f) => '• `${f['name']}` (${f['size_human'] ?? ''})').join('\n');
+        return '🔍 **File Search Results ($count found in $dir):**\n${snippet.isNotEmpty ? snippet : "(No matching files)"}';
+      case LaptopCommandType.undoOrganization:
+        final count = result?['restored_count'] ?? 0;
+        final success = result?['success'] == true;
+        return success
+            ? '↩️ **Folder Organization Undone!** Restored $count files back to their original locations.'
+            : '❌ Could not undo organization: ${result?['error'] ?? "No undo manifest found"}';
+      case LaptopCommandType.prepareDocument:
+        final title = result?['title'] ?? command.argument ?? 'Document';
+        final path = result?['path'] ?? 'Documents/AIRA_Documents';
+        return '📄 **Document Prepared!** Saved `$title` and opened in Notepad on your laptop (`$path`).';
+      case LaptopCommandType.supervisedScreenAction:
+        final success = result?['success'] == true;
+        final target = command.argument ?? 'screen element';
+        final msg = result?['message'] ?? (success ? 'Target verified and action completed.' : 'Action failed or halted.');
+        return success
+            ? '🎯 **Supervised Action Executed!** Targeted `$target` on screen: $msg'
+            : '🛡️ **Screen Action Halted/Failed:** $msg';
       case LaptopCommandType.agentTask:
         final total = result?['total_steps'] ?? 0;
         final msg = result?['message'] ?? 'Executed multi-step task';
@@ -345,6 +458,10 @@ class LaptopIntentDetector {
 
 enum LaptopCommandType {
   pair,
+  searchFiles,
+  undoOrganization,
+  prepareDocument,
+  supervisedScreenAction,
   agentTask,
   screenshot,
   lock,

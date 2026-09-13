@@ -50,6 +50,14 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
   bool _isExecutingLiveCommand = false;
   String? _lastLiveActionMessage;
   final _liveCommandTextController = TextEditingController();
+  // Stage J: Windows Digital Tasks State
+  final _fileSearchController = TextEditingController();
+  final _docTitleController = TextEditingController(text: 'Meeting_Notes');
+  final _docContentController = TextEditingController(text: 'Action items discussed during AIRA sync.');
+  final _screenTargetController = TextEditingController(text: 'green button');
+  String _selectedTaskFolder = 'downloads';
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _isExecutingTask = false;
 
   @override
   void initState() {
@@ -83,6 +91,10 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
     _terminalController.dispose();
     _terminalOutputController.dispose();
     _aiAgentInputController.dispose();
+    _fileSearchController.dispose();
+    _docTitleController.dispose();
+    _docContentController.dispose();
+    _screenTargetController.dispose();
     super.dispose();
   }
 
@@ -1852,6 +1864,10 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
           ),
           const SizedBox(height: 24),
 
+          // ── Windows Digital Tasks Execution Hub (Stage J) ──
+          _buildWindowsDigitalTasksSection(theme, isDark, cardBg, borderColor),
+          const SizedBox(height: 24),
+
           // Durable Action Receipts Section
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2070,6 +2086,446 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
           ),
         ],
       ),
+    );
+  }
+
+  // ── Windows Digital Task Execution Hub (Stage J) ──────────────────────────
+
+  Future<void> _performFileSearch() async {
+    final query = _fileSearchController.text.trim();
+    if (query.isEmpty) {
+      _showSnackBar('Please enter a search query or extension', isError: true);
+      return;
+    }
+    setState(() => _isExecutingTask = true);
+    try {
+      final res = await _service.searchFiles(
+        directory: _selectedTaskFolder,
+        query: query,
+      );
+      final rawList = res['files'] as List? ?? [];
+      final results = rawList.map((f) => Map<String, dynamic>.from(f as Map)).toList();
+      setState(() {
+        _searchResults = results;
+        _isExecutingTask = false;
+      });
+      _showSnackBar('Found ${results.length} files matching "$query"');
+    } catch (e) {
+      setState(() => _isExecutingTask = false);
+      _showSnackBar('Search failed: $e', isError: true);
+    }
+  }
+
+  Future<void> _performFolderOrganization() async {
+    setState(() => _isExecutingTask = true);
+    try {
+      final res = await _service.organizeFolderReversible(directory: _selectedTaskFolder);
+      setState(() => _isExecutingTask = false);
+      final count = (res['moved_files'] as List?)?.length ?? 0;
+      _showSnackBar('📁 Organized $count files into categories (Reversible)');
+    } catch (e) {
+      setState(() => _isExecutingTask = false);
+      _showSnackBar('Organization failed: $e', isError: true);
+    }
+  }
+
+  Future<void> _performUndoOrganization() async {
+    setState(() => _isExecutingTask = true);
+    try {
+      final res = await _service.undoFolderOrganization(directory: _selectedTaskFolder);
+      setState(() => _isExecutingTask = false);
+      final count = (res['restored_files'] as List?)?.length ?? 0;
+      _showSnackBar('↩️ Restored $count files to original locations');
+    } catch (e) {
+      setState(() => _isExecutingTask = false);
+      _showSnackBar('Undo failed: $e', isError: true);
+    }
+  }
+
+  Future<void> _performPrepareDocument() async {
+    final title = _docTitleController.text.trim();
+    final content = _docContentController.text.trim();
+    if (title.isEmpty) {
+      _showSnackBar('Please enter a document title', isError: true);
+      return;
+    }
+    setState(() => _isExecutingTask = true);
+    try {
+      final res = await _service.prepareDocument(
+        title: title,
+        content: content,
+        docFormat: 'txt',
+        openAfter: true,
+      );
+      setState(() => _isExecutingTask = false);
+      final path = res['file_path'] ?? 'Documents';
+      _showSnackBar('📝 Document opened in Notepad: $path');
+    } catch (e) {
+      setState(() => _isExecutingTask = false);
+      _showSnackBar('Document draft failed: $e', isError: true);
+    }
+  }
+
+  Future<void> _performSupervisedScreenAction() async {
+    final target = _screenTargetController.text.trim();
+    if (target.isEmpty) {
+      _showSnackBar('Please specify target description', isError: true);
+      return;
+    }
+    setState(() => _isExecutingTask = true);
+    try {
+      final res = await _service.executeSupervisedScreenAction(
+        action: 'click',
+        targetDescription: target,
+      );
+      setState(() => _isExecutingTask = false);
+      if (res['success'] == true) {
+        _showSnackBar('🎯 Action verified: $target clicked');
+      } else {
+        _showSnackBar('⚠️ ${res['error'] ?? "Action halted or failed"}', isError: true);
+      }
+    } catch (e) {
+      setState(() => _isExecutingTask = false);
+      _showSnackBar('Screen action failed: $e', isError: true);
+    }
+  }
+
+  Widget _buildWindowsDigitalTasksSection(
+    ThemeData theme,
+    bool isDark,
+    Color cardBg,
+    Color borderColor,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.task_alt_rounded, color: AiraColors.claudeTerracotta, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Windows Digital Tasks (Stage J)',
+              style: GoogleFonts.playfairDisplay(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Allowlisted scoped file management, reversible organization, Notepad notes & supervised screen actions.',
+          style: GoogleFonts.sourceSerif4(
+            fontSize: 12,
+            color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Task 1: Scoped File Search
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.manage_search_rounded, color: AiraColors.claudeTerracotta, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Scoped File Search',
+                    style: GoogleFonts.playfairDisplay(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  DropdownButton<String>(
+                    value: _selectedTaskFolder,
+                    underline: const SizedBox(),
+                    dropdownColor: cardBg,
+                    style: GoogleFonts.firaCode(
+                      fontSize: 12,
+                      color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'downloads', child: Text('Downloads/')),
+                      DropdownMenuItem(value: 'documents', child: Text('Documents/')),
+                      DropdownMenuItem(value: 'desktop', child: Text('Desktop/')),
+                      DropdownMenuItem(value: 'pictures', child: Text('Pictures/')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setState(() => _selectedTaskFolder = val);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _fileSearchController,
+                      style: GoogleFonts.sourceSerif4(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Search filename or extension (.pdf, budget)...',
+                        hintStyle: GoogleFonts.sourceSerif4(fontSize: 12, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                        filled: true,
+                        fillColor: isDark ? AiraColors.canvasDark : AiraColors.canvasLight,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderColor)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderColor)),
+                      ),
+                      onSubmitted: (_) => _performFileSearch(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _isExecutingTask ? null : _performFileSearch,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AiraColors.claudeTerracotta,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: _isExecutingTask
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.search_rounded, size: 16, color: Colors.white),
+                  ),
+                ],
+              ),
+              if (_searchResults.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 180),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _searchResults.length,
+                    separatorBuilder: (_, __) => Divider(color: borderColor, height: 1),
+                    itemBuilder: (context, idx) {
+                      final item = _searchResults[idx];
+                      final name = item['name']?.toString() ?? 'File';
+                      final sizeBytes = (item['size'] as num?)?.toInt() ?? 0;
+                      final sizeKb = (sizeBytes / 1024).toStringAsFixed(1);
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.insert_drive_file_outlined, size: 18, color: AiraColors.claudeTerracotta),
+                        title: Text(name, style: GoogleFonts.firaCode(fontSize: 12, fontWeight: FontWeight.w600)),
+                        subtitle: Text('${item['path']} • ${sizeKb}KB', style: GoogleFonts.sourceSerif4(fontSize: 10, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight)),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Task 2: Reversible Folder Organization
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.folder_copy_rounded, color: AiraColors.claudeTerracotta, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Reversible Folder Organizer',
+                    style: GoogleFonts.playfairDisplay(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.withValues(alpha: 0.4)),
+                    ),
+                    child: Text('100% Reversible', style: GoogleFonts.firaCode(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Sorts files into PDFs, Documents, Images, Code, Media, Archives. Creates _aira_undo_manifest.json for 1-click restore.',
+                style: GoogleFonts.sourceSerif4(fontSize: 11, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _isExecutingTask ? null : _performFolderOrganization,
+                      icon: const Icon(Icons.auto_fix_high_rounded, size: 16, color: Colors.white),
+                      label: Text('Organize $_selectedTaskFolder', style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AiraColors.claudeTerracotta,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isExecutingTask ? null : _performUndoOrganization,
+                      icon: const Icon(Icons.undo_rounded, size: 16, color: AiraColors.claudeTerracotta),
+                      label: Text('Undo Last Organization', style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.bold, color: AiraColors.claudeTerracotta)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AiraColors.claudeTerracotta),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Task 3: Document Drafter in Notepad
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.edit_note_rounded, color: AiraColors.claudeTerracotta, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Document Drafter (Notepad Preview)',
+                    style: GoogleFonts.playfairDisplay(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _docTitleController,
+                style: GoogleFonts.firaCode(fontSize: 12),
+                decoration: InputDecoration(
+                  labelText: 'Title / Filename',
+                  labelStyle: GoogleFonts.sourceSerif4(fontSize: 12),
+                  filled: true,
+                  fillColor: isDark ? AiraColors.canvasDark : AiraColors.canvasLight,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderColor)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderColor)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _docContentController,
+                maxLines: 3,
+                style: GoogleFonts.sourceSerif4(fontSize: 12),
+                decoration: InputDecoration(
+                  labelText: 'Document Content',
+                  labelStyle: GoogleFonts.sourceSerif4(fontSize: 12),
+                  filled: true,
+                  fillColor: isDark ? AiraColors.canvasDark : AiraColors.canvasLight,
+                  contentPadding: const EdgeInsets.all(12),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderColor)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderColor)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isExecutingTask ? null : _performPrepareDocument,
+                  icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.white),
+                  label: Text('Draft & Open in Notepad', style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AiraColors.claudeTerracotta,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Task 4: Supervised Screen Pipeline
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.shield_rounded, color: AiraColors.claudeTerracotta, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Supervised Screen Action Pipeline',
+                    style: GoogleFonts.playfairDisplay(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '5-Stage Loop: Observe -> Target -> Focus -> Act -> Verify. Automatically halts if UAC or security dialogs appear.',
+                style: GoogleFonts.sourceSerif4(fontSize: 11, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _screenTargetController,
+                      style: GoogleFonts.sourceSerif4(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Target element description (e.g. green button)...',
+                        hintStyle: GoogleFonts.sourceSerif4(fontSize: 12, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                        filled: true,
+                        fillColor: isDark ? AiraColors.canvasDark : AiraColors.canvasLight,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderColor)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderColor)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: _isExecutingTask ? null : _performSupervisedScreenAction,
+                    icon: const Icon(Icons.play_arrow_rounded, size: 16, color: Colors.white),
+                    label: Text('Act & Verify', style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AiraColors.claudeTerracotta,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

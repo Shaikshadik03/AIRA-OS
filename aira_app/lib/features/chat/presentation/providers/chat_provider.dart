@@ -758,6 +758,26 @@ class ChatNotifier extends StateNotifier<ChatState> {
             }
           }
           break;
+        case LaptopCommandType.searchFiles:
+          final rawArg = command.argument ?? 'downloads|';
+          final parts = rawArg.split('|');
+          final dir = parts[0].trim().isNotEmpty ? parts[0].trim() : 'downloads';
+          final query = parts.length > 1 ? parts[1].trim() : '';
+          result = await _laptopService.searchFiles(directory: dir, query: query);
+          break;
+        case LaptopCommandType.undoOrganization:
+          final dir = command.argument ?? 'downloads';
+          result = await _laptopService.undoFolderOrganization(directory: dir);
+          break;
+        case LaptopCommandType.prepareDocument:
+          final title = command.argument ?? 'Meeting_Notes';
+          final noteContent = '# $title\n\n- Created via AIRA Mobile Assistant\n- Date: ${DateTime.now().toLocal().toString().substring(0, 16)}\n\n## Summary & Action Items\n1. Review project deliverables\n2. Coordinate tasks with team';
+          result = await _laptopService.prepareDocument(title: title, content: noteContent, openAfter: true);
+          break;
+        case LaptopCommandType.supervisedScreenAction:
+          final target = command.argument ?? 'active button';
+          result = await _laptopService.executeSupervisedScreenAction(targetDescription: target, action: 'click');
+          break;
         case LaptopCommandType.agentTask:
           result = await _laptopService.executeAgentTask(command.argument ?? content);
           break;
@@ -841,7 +861,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
           result = await _laptopService.getSystemStats();
           break;
         case LaptopCommandType.organizeDownloads:
-          result = await _laptopService.organizeDownloads();
+          result = await _laptopService.organizeFolderReversible(directory: 'downloads');
           break;
         case LaptopCommandType.saveNote:
           if (_laptopService.isPaired) {
