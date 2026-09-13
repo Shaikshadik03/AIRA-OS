@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/user_profile_service.dart';
 import 'package:aira_app/core/services/personality_engine.dart';
+import 'package:aira_app/core/services/check_in_service.dart';
 
 /// AIRA Proactive Intelligence Engine
 ///
@@ -161,6 +162,57 @@ class ProactiveEngine {
           );
         }
       }
+    }
+
+    // ── Rule 6: Due Agreed Check-Ins & Follow-Ups ──
+    try {
+      await _checkAgreedCheckIns(name);
+    } catch (e) {
+      debugPrint('[PROACTIVE] Agreed check-in evaluation failed: $e');
+    }
+  }
+
+  /// Evaluate agreed check-ins and contextual follow-ups
+  Future<void> _checkAgreedCheckIns(String name) async {
+    final checkInService = CheckInService();
+    final dueCheckIns = await checkInService.getDueCheckIns();
+    if (dueCheckIns.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final tasksJson = prefs.getString('aira_local_tasks_v2');
+    List tasks = [];
+    if (tasksJson != null) {
+      try {
+        tasks = jsonDecode(tasksJson);
+      } catch (_) {}
+    }
+
+    for (final checkIn in dueCheckIns) {
+      // Relevance Check: If linked to a task, check if it's already completed
+      if (checkIn.relatedTaskId != null) {
+        final linkedTask = tasks.firstWhere(
+          (t) => t['id'] == checkIn.relatedTaskId,
+          orElse: () => null,
+        );
+        if (linkedTask != null && linkedTask['status'] == 'completed') {
+          // Task already finished! Auto-complete check-in without nagging
+          await checkInService.markCompleted(checkIn.id);
+          debugPrint('[PROACTIVE] Task ${checkIn.relatedTaskId} already done — checkin suppressed.');
+          continue;
+        }
+      }
+
+      // Deliver check-in notification & inject into live chat
+      final bodyText = checkIn.customPrompt ??
+          'Time for your agreed check-in on "${checkIn.reason}". Did you make progress? (Reply: Done, Busy, Ask tomorrow, or Stop)';
+
+      await _sendProactiveNotification(
+        id: 'checkin_${checkIn.id}',
+        title: checkIn.title,
+        body: bodyText,
+      );
+
+      await checkInService.markDelivered(checkIn.id);
     }
   }
 

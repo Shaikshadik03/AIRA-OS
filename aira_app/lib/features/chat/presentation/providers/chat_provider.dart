@@ -10,6 +10,9 @@ import 'package:aira_app/features/chat/domain/notification_intent.dart';
 import 'package:aira_app/features/chat/domain/routine_intent.dart';
 import 'package:aira_app/features/chat/domain/whatsapp_intent.dart';
 import 'package:aira_app/features/chat/domain/task_intent.dart';
+import 'package:aira_app/features/chat/domain/check_in_item.dart';
+import 'package:aira_app/features/chat/domain/check_in_intent.dart';
+import 'package:aira_app/core/services/check_in_service.dart';
 import 'package:aira_app/features/planner/presentation/providers/planner_provider.dart';
 import 'package:aira_app/features/laptop/domain/laptop_intent_detector.dart';
 import 'package:aira_app/features/laptop/data/laptop_control_service.dart';
@@ -210,6 +213,16 @@ class ChatNotifier extends StateNotifier<ChatState> {
     if (wsCommand.isWorkspaceCommand) {
       await _handleWorkspaceCommand(content, wsCommand);
       return;
+    }
+
+    // ── Check for Proactive Follow-up & Check-In Intent (Stage E) ──
+    final activeCheckIn = await CheckInService().getLastDeliveredCheckIn();
+    if (CheckInIntentDetector.isCheckInCommand(content, hasActiveCheckIn: activeCheckIn != null)) {
+      final checkInCommand = CheckInIntentDetector.parse(content, hasActiveCheckIn: activeCheckIn != null);
+      if (checkInCommand != null) {
+        await _handleCheckInCommand(content, checkInCommand, activeCheckIn);
+        return;
+      }
     }
 
     // ── Check for Task / Reminder Intent (Built-in TickTick System) ──
@@ -500,6 +513,134 @@ class ChatNotifier extends StateNotifier<ChatState> {
     } catch (e) {
       _removeLoadingMessage();
       _addSystemMessage('❌ **Failed to update tasks:** $e');
+    }
+  }
+
+  // ──────────────────── Proactive Check-in & Follow-up Handlers (Stage E) ────────────────────
+
+  Future<void> _handleCheckInCommand(
+    String content,
+    CheckInCommand command,
+    CheckInItem? activeCheckIn,
+  ) async {
+    _addUserMessage(content);
+    _addLoadingMessage('Processing follow-up...');
+
+    try {
+      final checkInService = CheckInService();
+      String result = '';
+
+      switch (command.type) {
+        case CheckInCommandType.createCheckIn:
+          final created = await checkInService.createCheckIn(
+            title: command.title,
+            reason: command.reason,
+            targetTime: command.targetTime ?? DateTime.now().add(const Duration(hours: 2)),
+            category: command.category,
+          );
+          final timeStr = '${created.targetTime.hour.toString().padLeft(2, "0")}:${created.targetTime.minute.toString().padLeft(2, "0")}';
+          final isTomorrow = created.targetTime.day != DateTime.now().day;
+          final dateStr = isTomorrow ? 'Tomorrow' : 'Today';
+
+          result = '🤝 **Agreed Check-In Scheduled!**\n\n'
+              '• **Topic:** ${created.reason}\n'
+              '• **Scheduled for:** $dateStr at $timeStr\n\n'
+              '🔔 *AIRA will follow up with you at this time. You can reply "Done", "Busy", "Ask tomorrow", or "Stop" anytime.*';
+          break;
+
+        case CheckInCommandType.respondDone:
+          if (activeCheckIn != null) {
+            await checkInService.markCompleted(activeCheckIn.id);
+            result = '🎉 **Awesome job!**\n\n'
+                'Marked your follow-up on **"${activeCheckIn.reason}"** as completed! Any linked tasks have been checked off in your Agenda. Keep crushing it! 💪';
+          } else {
+            result = '🎉 **Great job!** Progress noted and saved. Keep the momentum going!';
+          }
+          break;
+
+        case CheckInCommandType.respondBusy:
+          if (activeCheckIn != null) {
+            await checkInService.snooze(activeCheckIn.id, const Duration(hours: 2));
+            result = '⏳ **Snoozed for 2 hours.**\n\n'
+                'No stress! I\'ll check back with you on **"${activeCheckIn.reason}"** in 2 hours.';
+          } else {
+            result = '⏳ **Got it!** Focus on what you\'re doing, I\'ll let you work in peace.';
+          }
+          break;
+
+        case CheckInCommandType.respondAskTomorrow:
+          if (activeCheckIn != null) {
+            final now = DateTime.now();
+            final tomorrow9am = DateTime(now.year, now.month, now.day + 1, 9, 0);
+            await checkInService.snooze(activeCheckIn.id, tomorrow9am.difference(now));
+            result = '🌅 **Moved to Tomorrow Morning (9:00 AM).**\n\n'
+                'Have a great rest of your day. We will tackle **"${activeCheckIn.reason}"** fresh tomorrow!';
+          } else {
+            result = '🌅 **Understood!** We\'ll pick this up tomorrow morning.';
+          }
+          break;
+
+        case CheckInCommandType.respondStop:
+          if (activeCheckIn != null) {
+            await checkInService.cancel(activeCheckIn.id);
+            result = '🛑 **Follow-Up Cancelled.**\n\n'
+                'I won\'t check in on **"${activeCheckIn.reason}"** again. Let me know if you want to set a new follow-up anytime!';
+          } else {
+            result = '🛑 **Cancelled.** I\'ve stopped active follow-ups for now.';
+          }
+          break;
+
+        case CheckInCommandType.triggerMorningPlanning:
+          final tasks = PlannerNotifier.active.state.tasks.where((t) => !t.isCompleted).toList();
+          final count = tasks.length;
+          final taskListStr = tasks.isEmpty
+              ? '✨ *No pending tasks on your agenda! What would you like to accomplish today?*'
+              : tasks.take(4).map((t) => '• **${t.title}** *[${t.priority.toUpperCase()}]*').join('\n');
+
+          result = '☀️ **AIRA Morning Kick-Off & Planning**\n\n'
+              'Good morning! You have **$count pending tasks** scheduled.\n\n'
+              '$taskListStr\n\n'
+              '💡 *Say "Add task <name> at <time>" or "Plan my day" to time-block your study sessions.*';
+          break;
+
+        case CheckInCommandType.triggerEveningReflection:
+          final allTasks = PlannerNotifier.active.state.tasks;
+          final completed = allTasks.where((t) => t.isCompleted).toList();
+          final pending = allTasks.where((t) => !t.isCompleted).toList();
+
+          result = '🌙 **AIRA Evening Reflection & Day Wrap-Up**\n\n'
+              '• **Completed today:** ${completed.length} tasks ✅\n'
+              '• **Remaining:** ${pending.length} tasks\n\n'
+              '${pending.isNotEmpty ? "Pending tasks can be moved to tomorrow automatically or continued now.\n\n" : "Incredible job clearing your entire agenda today! 🏆\n\n"}'
+              '🛌 *Get ready for restful sleep to recharge.*';
+          break;
+
+        case CheckInCommandType.listCheckIns:
+          final checkIns = await checkInService.getActiveCheckIns();
+          if (checkIns.isEmpty) {
+            result = '📋 **No active check-ins.**\n\nSay *"Check on me tonight about the project"* to schedule one!';
+          } else {
+            result = '📋 **Your Active Check-Ins & Follow-Ups:**\n\n';
+            for (final c in checkIns) {
+              final isTomorrow = c.targetTime.day != DateTime.now().day;
+              final dayStr = isTomorrow ? 'Tomorrow' : 'Today';
+              final timeStr = '${c.targetTime.hour.toString().padLeft(2, "0")}:${c.targetTime.minute.toString().padLeft(2, "0")}';
+              result += '• 🔔 **${c.title}** ($dayStr at $timeStr) — *[${c.status.name}]*\n';
+            }
+          }
+          break;
+      }
+
+      _removeLoadingMessage();
+      _addSystemMessage(result);
+
+      if (_isVoiceEnabled && result.isNotEmpty) {
+        final clean = result.replaceAll(RegExp(r'[*#_`~]'), '').replaceAll(RegExp(r'[✅📋⏳🎉🗑️⚠️🔔☀️🌙💡🛌🏆🛑🤝]'), '');
+        await _tts.speak(clean);
+      }
+    } catch (e) {
+      _removeLoadingMessage();
+      _addSystemMessage('❌ **Failed to process check-in:** $e');
     }
   }
 
