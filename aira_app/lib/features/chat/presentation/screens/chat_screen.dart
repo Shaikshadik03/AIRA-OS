@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,11 +10,13 @@ import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/services/voice_service.dart';
+import 'package:aira_app/core/services/wake_word_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/features/planner/presentation/providers/planner_provider.dart';
 import 'package:aira_app/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:aira_app/features/chat/presentation/widgets/typing_indicator.dart';
+import 'package:aira_app/features/chat/presentation/widgets/voice_listening_sheet.dart';
 import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:aira_app/core/services/smart_reply_service.dart';
@@ -34,13 +38,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ImagePicker _picker = ImagePicker();
 
   final VoiceService _voiceService = VoiceService();
-  bool _isListening = false;
   bool _isHandsFreeActive = false;
+  StreamSubscription? _wakeWordSubscription;
 
   @override
   void initState() {
     super.initState();
     _initSpeech();
+    _isHandsFreeActive = WakeWordService.isHandsFreeEnabledNotifier.value;
+    _wakeWordSubscription = WakeWordService().onWakeWordStream.listen((_) {
+      if (mounted) {
+        ref.read(chatProvider.notifier).stopTts();
+        _openVoiceSheet();
+      }
+    });
   }
 
   void _initSpeech() async {
@@ -48,35 +59,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (mounted) setState(() {});
   }
 
-  void _listen() async {
-    if (!_isListening) {
-      setState(() => _isListening = true);
-      await _voiceService.startListening(
-        onResult: (text, isFinal) {
-          if (mounted) {
-            setState(() {
-              _textController.text = text;
-            });
-          }
-        },
-        onCommandTriggered: (cleanCommand) {
-          if (mounted) {
-            setState(() {
-              _isListening = false;
-              _textController.text = cleanCommand;
-            });
-            _sendMessage();
-          }
-        },
-      );
-    } else {
-      await _voiceService.stopListening();
-      if (mounted) setState(() => _isListening = false);
-    }
+  void _openVoiceSheet() {
+    ref.read(chatProvider.notifier).stopTts();
+    VoiceListeningSheet.show(
+      context,
+      onCommandSubmitted: (command) {
+        if (command.trim().isNotEmpty) {
+          _textController.text = command;
+          _sendMessage();
+        }
+      },
+    );
   }
 
   @override
   void dispose() {
+    _wakeWordSubscription?.cancel();
     _scrollController.dispose();
     _textController.dispose();
     _focusNode.dispose();
@@ -202,14 +200,54 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         centerTitle: true,
         actions: [
+          ValueListenableBuilder<bool>(
+            valueListenable: WakeWordService.isHandsFreeEnabledNotifier,
+            builder: (context, isEnabled, _) {
+              if (!isEnabled) return const SizedBox.shrink();
+              return Container(
+                margin: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AiraColors.success.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AiraColors.success.withValues(alpha: 0.4),
+                    width: 0.8,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AiraColors.success,
+                      ),
+                    ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(0.8, 0.8), end: const Offset(1.3, 1.3), duration: 800.ms),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Hey AIRA',
+                      style: GoogleFonts.sourceSerif4(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AiraColors.success,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: Icon(
-              _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-              color: _isListening ? AiraColors.error : theme.colorScheme.onSurface.withValues(alpha: 0.75),
+              Icons.mic_rounded,
+              color: AiraColors.claudeTerracotta,
               size: 22,
             ),
-            tooltip: _isListening ? 'Stop Listening' : 'Hey AIRA Voice',
-            onPressed: _listen,
+            tooltip: 'Tap to Talk',
+            onPressed: _openVoiceSheet,
           ),
           IconButton(
             icon: Icon(
@@ -413,11 +451,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                   ElevatedButton(
                     onPressed: () async {
-                      if (_isHandsFreeActive) {
-                        await _voiceService.stopPassiveWakeWordLoop();
-                        setState(() => _isHandsFreeActive = false);
-                      } else {
-                        setState(() => _isHandsFreeActive = true);
+                      final newStatus = !_isHandsFreeActive;
+                      setState(() => _isHandsFreeActive = newStatus);
+                      await WakeWordService().setEnabled(newStatus);
+                      if (newStatus) {
                         _voiceService.startPassiveWakeWordLoop(
                           onWakeWordDetected: (_) {},
                           onCommandTriggered: (command) {
@@ -428,6 +465,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           },
                         );
                         AndroidDeviceService().startOverlayService();
+                      } else {
+                        await _voiceService.stopPassiveWakeWordLoop();
                       }
                     },
                     style: ElevatedButton.styleFrom(
@@ -580,39 +619,77 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final surfaceFill = isDark ? AiraColors.surfaceDark : AiraColors.surfaceLightWarm;
     final borderColor = isDark ? AiraColors.borderDark : AiraColors.borderLight;
+    final chatState = ref.watch(chatProvider);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (_isListening)
+        // ── Floating TTS Interruption Pill ──
+        if (chatState.isSpeaking)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.15 : 0.08),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.18 : 0.12),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: AiraColors.claudeTerracotta.withValues(alpha: 0.4),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
             child: Row(
               children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AiraColors.claudeTerracotta,
-                  ),
-                ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(0.8, 0.8), end: const Offset(1.3, 1.3), duration: 600.ms),
-                const SizedBox(width: 10),
+                const Icon(
+                  Icons.volume_up_rounded,
+                  size: 16,
+                  color: AiraColors.claudeTerracotta,
+                ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(0.9, 0.9), end: const Offset(1.15, 1.15), duration: 500.ms),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Listening... speak your prompt',
+                    'AIRA is speaking... tap to interrupt',
                     style: GoogleFonts.sourceSerif4(
-                      color: AiraColors.claudeTerracotta,
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
                 GestureDetector(
-                  onTap: _listen,
-                  child: const Icon(Icons.close_rounded, size: 18, color: AiraColors.claudeTerracotta),
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    ref.read(chatProvider.notifier).stopTts();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AiraColors.claudeTerracotta,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.stop_rounded, size: 13, color: Colors.white),
+                        const SizedBox(width: 3),
+                        Text(
+                          'Stop',
+                          style: GoogleFonts.sourceSerif4(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -696,6 +773,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       minLines: 1,
                       maxLines: 5,
                       textInputAction: TextInputAction.send,
+                      onChanged: (_) {
+                        ref.read(chatProvider.notifier).stopTts();
+                        setState(() {});
+                      },
                       onSubmitted: (_) => _sendMessage(),
                       style: GoogleFonts.sourceSerif4(
                         fontSize: 15,
@@ -723,22 +804,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   padding: const EdgeInsets.only(bottom: 2, right: 4),
                   child: _textController.text.isEmpty && _selectedImage == null
                       ? GestureDetector(
-                          onTap: _listen,
+                          onTap: () {
+                            ref.read(chatProvider.notifier).stopTts();
+                            _openVoiceSheet();
+                          },
                           child: Container(
                             width: 36,
                             height: 36,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: _isListening
-                                  ? AiraColors.error.withValues(alpha: 0.2)
-                                  : Colors.transparent,
+                              color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.2 : 0.12),
                             ),
-                            child: Center(
+                            child: const Center(
                               child: Icon(
-                                _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                                color: _isListening
-                                    ? AiraColors.error
-                                    : (isDark ? AiraColors.textSecondary : AiraColors.textSecondaryLight),
+                                Icons.mic_rounded,
+                                color: AiraColors.claudeTerracotta,
                                 size: 22,
                               ),
                             ),

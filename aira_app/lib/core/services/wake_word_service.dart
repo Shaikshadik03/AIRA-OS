@@ -27,6 +27,10 @@ class WakeWordService {
   static const String _sensitivityKey = 'aira_wake_word_sensitivity';
   static const _channel = MethodChannel('com.aira.os/wake_word');
 
+  static final ValueNotifier<bool> isHandsFreeEnabledNotifier = ValueNotifier<bool>(false);
+  final StreamController<void> _wakeWordStreamController = StreamController<void>.broadcast();
+  Stream<void> get onWakeWordStream => _wakeWordStreamController.stream;
+
   bool _isListening = false;
   bool _isEnabled = false;
   String? _picovoiceAccessKey;
@@ -41,17 +45,26 @@ class WakeWordService {
   bool get isEnabled => _isEnabled;
   bool get hasPicovoiceKey => _picovoiceAccessKey != null && _picovoiceAccessKey!.isNotEmpty;
 
+  void triggerWakeWord() {
+    debugPrint('[WAKE WORD] 🎤 Wake word triggered!');
+    HapticFeedback.mediumImpact();
+    _onWakeWordDetected?.call();
+    _wakeWordStreamController.add(null);
+  }
+
   /// Load settings from SharedPreferences
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     _isEnabled = prefs.getBool(_enabledKey) ?? false;
     _picovoiceAccessKey = prefs.getString(_picovoiceKeyPref);
     _sensitivity = prefs.getDouble(_sensitivityKey) ?? 0.7;
+    isHandsFreeEnabledNotifier.value = _isEnabled;
   }
 
   /// Enable or disable hands-free mode
   Future<void> setEnabled(bool enabled) async {
     _isEnabled = enabled;
+    isHandsFreeEnabledNotifier.value = enabled;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_enabledKey, enabled);
 
@@ -98,9 +111,7 @@ class WakeWordService {
         // Listen for wake word events from native Porcupine side
         _channel.setMethodCallHandler((call) async {
           if (call.method == 'onWakeWordDetected') {
-            debugPrint('[WAKE WORD] 🎤 Porcupine detected "Hey AIRA"!');
-            HapticFeedback.mediumImpact();
-            _onWakeWordDetected?.call();
+            triggerWakeWord();
           }
         });
 
@@ -174,17 +185,14 @@ class WakeWordService {
           if (text.isNotEmpty) {
             // Check if transcript contains wake word
             if (WakeWordService.containsWakeWord(text)) {
-              debugPrint('[WAKE WORD] 🎤 STT detected wake word in: "$text"');
-              HapticFeedback.mediumImpact();
-              _onWakeWordDetected?.call();
+              triggerWakeWord();
             }
           }
         },
         onCommandTriggered: (command) {
           // If VoiceService also detects a wake word, trigger directly
           if (command.isNotEmpty) {
-            debugPrint('[WAKE WORD] STT command triggered: $command');
-            _onWakeWordDetected?.call();
+            triggerWakeWord();
           }
         },
         onError: (error) {

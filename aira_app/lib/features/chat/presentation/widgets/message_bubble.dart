@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/features/chat/domain/chat_models.dart';
+import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/features/chat/presentation/screens/artifact_canvas_screen.dart';
 import 'package:aira_app/features/chat/presentation/widgets/plan_execution_card.dart';
 import 'package:aira_app/features/chat/presentation/widgets/action_approval_card.dart';
@@ -16,15 +18,15 @@ import 'package:aira_app/core/agent/action_guardrail_manager.dart';
 /// - Assistant messages: Left-aligned generous layout, markdown typography with Source Serif 4,
 ///   smooth word-by-word streaming, pulsing glowing orb indicator, clean code blocks,
 ///   and interactive Claude Artifact Canvas.
-class MessageBubble extends StatefulWidget {
+class MessageBubble extends ConsumerStatefulWidget {
   final ChatMessage message;
   const MessageBubble({super.key, required this.message});
 
   @override
-  State<MessageBubble> createState() => _MessageBubbleState();
+  ConsumerState<MessageBubble> createState() => _MessageBubbleState();
 }
 
-class _MessageBubbleState extends State<MessageBubble>
+class _MessageBubbleState extends ConsumerState<MessageBubble>
     with SingleTickerProviderStateMixin {
   late AnimationController _glowController;
   Timer? _wordTimer;
@@ -398,6 +400,47 @@ class _MessageBubbleState extends State<MessageBubble>
                       ],
                     ),
                   ),
+                ),
+                const SizedBox(width: 10),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final chatState = ref.watch(chatProvider);
+                    final isSpeaking = chatState.isSpeaking;
+                    return InkWell(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        final notifier = ref.read(chatProvider.notifier);
+                        if (isSpeaking) {
+                          notifier.stopTts();
+                        } else {
+                          notifier.speakText(widget.message.content);
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isSpeaking ? Icons.stop_circle_rounded : Icons.volume_up_rounded,
+                              size: 14,
+                              color: isSpeaking ? AiraColors.claudeTerracotta : mutedColor,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              isSpeaking ? 'Stop' : 'Read Aloud',
+                              style: GoogleFonts.sourceSerif4(
+                                color: isSpeaking ? AiraColors.claudeTerracotta : mutedColor,
+                                fontSize: 11.5,
+                                fontWeight: isSpeaking ? FontWeight.w600 : FontWeight.normal,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

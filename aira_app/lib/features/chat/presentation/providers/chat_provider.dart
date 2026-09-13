@@ -43,6 +43,7 @@ class ChatState {
   final String? activeConversationId;
   final String? activeConversationTitle;
   final bool isGoogleConnected;
+  final bool isSpeaking;
 
   const ChatState({
     this.messages = const [],
@@ -52,6 +53,7 @@ class ChatState {
     this.activeConversationId,
     this.activeConversationTitle,
     this.isGoogleConnected = false,
+    this.isSpeaking = false,
   });
 
   ChatState copyWith({
@@ -62,6 +64,7 @@ class ChatState {
     String? activeConversationId,
     String? activeConversationTitle,
     bool? isGoogleConnected,
+    bool? isSpeaking,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -71,6 +74,7 @@ class ChatState {
       activeConversationId: activeConversationId ?? this.activeConversationId,
       activeConversationTitle: activeConversationTitle ?? this.activeConversationTitle,
       isGoogleConnected: isGoogleConnected ?? this.isGoogleConnected,
+      isSpeaking: isSpeaking ?? this.isSpeaking,
     );
   }
 }
@@ -118,17 +122,84 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   Future<void> _initTts() async {
-    await _tts.setLanguage("en-US");
+    try {
+      final languages = await _tts.getLanguages;
+      if (languages is List && languages.any((l) => l.toString().contains('en-IN') || l.toString().contains('en_IN'))) {
+        await _tts.setLanguage("en-IN");
+      } else {
+        await _tts.setLanguage("en-US");
+      }
+    } catch (_) {
+      await _tts.setLanguage("en-US");
+    }
+
     await _tts.setSpeechRate(0.5);
     await _tts.setPitch(1.0);
+
+    _tts.setStartHandler(() {
+      if (mounted) state = state.copyWith(isSpeaking: true);
+    });
+    _tts.setCompletionHandler(() {
+      if (mounted) state = state.copyWith(isSpeaking: false);
+    });
+    _tts.setCancelHandler(() {
+      if (mounted) state = state.copyWith(isSpeaking: false);
+    });
+    _tts.setErrorHandler((_) {
+      if (mounted) state = state.copyWith(isSpeaking: false);
+    });
   }
 
   void toggleVoice(bool enabled) {
     _isVoiceEnabled = enabled;
-    if (!enabled) _tts.stop();
+    if (!enabled) stopTts();
   }
 
   bool get isVoiceEnabled => _isVoiceEnabled;
+
+  /// Stop active TTS speech immediately (Interruption)
+  Future<void> stopTts() async {
+    try {
+      await _tts.stop();
+    } catch (_) {}
+    if (mounted) state = state.copyWith(isSpeaking: false);
+  }
+
+  /// Clean raw text for human-like spoken output (stripping markdown, code blocks, URLs, and emojis)
+  String cleanTextForSpeech(String raw) {
+    var text = raw;
+    // Strip markdown code blocks and replace with conversational cue
+    text = text.replaceAll(RegExp(r'```[\s\S]*?```'), " I have displayed the code on your screen. ");
+    // Strip inline code formatting
+    text = text.replaceAll(RegExp(r'`([^`]+)`'), r'$1');
+    // Strip markdown links [text](url) -> text
+    text = text.replaceAll(RegExp(r'\[([^\]]+)\]\([^\)]+\)'), r'$1');
+    // Strip URLs
+    text = text.replaceAll(RegExp(r'https?:\/\/[^\s]+'), " a link ");
+    // Strip markdown headers and emphasis
+    text = text.replaceAll(RegExp(r'[*#_~>]'), '');
+    // Strip list dashes and bullets
+    text = text.replaceAll(RegExp(r'^\s*[-*+]\s+', multiLine: true), '');
+    // Strip common emojis that TTS spells out awkwardly
+    text = text.replaceAll(RegExp(r'[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]', unicode: true), '');
+    // Collapse excess whitespace
+    text = text.replaceAll(RegExp(r'\n+'), ' ').replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+    return text;
+  }
+
+  /// Speak text aloud with automatic formatting cleanup
+  Future<void> speakText(String text) async {
+    if (!_isVoiceEnabled) return;
+    final clean = cleanTextForSpeech(text);
+    if (clean.isEmpty) return;
+    try {
+      await _tts.stop();
+      if (mounted) state = state.copyWith(isSpeaking: true);
+      await _tts.speak(clean);
+    } catch (_) {
+      if (mounted) state = state.copyWith(isSpeaking: false);
+    }
+  }
 
   Future<void> connectGoogleWorkspace() async {
     final success = await _workspace.signInWithWorkspaceScopes();
@@ -158,6 +229,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> sendMessage(String content, {String? base64Image}) async {
     if (content.trim().isEmpty && base64Image == null) return;
+
+    // Immediately stop active TTS speech (Interruption on user input)
+    await stopTts();
 
     // Record interaction for proactive idle check-in tracking
     ProactiveEngine.recordInteraction();
@@ -325,7 +399,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         state = state.copyWith(messages: finalMessages);
 
         if (_isVoiceEnabled) {
-          await _tts.speak('Goal plan executed successfully.');
+          await speakText('Goal plan executed successfully.');
         }
         return;
       } catch (e) {
@@ -351,7 +425,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         _removeLoadingMessage();
         _addSystemMessage(report);
         if (_isVoiceEnabled) {
-          await _tts.speak('Executed your multi step task successfully.');
+          await speakText('Executed your multi step task successfully.');
         }
         return;
       } catch (e) {
@@ -419,13 +493,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(result);
 
       if (_isVoiceEnabled && draftedMessage.isNotEmpty) {
-        await _tts.speak('WhatsApp message prepared.');
+        await speakText('WhatsApp message prepared.');
       }
     } catch (e) {
       _removeLoadingMessage();
       _addSystemMessage('❌ **Failed to prepare WhatsApp message:** $e');
     }
   }
+
 
   // ──────────────────── Task & Planner Handlers (In-built TickTick System) ────────────────────
 
@@ -507,8 +582,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(result);
 
       if (_isVoiceEnabled && result.isNotEmpty) {
-        final clean = result.replaceAll(RegExp(r'[*#_`~]'), '').replaceAll(RegExp(r'[✅📋⏳🎉🗑️⚠️🔔]'), '');
-        await _tts.speak(clean);
+        await speakText(result);
       }
     } catch (e) {
       _removeLoadingMessage();
@@ -635,8 +709,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(result);
 
       if (_isVoiceEnabled && result.isNotEmpty) {
-        final clean = result.replaceAll(RegExp(r'[*#_`~]'), '').replaceAll(RegExp(r'[✅📋⏳🎉🗑️⚠️🔔☀️🌙💡🛌🏆🛑🤝]'), '');
-        await _tts.speak(clean);
+        await speakText(result);
       }
     } catch (e) {
       _removeLoadingMessage();
@@ -795,10 +868,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
 
       if (_isVoiceEnabled) {
-        final speechText = responseText
-            .replaceAll(RegExp(r'[*#_`\[\]>]'), '')
-            .replaceAll(RegExp(r'[📸🔒😴🔴🔄🔇🔊🔉🚀✅⌨️💻📊🖥️💾💿🔋⚡]'), '');
-        await _tts.speak(speechText);
+        await speakText(responseText);
       }
     } catch (e) {
       _removeLoadingMessage();
@@ -930,8 +1000,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(result);
 
       if (_isVoiceEnabled && result.isNotEmpty) {
-        final clean = result.replaceAll(RegExp(r'[*#_`\[\]>]'), '');
-        await _tts.speak(clean);
+        await speakText(result);
       }
     } catch (e) {
       _removeLoadingMessage();
@@ -953,7 +1022,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(res.summaryMarkdown);
 
       if (_isVoiceEnabled && res.spokenText.isNotEmpty) {
-        await _tts.speak(res.spokenText);
+        await speakText(res.spokenText);
       }
     } catch (e) {
       _removeLoadingMessage();
@@ -1043,8 +1112,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(result);
 
       if (_isVoiceEnabled && result.isNotEmpty) {
-        final clean = result.replaceAll(RegExp(r'[*#_`\[\]>]'), '');
-        await _tts.speak(clean);
+        await speakText(result);
       }
     } catch (e) {
       _addSystemMessage('❌ **Failed to schedule notification:** ${e.toString().replaceAll('Exception: ', '')}');
@@ -1095,8 +1163,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(result);
 
       if (_isVoiceEnabled && result.isNotEmpty) {
-        final clean = result.replaceAll(RegExp(r'[*#_`\[\]>]'), '');
-        await _tts.speak(clean);
+        await speakText(result);
       }
     } catch (e) {
       _removeLoadingMessage();
@@ -1147,8 +1214,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(result);
 
       if (_isVoiceEnabled && result.isNotEmpty) {
-        final clean = result.replaceAll(RegExp(r'[*#_`\[\]>]'), '');
-        await _tts.speak(clean);
+        await speakText(result);
       }
     } catch (e) {
       _addSystemMessage('Failed to update memory: ${e.toString().replaceAll('Exception: ', '')}');
@@ -1370,8 +1436,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       _addSystemMessage(result);
 
       if (_isVoiceEnabled && result.isNotEmpty) {
-        final clean = result.replaceAll(RegExp(r'[*#_`\[\]|]'), '');
-        await _tts.speak(clean);
+        await speakText(result);
       }
     } catch (e) {
       _removeLoadingMessage();
@@ -1479,8 +1544,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
 
       if (_isVoiceEnabled) {
-        final cleanText = response.replaceAll(RegExp(r'[*#_`]'), '');
-        await _tts.speak(cleanText);
+        await speakText(response);
       }
 
       // ── Background Fact Extraction (learn about user) ──
@@ -1607,7 +1671,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
           'Please open **Intelligence & Monitor** from the menu or settings and tap **Grant Notification Access**.',
         );
         if (_isVoiceEnabled) {
-          await _tts.speak('Please grant notification access in AIRA settings to summarize your alerts.');
+          await speakText('Please grant notification access in AIRA settings to summarize your alerts.');
         }
         return;
       }
@@ -1619,7 +1683,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       if (_isVoiceEnabled) {
         // Speak first 2 sentences
         final spoken = digest.split('\n').firstWhere((l) => l.trim().isNotEmpty, orElse: () => 'Here is your notification summary.');
-        await _tts.speak(spoken.replaceAll('*', '').replaceAll('#', ''));
+        await speakText(spoken);
       }
     } catch (e) {
       _removeLoadingMessage();
@@ -1639,7 +1703,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
       if (_isVoiceEnabled) {
         final spoken = digest.split('\n').firstWhere((l) => l.trim().isNotEmpty, orElse: () => 'Here is what is happening in the outside world.');
-        await _tts.speak(spoken.replaceAll('*', '').replaceAll('#', ''));
+        await speakText(spoken);
       }
     } catch (e) {
       _removeLoadingMessage();

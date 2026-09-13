@@ -94,11 +94,16 @@ class VoiceService {
     return _isInitialized;
   }
 
+  String? _selectedLocaleId;
+  String? get selectedLocaleId => _selectedLocaleId;
+
   /// Start listening for voice commands / Hey AIRA wake word
   Future<bool> startListening({
     required Function(String text, bool isFinal) onResult,
     required Function(String cleanCommand) onCommandTriggered,
+    Function()? onCancelled,
     Function(String error)? onError,
+    Function(double soundLevel)? onSoundLevelChange,
   }) async {
     final available = await initialize(onErrorCallback: onError);
     if (!available) {
@@ -108,11 +113,28 @@ class VoiceService {
 
     _isListening = true;
 
+    // Detect en_IN or preferred locale
+    if (_selectedLocaleId == null) {
+      try {
+        final locales = await _speech.locales();
+        final inLocale = locales.where((l) => l.localeId.startsWith('en_IN') || l.localeId == 'en-IN').firstOrNull;
+        _selectedLocaleId = inLocale?.localeId ?? (locales.isNotEmpty ? locales.first.localeId : null);
+      } catch (_) {}
+    }
+
     try {
       await _speech.listen(
         onResult: (result) {
           final recognizedWords = result.recognizedWords.trim();
           onResult(recognizedWords, result.finalResult);
+
+          // Check if user requested cancellation mid-speech
+          if (isCancellationPhrase(recognizedWords)) {
+            HapticFeedback.lightImpact();
+            cancelListening();
+            onCancelled?.call();
+            return;
+          }
 
           // Check if wake word or complete final result
           if (recognizedWords.isNotEmpty) {
@@ -125,12 +147,14 @@ class VoiceService {
             }
           }
         },
+        onSoundLevelChange: onSoundLevelChange,
         listenOptions: stt.SpeechListenOptions(
           listenFor: const Duration(seconds: 30),
           pauseFor: const Duration(seconds: 3),
           partialResults: true,
           cancelOnError: false,
           listenMode: stt.ListenMode.dictation,
+          localeId: _selectedLocaleId,
         ),
       );
       return true;
@@ -174,12 +198,48 @@ class VoiceService {
     await stopListening();
   }
 
-  /// Stop listening
+  /// Stop listening normally (may trigger onResult)
   Future<void> stopListening() async {
     if (_isListening) {
       await _speech.stop();
       _isListening = false;
     }
+  }
+
+  /// Cancel listening immediately without triggering actions
+  Future<void> cancelListening() async {
+    if (_isListening) {
+      _isListening = false;
+      await _speech.cancel();
+    }
+  }
+
+  /// Check if recognized speech contains cancellation keywords in English or Telugu
+  bool isCancellationPhrase(String text) {
+    final lower = text.toLowerCase().trim();
+    if (lower.isEmpty) return false;
+    const cancelPhrases = [
+      'cancel',
+      'cancel that',
+      'never mind',
+      'nevermind',
+      'stop listening',
+      'dont send',
+      "don't send",
+      'abort',
+      'vaddu',
+      'oddu',
+      'aapu',
+      'cancel chey',
+      'vaddu le',
+      'oddu le',
+    ];
+    return cancelPhrases.any((phrase) {
+      if (lower == phrase) return true;
+      if (lower.endsWith(' $phrase')) return true;
+      if (lower.startsWith('$phrase ')) return true;
+      return false;
+    });
   }
 
   /// Check if text contains Hey AIRA wake word
