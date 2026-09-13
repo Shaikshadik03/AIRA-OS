@@ -535,6 +535,23 @@ class LaptopControlService {
     }
   }
 
+  /// Execute a live screen-grounded voice or text command on the connected laptop
+  Future<Map<String, dynamic>> executeLiveDesktopCommand(String command, {String? customGroqKey}) async {
+    try {
+      final res = await _dio.post('/agent/live_desktop_command', data: {
+        'command': command,
+        'custom_groq_key': customGroqKey,
+      });
+      return Map<String, dynamic>.from(res.data);
+    } catch (e) {
+      return {
+        'success': false,
+        'action': 'error',
+        'message': _friendlyError(e),
+      };
+    }
+  }
+
   /// Get atomic step breakdown of a goal from the laptop agent
   Future<Map<String, dynamic>> planAgentTask(String prompt, {String? customGroqKey}) async {
     try {

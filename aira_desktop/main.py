@@ -31,6 +31,7 @@ import file_manager
 import terminal_runner
 import clipboard_sync
 import agent_runner
+import vision_agent
 
 # ── Config ────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,10 @@ class WebSearchRequest(BaseModel):
 class AgentTaskRequest(BaseModel):
     prompt: str
     steps: Optional[list] = None
+    custom_groq_key: Optional[str] = None
+
+class LiveDesktopCommandRequest(BaseModel):
+    command: str
     custom_groq_key: Optional[str] = None
 
 
@@ -435,6 +440,90 @@ def agent_execute(req: AgentTaskRequest, auth: bool = Depends(verify_pin)):
         "self_healed": result.get("self_healed", False),
         "message": msg,
     }
+
+
+@app.post("/agent/live_desktop_command")
+def live_desktop_command(req: LiveDesktopCommandRequest, auth: bool = Depends(verify_pin)):
+    """
+    Processes a live voice or text command directly on the host laptop.
+    Grounded in the current laptop screen (using VisionAgent and AgentRunner).
+    """
+    cmd = req.command.strip().lower()
+    custom_key = req.custom_groq_key
+    va = vision_agent.VisionAgent(groq_api_key=custom_key)
+
+    def safe_capture():
+        try:
+            return screen_capture.capture_screenshot(quality=50, scale=0.45)
+        except Exception:
+            return None
+
+    # 1. Direct window close command
+    if any(k in cmd for k in ["close this app", "close app", "close window", "exit app", "quit this app", "close current app"]):
+        mouse_control.hotkey("alt", "f4")
+        fresh_b64 = safe_capture()
+        return {
+            "success": True,
+            "action": "close_window",
+            "message": "Closed the active window on your laptop.",
+            "screenshot": fresh_b64,
+        }
+
+    # 2. Window management shortcuts
+    if "minimize" in cmd:
+        mouse_control.hotkey("win", "down")
+        fresh_b64 = safe_capture()
+        return {"success": True, "action": "minimize", "message": "Minimized active window.", "screenshot": fresh_b64}
+    if "maximize" in cmd:
+        mouse_control.hotkey("win", "up")
+        fresh_b64 = safe_capture()
+        return {"success": True, "action": "maximize", "message": "Maximized window.", "screenshot": fresh_b64}
+
+    # 3. Direct visual click request ("press that green button", "click submit", etc.)
+    is_visual_click = any(trigger in cmd for trigger in [
+        "press that", "press the", "click that", "click the", "click on", "press button",
+        "click button", "tap on", "select that", "green button", "blue button", "red button", "play button"
+    ])
+
+    if is_visual_click:
+        target_desc = req.command
+        for prefix in ["press that", "press the", "click that", "click the", "click on", "press", "click", "tap on"]:
+            if target_desc.lower().startswith(prefix):
+                target_desc = target_desc[len(prefix):].strip()
+                break
+
+        try:
+            click_res = va.locate_and_click_element(target_desc)
+            fresh_b64 = safe_capture()
+            if click_res.get("success"):
+                return {
+                    "success": True,
+                    "action": "vision_click",
+                    "message": f"Located and clicked '{target_desc}' on your laptop screen.",
+                    "screenshot": fresh_b64,
+                }
+        except Exception:
+            pass
+
+    # 4. General agent goal execution (e.g. "open chrome and search...", "scroll down", etc.)
+    try:
+        engine = agent_runner.AgentRunner(groq_api_key=custom_key) if custom_key else agent_engine
+        result = engine.execute_self_healing_goal(req.command)
+        fresh_b64 = safe_capture()
+        return {
+            "success": result.get("success", True),
+            "action": "agent_execution",
+            "message": f"Executed on laptop: {req.command}",
+            "screenshot": fresh_b64,
+        }
+    except Exception as e:
+        fresh_b64 = safe_capture()
+        return {
+            "success": False,
+            "action": "error",
+            "message": f"Execution error: {str(e)}",
+            "screenshot": fresh_b64,
+        }
 
 
 # ── WebSocket for Live Agent Execution Progress ───────────────────────────

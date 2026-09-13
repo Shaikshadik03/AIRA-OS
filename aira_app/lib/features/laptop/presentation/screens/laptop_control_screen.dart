@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/features/laptop/data/laptop_control_service.dart';
+import 'dart:convert';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:flutter_tts/flutter_tts.dart';
 
 class LaptopControlScreen extends StatefulWidget {
   const LaptopControlScreen({super.key});
@@ -38,10 +41,21 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
   final List<Map<String, dynamic>> _aiAgentMessages = [];
   bool _isAiAgentExecuting = false;
 
+  // Live Desktop AIRA Voice & Vision State
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  final FlutterTts _tts = FlutterTts();
+  bool _speechEnabled = false;
+  bool _isListeningLive = false;
+  String _liveVoiceCommand = '';
+  bool _isExecutingLiveCommand = false;
+  String? _lastLiveActionMessage;
+  final _liveCommandTextController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    _initSpeechAndTts();
     _service.loadConfig().then((_) {
       if (_service.isConfigured) {
         _testConnection();
@@ -49,9 +63,21 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
     });
   }
 
+  void _initSpeechAndTts() async {
+    try {
+      _speechEnabled = await _speech.initialize();
+      await _tts.setLanguage("en-US");
+      await _tts.setSpeechRate(0.5);
+      await _tts.setPitch(1.0);
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _service.disconnectWebSocket();
+    _speech.stop();
+    _tts.stop();
+    _liveCommandTextController.dispose();
     _tabController.dispose();
     _textController.dispose();
     _terminalController.dispose();
@@ -167,6 +193,28 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
           ],
         ),
         actions: [
+          if (_connected)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.mic_rounded, size: 14, color: Colors.white),
+                label: Text(
+                  'Live Desktop AIRA',
+                  style: GoogleFonts.sourceSerif4(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E8E3E),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  elevation: 0,
+                ),
+                onPressed: _openLiveDesktopAiraModal,
+              ),
+            ),
           IconButton(
             icon: Icon(Icons.refresh_rounded,
                 color: AiraColors.claudeTerracotta, size: 20),
@@ -1530,6 +1578,419 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
                 style: GoogleFonts.sourceSerif4(color: Colors.white)),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Live Desktop AIRA Voice & Vision Controller ────────────────────────────
+
+  void _openLiveDesktopAiraModal() {
+    _takeScreenshot();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final theme = Theme.of(context);
+            final isDark = theme.brightness == Brightness.dark;
+            final cardBg = isDark ? AiraColors.cardDark : AiraColors.cardLight;
+            final borderColor = isDark ? AiraColors.borderDark : AiraColors.borderLight;
+
+            void startListening() async {
+              if (!_speechEnabled) {
+                _speechEnabled = await _speech.initialize();
+              }
+              if (!_speechEnabled) {
+                _showSnackBar('Microphone permission or speech recognition not available', isError: true);
+                return;
+              }
+
+              HapticFeedback.lightImpact();
+              setModalState(() {
+                _isListeningLive = true;
+                _liveVoiceCommand = 'Listening to your voice...';
+              });
+
+              _speech.listen(
+                onResult: (val) {
+                  setModalState(() {
+                    _liveVoiceCommand = val.recognizedWords;
+                  });
+                  if (val.finalResult && val.recognizedWords.trim().isNotEmpty) {
+                    _speech.stop();
+                    setModalState(() => _isListeningLive = false);
+                    _sendLiveDesktopVoiceCommand(val.recognizedWords.trim(), setModalState);
+                  }
+                },
+                listenOptions: stt.SpeechListenOptions(
+                  listenMode: stt.ListenMode.confirmation,
+                ),
+              );
+            }
+
+            void stopListening() {
+              _speech.stop();
+              setModalState(() => _isListeningLive = false);
+            }
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.88,
+              decoration: BoxDecoration(
+                color: theme.scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white24 : Colors.black26,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E8E3E).withValues(alpha: 0.18),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.screen_search_desktop_rounded,
+                                  color: Color(0xFF1E8E3E), size: 22),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Live Desktop AIRA',
+                                  style: GoogleFonts.playfairDisplay(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                                Text(
+                                  'Voice & Screen-Grounded Laptop Control',
+                                  style: GoogleFonts.sourceSerif4(
+                                    fontSize: 11.5,
+                                    color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () {
+                            stopListening();
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E8E3E).withValues(alpha: isDark ? 0.14 : 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF1E8E3E).withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF1E8E3E)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Action executes directly on LAPTOP, not phone',
+                            style: GoogleFonts.sourceSerif4(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1E8E3E),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Container(
+                      height: 160,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: cardBg,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: borderColor),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (_screenshot != null)
+                              Image.memory(
+                                _screenshot!,
+                                fit: BoxFit.contain,
+                              )
+                            else
+                              Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.laptop_chromebook_rounded,
+                                        size: 40,
+                                        color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight),
+                                    const SizedBox(height: 6),
+                                    Text('Screen preview updating...',
+                                        style: GoogleFonts.sourceSerif4(
+                                            fontSize: 12,
+                                            color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight)),
+                                  ],
+                                ),
+                              ),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: GestureDetector(
+                                onTap: () async {
+                                  await _takeScreenshot();
+                                  setModalState(() {});
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.65),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.refresh_rounded, size: 12, color: Colors.white),
+                                      const SizedBox(width: 4),
+                                      Text('Refresh Screen',
+                                          style: GoogleFonts.sourceSerif4(fontSize: 10, color: Colors.white)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        _buildVoiceChip('🟢 Press that green button', setModalState),
+                        _buildVoiceChip('❌ Close this app', setModalState),
+                        _buildVoiceChip('⬇️ Scroll down', setModalState),
+                        _buildVoiceChip('🔍 Search YouTube for Hanuman Chalisa', setModalState),
+                        _buildVoiceChip('🪟 Minimize window', setModalState),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: cardBg,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: borderColor),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _isListeningLive
+                                    ? '🎙️ LISTENING...'
+                                    : (_isExecutingLiveCommand
+                                        ? '🧠 THINKING & WORKING ON LAPTOP...'
+                                        : 'SPOKEN COMMAND'),
+                                style: GoogleFonts.firaCode(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: _isListeningLive
+                                      ? const Color(0xFF1E8E3E)
+                                      : (_isExecutingLiveCommand
+                                          ? AiraColors.claudeTerracotta
+                                          : (isDark ? AiraColors.textMuted : AiraColors.textMutedLight)),
+                                ),
+                              ),
+                              if (_isExecutingLiveCommand)
+                                const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: AiraColors.claudeTerracotta),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _liveVoiceCommand.isEmpty
+                                ? 'Tap the mic below and say "Press that green button" or "Close this app"'
+                                : _liveVoiceCommand,
+                            style: GoogleFonts.sourceSerif4(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          if (_lastLiveActionMessage != null) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AiraColors.claudeTerracotta.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '💻 Laptop: $_lastLiveActionMessage',
+                                style: GoogleFonts.sourceSerif4(
+                                  fontSize: 12,
+                                  color: AiraColors.claudeTerracotta,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    onTap: () {
+                      if (_isListeningLive) {
+                        stopListening();
+                      } else {
+                        startListening();
+                      }
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _isListeningLive ? Colors.red.shade600 : const Color(0xFF1E8E3E),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_isListeningLive ? Colors.red.shade600 : const Color(0xFF1E8E3E))
+                                .withValues(alpha: 0.45),
+                            blurRadius: _isListeningLive ? 24 : 12,
+                            spreadRadius: _isListeningLive ? 6 : 2,
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Icon(
+                          _isListeningLive ? Icons.stop_rounded : Icons.mic_rounded,
+                          size: 38,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _isListeningLive ? 'Tap to finish speaking' : 'Tap to speak to Laptop',
+                    style: GoogleFonts.sourceSerif4(
+                      fontSize: 12,
+                      color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _sendLiveDesktopVoiceCommand(
+    String command,
+    StateSetter setModalState,
+  ) async {
+    final text = command.trim();
+    if (text.isEmpty || _isExecutingLiveCommand) return;
+
+    setModalState(() {
+      _isExecutingLiveCommand = true;
+      _lastLiveActionMessage = 'Executing on laptop: "$text"...';
+    });
+
+    try {
+      final res = await _service.executeLiveDesktopCommand(text);
+      final message = res['message']?.toString() ?? 'Action completed on laptop.';
+      final screenshotB64 = res['screenshot'] as String?;
+
+      if (screenshotB64 != null && screenshotB64.isNotEmpty) {
+        try {
+          final decoded = base64Decode(screenshotB64);
+          setState(() {
+            _screenshot = decoded;
+          });
+        } catch (_) {}
+      }
+
+      setModalState(() {
+        _isExecutingLiveCommand = false;
+        _lastLiveActionMessage = message;
+      });
+
+      final cleanTts = message.replaceAll(RegExp(r'[*#_`~]'), '');
+      await _tts.speak(cleanTts);
+    } catch (e) {
+      setModalState(() {
+        _isExecutingLiveCommand = false;
+        _lastLiveActionMessage = 'Error: $e';
+      });
+    }
+  }
+
+  Widget _buildVoiceChip(String label, StateSetter setModalState) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      child: ActionChip(
+        label: Text(label, style: GoogleFonts.sourceSerif4(fontSize: 11)),
+        backgroundColor: AiraColors.cardDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        onPressed: () {
+          final clean = label.replaceFirst(RegExp(r'^[^\s]+\s+'), '');
+          setModalState(() => _liveVoiceCommand = clean);
+          _sendLiveDesktopVoiceCommand(clean, setModalState);
+        },
       ),
     );
   }
