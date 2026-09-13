@@ -11,6 +11,9 @@ import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart
 import 'package:aira_app/features/chat/presentation/screens/artifact_canvas_screen.dart';
 import 'package:aira_app/features/chat/presentation/widgets/plan_execution_card.dart';
 import 'package:aira_app/features/chat/presentation/widgets/action_approval_card.dart';
+import 'package:aira_app/features/chat/presentation/widgets/workspace_calendar_card.dart';
+import 'package:aira_app/features/chat/presentation/widgets/workspace_event_preview_card.dart';
+import 'package:aira_app/features/chat/presentation/widgets/workspace_email_digest_card.dart';
 import 'package:aira_app/core/agent/action_guardrail_manager.dart';
 
 /// Pure Claude-Style Message Bubble with Live Artifacts:
@@ -244,17 +247,78 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               action: widget.message.pendingApproval!,
               onApprove: () {
                 widget.message.pendingApproval!.status = ApprovalStatus.approved;
+                ref.read(chatProvider.notifier).approveWorkspaceDraft(widget.message.pendingApproval!);
                 setState(() {});
               },
               onEdit: (newContent) {
                 widget.message.pendingApproval!.status = ApprovalStatus.approved;
+                ref.read(chatProvider.notifier).approveWorkspaceDraft(widget.message.pendingApproval!, editedContent: newContent);
                 setState(() {});
               },
               onReject: () {
                 widget.message.pendingApproval!.status = ApprovalStatus.rejected;
+                ref.read(chatProvider.notifier).rejectWorkspaceDraft(widget.message.pendingApproval!);
                 setState(() {});
               },
             ),
+
+          // ── Google Workspace Calendar Card (Agenda, Next Meeting, Free Time) ──
+          if (widget.message.workspaceCalendarData != null) ...[
+            Builder(builder: (context) {
+              final data = widget.message.workspaceCalendarData!;
+              final typeStr = data['type'] as String? ?? 'agenda';
+              final cardType = typeStr == 'nextMeeting'
+                  ? CalendarCardType.nextMeeting
+                  : (typeStr == 'freeTime' ? CalendarCardType.freeTime : CalendarCardType.agenda);
+              final title = data['title'] as String? ?? 'Calendar';
+              final events = (data['events'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+              final freeSlots = (data['freeSlots'] as List?)?.cast<String>() ?? [];
+              return WorkspaceCalendarCard(
+                type: cardType,
+                title: title,
+                events: events,
+                freeSlots: freeSlots,
+                onPrepTap: () {
+                  ref.read(chatProvider.notifier).sendMessage('Prepare for my next meeting');
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+
+          // ── Google Workspace Unread Email Digest Card ──
+          if (widget.message.workspaceEmails != null) ...[
+            WorkspaceEmailDigestCard(
+              emails: widget.message.workspaceEmails!,
+              onDraftReply: (email) {
+                ref.read(chatProvider.notifier).draftEmailReply(email);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          // ── Google Workspace Calendar Event Preview Card ──
+          if (widget.message.workspaceEventPreview != null) ...[
+            Builder(builder: (context) {
+              final preview = widget.message.workspaceEventPreview!;
+              return WorkspaceEventPreviewCard(
+                title: preview['title'] ?? 'New Event',
+                date: preview['date'] ?? 'Today',
+                startTime: preview['startTime'] ?? '10:00 AM',
+                endTime: preview['endTime'] ?? '11:00 AM',
+                timezone: preview['timezone'] ?? 'Asia/Kolkata (IST)',
+                attendees: (preview['attendees'] as List?)?.cast<String>() ?? [],
+                description: preview['description'],
+                onConfirm: () {
+                  ref.read(chatProvider.notifier).confirmCreateEvent(preview);
+                },
+                onCancel: () {
+                  ref.read(chatProvider.notifier).cancelCreateEvent(preview);
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
 
           MarkdownBody(
             data: _streamedText,

@@ -3,9 +3,15 @@
 enum WorkspaceIntent {
   none,
   sendEmail,
+  draftEmail,
   readEmails,
+  unreadDigest,
   createEvent,
   listEvents,
+  todayAgenda,
+  nextMeeting,
+  freeTimeSlots,
+  meetingPrep,
   createDoc,
   readDoc,
   createSheet,
@@ -34,11 +40,22 @@ class WorkspaceCommand {
   String get description {
     switch (intent) {
       case WorkspaceIntent.sendEmail:
-        return 'Send email to ${params['to'] ?? 'recipient'}';
+      case WorkspaceIntent.draftEmail:
+        return 'Draft email to ${params['to'] ?? 'recipient'}';
+      case WorkspaceIntent.unreadDigest:
+        return 'Check unread email digest';
       case WorkspaceIntent.readEmails:
         return 'Read recent emails';
       case WorkspaceIntent.createEvent:
-        return 'Create calendar event: ${params['title'] ?? 'New Event'}';
+        return 'Preview calendar event: ${params['title'] ?? 'New Event'}';
+      case WorkspaceIntent.todayAgenda:
+        return 'Today\'s Calendar Agenda';
+      case WorkspaceIntent.nextMeeting:
+        return 'Next Upcoming Meeting';
+      case WorkspaceIntent.freeTimeSlots:
+        return 'Find Free Time Slots';
+      case WorkspaceIntent.meetingPrep:
+        return 'Meeting Preparation Brief';
       case WorkspaceIntent.listEvents:
         return 'Show upcoming calendar events';
       case WorkspaceIntent.createDoc:
@@ -66,10 +83,16 @@ class WorkspaceCommand {
   String get iconName {
     switch (intent) {
       case WorkspaceIntent.sendEmail:
+      case WorkspaceIntent.draftEmail:
       case WorkspaceIntent.readEmails:
+      case WorkspaceIntent.unreadDigest:
         return 'email';
       case WorkspaceIntent.createEvent:
       case WorkspaceIntent.listEvents:
+      case WorkspaceIntent.todayAgenda:
+      case WorkspaceIntent.nextMeeting:
+      case WorkspaceIntent.freeTimeSlots:
+      case WorkspaceIntent.meetingPrep:
         return 'calendar';
       case WorkspaceIntent.createDoc:
       case WorkspaceIntent.readDoc:
@@ -93,10 +116,56 @@ class WorkspaceIntentDetector {
   static WorkspaceCommand detect(String message) {
     final msg = message.toLowerCase().trim();
 
-    // ── Email intents ──
-    if (_matches(msg, ['send email', 'write email', 'compose email', 'email to', 'send a mail', 'send mail', 'mail to', 'send an email'])) {
+    // ── Stage G: Calendar Agenda, Next Meeting, Free Time, Meeting Prep ──
+    if (_matches(msg, [
+      "today's agenda", 'todays agenda', 'today agenda', 'agenda today',
+      'what do i have today', "what's on my schedule today", 'what is on my schedule today',
+      'my schedule today', 'meetings today', 'schedule for today',
+      'eeroju meetings', 'eeroju agenda', 'eeroju schedule',
+    ])) {
+      return WorkspaceCommand(intent: WorkspaceIntent.todayAgenda, params: {}, originalMessage: message);
+    }
+
+    if (_matches(msg, [
+      'when is my next meeting', 'what is my next meeting', 'next meeting',
+      'next event', 'next call', 'upcoming meeting', 'when is my next call',
+      'tarwatha meeting', 'next meeting eppudu',
+    ])) {
+      return WorkspaceCommand(intent: WorkspaceIntent.nextMeeting, params: {}, originalMessage: message);
+    }
+
+    if (_matches(msg, [
+      'free time', 'free slots', 'when am i free', 'am i free today',
+      'find free time', 'free time today', 'show free slots', 'free schedule',
+      'khaali eppudu', 'naaku free time eppudu',
+    ])) {
+      return WorkspaceCommand(intent: WorkspaceIntent.freeTimeSlots, params: {}, originalMessage: message);
+    }
+
+    if (_matches(msg, [
+      'meeting prep', 'prep for meeting', 'prep for my meeting', 'prepare for meeting',
+      'prep for next meeting', 'meeting preparation', 'meeting briefing',
+    ])) {
+      return WorkspaceCommand(intent: WorkspaceIntent.meetingPrep, params: {}, originalMessage: message);
+    }
+
+    // ── Stage G: Gmail Unread Digest & Emails ──
+    if (_matches(msg, [
+      'unread emails', 'check unread', 'unread mail', 'unread messages',
+      'summarize unread', 'inbox unread', 'check my unread emails',
+      'kotha mails', 'unread digest',
+    ])) {
+      return WorkspaceCommand(intent: WorkspaceIntent.unreadDigest, params: {}, originalMessage: message);
+    }
+
+    // ── Email Draft & Send Intents (Always routes through Human Review) ──
+    if (_matches(msg, [
+      'send email', 'write email', 'compose email', 'email to', 'send a mail',
+      'send mail', 'mail to', 'send an email', 'draft email', 'draft an email',
+      'draft a mail', 'prepare email',
+    ])) {
       final explicitEmailMatch = RegExp(r'([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})').firstMatch(message);
-      final toMatch = RegExp(r'(?:to|mail to)\s+([A-Za-z0-9._%+\-@]+)', caseSensitive: false).firstMatch(message);
+      final toMatch = RegExp(r'(?:to|mail to|draft to)\s+([A-Za-z0-9._%+\-@]+)', caseSensitive: false).firstMatch(message);
 
       String recipient = '';
       if (explicitEmailMatch != null) {
@@ -123,8 +192,8 @@ class WorkspaceIntentDetector {
       return WorkspaceCommand(intent: WorkspaceIntent.readEmails, params: {}, originalMessage: message);
     }
 
-    // ── Calendar intents ──
-    if (_matches(msg, ['schedule meeting', 'create event', 'add event', 'book meeting', 'schedule a call', 'set reminder', 'add an event'])) {
+    // ── Calendar Create Event ──
+    if (_matches(msg, ['schedule meeting', 'create event', 'add event', 'book meeting', 'schedule a call', 'set reminder', 'add an event', 'schedule event'])) {
       final titleMatch = RegExp(r'(called|named|titled|about|for|with)?\s*(.+?)(?:\s+on\s+|\s+at\s+|\s+tomorrow|\s+today|\s*$)', caseSensitive: false).firstMatch(message);
       final dateMatch = RegExp(r'(on|for)?\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|\d+[st|nd|rd|th]*\s+\w+)', caseSensitive: false).firstMatch(message);
       final timeMatch = RegExp(r'at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)', caseSensitive: false).firstMatch(message);
@@ -139,7 +208,7 @@ class WorkspaceIntentDetector {
       );
     }
 
-    if (_matches(msg, ['show calendar', 'my events', 'upcoming events', 'my schedule', 'what do i have today', 'meetings today', 'on my calendar', 'my calendar', 'this week'])) {
+    if (_matches(msg, ['show calendar', 'my events', 'upcoming events', 'my schedule', 'on my calendar', 'my calendar', 'this week'])) {
       return WorkspaceCommand(intent: WorkspaceIntent.listEvents, params: {}, originalMessage: message);
     }
 

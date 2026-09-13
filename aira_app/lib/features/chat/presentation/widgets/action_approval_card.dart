@@ -153,7 +153,7 @@ class ActionApprovalCard extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: onApprove,
                     icon: const Icon(Icons.check_rounded, size: 16),
-                    label: const Text('Approve & Send'),
+                    label: Text(action.actionType.toLowerCase().contains('email') ? 'Approve & Send via Gmail' : 'Approve & Execute'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green.shade700,
                       foregroundColor: Colors.white,

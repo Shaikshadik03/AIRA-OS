@@ -12,6 +12,9 @@ class ChatMessage {
   final String? base64Image;
   final AgentGoalPlan? plan;
   final PendingApprovalAction? pendingApproval;
+  final Map<String, dynamic>? workspaceCalendarData;
+  final List<Map<String, dynamic>>? workspaceEmails;
+  final Map<String, dynamic>? workspaceEventPreview;
 
   const ChatMessage({
     required this.id,
@@ -23,6 +26,9 @@ class ChatMessage {
     this.base64Image,
     this.plan,
     this.pendingApproval,
+    this.workspaceCalendarData,
+    this.workspaceEmails,
+    this.workspaceEventPreview,
   });
 
   bool get isUser => role == 'user';
@@ -42,6 +48,9 @@ class ChatMessage {
       pendingApproval: json['pendingApproval'] != null
           ? PendingApprovalAction.fromJson(Map<String, dynamic>.from(json['pendingApproval'] as Map))
           : null,
+      workspaceCalendarData: json['workspaceCalendarData'] != null ? Map<String, dynamic>.from(json['workspaceCalendarData'] as Map) : null,
+      workspaceEmails: json['workspaceEmails'] != null ? (json['workspaceEmails'] as List).cast<Map<String, dynamic>>() : null,
+      workspaceEventPreview: json['workspaceEventPreview'] != null ? Map<String, dynamic>.from(json['workspaceEventPreview'] as Map) : null,
     );
   }
 
@@ -55,6 +64,9 @@ class ChatMessage {
       'base64Image': base64Image,
       'plan': plan?.toJson(),
       'pendingApproval': pendingApproval?.toJson(),
+      'workspaceCalendarData': workspaceCalendarData,
+      'workspaceEmails': workspaceEmails,
+      'workspaceEventPreview': workspaceEventPreview,
     };
   }
 
@@ -85,6 +97,9 @@ class ChatMessage {
     String? content,
     bool? isStreaming,
     String? base64Image,
+    Map<String, dynamic>? workspaceCalendarData,
+    List<Map<String, dynamic>>? workspaceEmails,
+    Map<String, dynamic>? workspaceEventPreview,
   }) {
     return ChatMessage(
       id: id,
@@ -94,6 +109,11 @@ class ChatMessage {
       createdAt: createdAt,
       isStreaming: isStreaming ?? this.isStreaming,
       base64Image: base64Image ?? this.base64Image,
+      plan: plan,
+      pendingApproval: pendingApproval,
+      workspaceCalendarData: workspaceCalendarData ?? this.workspaceCalendarData,
+      workspaceEmails: workspaceEmails ?? this.workspaceEmails,
+      workspaceEventPreview: workspaceEventPreview ?? this.workspaceEventPreview,
     );
   }
 }

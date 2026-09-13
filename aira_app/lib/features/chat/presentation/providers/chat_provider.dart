@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:aira_app/core/agent/goal_planner_engine.dart';
+import 'package:aira_app/core/agent/action_guardrail_manager.dart';
 import 'package:aira_app/features/chat/domain/agentic_workflow_engine.dart';
 import 'package:aira_app/features/chat/domain/chat_models.dart';
 import 'package:aira_app/features/chat/domain/workspace_intent.dart';
@@ -1233,49 +1234,174 @@ class ChatNotifier extends StateNotifier<ChatState> {
       return;
     }
 
-    _addLoadingMessage('Working on it...');
+    _addLoadingMessage('Consulting Google Workspace...');
 
     try {
       String result = '';
+      PendingApprovalAction? pendingAction;
+      Map<String, dynamic>? calendarData;
+      List<Map<String, dynamic>>? emailsData;
+      Map<String, dynamic>? eventPreview;
 
       switch (command.intent) {
-        case WorkspaceIntent.listDriveFiles:
-          final files = await _workspace.listRecentDriveFiles();
-          if (files.isEmpty) {
-            result = 'No files found in your Google Drive.';
+        // ── Stage G: Calendar Agenda ──
+        case WorkspaceIntent.todayAgenda:
+          final agenda = await _workspace.getTodayAgenda();
+          if (agenda.isEmpty) {
+            result = 'You have a clear schedule today! No meetings are on your Google Calendar.';
           } else {
-            result = 'Your Recent Google Drive Files:\n\n';
-            for (final f in files) {
-              final isFolder = (f['mimeType'] as String).contains('folder');
-              final icon = isFolder ? '[Folder]' : '[File]';
-              result += '$icon **[${f['name']}](${f['link']})** (${f['size']})\n';
-            }
+            result = 'Here is your Google Calendar agenda for today with ${agenda.length} scheduled event(s):';
+            calendarData = {
+              'type': 'agenda',
+              'title': "Today's Agenda",
+              'events': agenda,
+            };
           }
           break;
 
-        case WorkspaceIntent.searchDriveFiles:
-          final query = command.params['query'] as String? ?? '';
-          final files = await _workspace.searchDriveFiles(query);
-          if (files.isEmpty) {
-            result = 'No files or folders found matching **"$query"** in Google Drive.';
+        // ── Stage G: Next Meeting ──
+        case WorkspaceIntent.nextMeeting:
+          final next = await _workspace.getNextMeeting();
+          if (next == null) {
+            result = 'You have no more upcoming meetings scheduled for today.';
           } else {
-            result = 'Google Drive Search Results for "$query":\n\n';
-            for (final f in files) {
-              final icon = (f['isFolder'] as bool) ? '[Folder]' : '[File]';
-              result += '$icon **[${f['name']}](${f['link']})**\n';
-            }
+            final startStr = _formatTimeString(next['start']);
+            result = 'Your next upcoming meeting is **${next['title']}** at $startStr.';
+            calendarData = {
+              'type': 'nextMeeting',
+              'title': 'Next Upcoming Meeting',
+              'events': [next],
+            };
           }
           break;
 
-        case WorkspaceIntent.uploadToDrive:
-          final filename = command.params['filename'] as String? ?? 'Note';
-          final fileContent = command.params['content'] as String? ?? content;
+        // ── Stage G: Free Time Slots ──
+        case WorkspaceIntent.freeTimeSlots:
+          final slots = await _workspace.findFreeTimeSlots();
+          if (slots.isEmpty) {
+            result = 'Your calendar is fully booked today without any 30+ minute open gaps between 9 AM and 6 PM.';
+          } else {
+            result = 'Here are your available free-time focus windows today:';
+            calendarData = {
+              'type': 'freeTime',
+              'title': 'Available Free-Time Slots',
+              'freeSlots': slots,
+            };
+          }
+          break;
 
-          final res = await _workspace.uploadTextFileToDrive(
-            filename: filename,
-            content: fileContent,
-          );
-          result = 'File Uploaded to Google Drive!\n\n**${res['name']}**\n[Open File in Drive](${res['link']})';
+        // ── Stage G: Meeting Preparation ──
+        case WorkspaceIntent.meetingPrep:
+          final next = await _workspace.getNextMeeting();
+          if (next == null) {
+            result = 'You have no upcoming meetings to prepare for today.';
+          } else {
+            result = _workspace.generateMeetingPrep(next);
+          }
+          break;
+
+        // ── Stage G: Gmail Unread Digest ──
+        case WorkspaceIntent.unreadDigest:
+          final unread = await _workspace.getUnreadEmailsDigest(maxResults: 5);
+          if (unread.isEmpty) {
+            result = 'Your Gmail inbox is completely caught up! No unread messages.';
+          } else {
+            result = 'Here are your recent unread emails. Tap **"Draft Reply"** on any email to prepare a safe response:';
+            emailsData = unread;
+          }
+          break;
+
+        // ── Stage G: Calendar Create Event Preview (Human-in-the-Loop) ──
+        case WorkspaceIntent.createEvent:
+          final title = command.params['title'] as String? ?? 'New Event';
+          final dateParam = command.params['date'] as String? ?? 'tomorrow';
+          final timeParam = command.params['time'] as String? ?? '10:00 AM';
+
+          final now = DateTime.now();
+          final eventDate = _parseDateParam(dateParam, now);
+          final startDateTime = _parseTimeParam(timeParam, eventDate);
+          final endDateTime = startDateTime.add(const Duration(hours: 1));
+
+          eventPreview = {
+            'title': title,
+            'date': '${eventDate.day}/${eventDate.month}/${eventDate.year}',
+            'startTime': _formatTimeClock(startDateTime),
+            'endTime': _formatTimeClock(endDateTime),
+            'timezone': 'Asia/Kolkata (IST)',
+            'attendees': <String>[],
+            'description': 'Scheduled via AIRA Assistant',
+            'startIso': startDateTime.toIso8601String(),
+            'endIso': endDateTime.toIso8601String(),
+          };
+
+          result = 'I have prepared this event proposal for you. **Please review the details below and tap confirm to add it to your Google Calendar:**';
+          break;
+
+        // ── Stage G: Gmail Draft & Review-Before-Send (Human-in-the-Loop) ──
+        case WorkspaceIntent.sendEmail:
+        case WorkspaceIntent.draftEmail:
+          String to = command.params['to'] as String? ?? '';
+          final rawSubject = command.params['subject'] as String? ?? '';
+          final rawBody = command.params['body'] as String? ?? '';
+          String lookupNote = '';
+
+          if (to.isNotEmpty && !to.contains('@')) {
+            try {
+              final contactMatch = await _workspace.searchGoogleContactEmail(to);
+              if (contactMatch != null && contactMatch['email'] != null) {
+                final cName = contactMatch['name'] ?? to;
+                final cEmail = contactMatch['email']!;
+                lookupNote = '*(Contact found: $cName <$cEmail>)* ';
+                to = cEmail;
+              }
+            } catch (_) {}
+
+            if (!to.contains('@')) {
+              final memoryEmail = await _memoryService.findEmailForName(to);
+              if (memoryEmail != null) {
+                lookupNote = '*(Email retrieved from AI Memory)* ';
+                to = memoryEmail;
+              }
+            }
+          }
+
+          if (to.isEmpty || !to.contains('@')) {
+            result = 'Who should I draft the email to? Please specify a contact name or email address like:\n> *"draft email to Rahul asking about tomorrow\'s meeting"*';
+          } else {
+            String emailBody = rawBody.trim();
+            if (emailBody.isEmpty ||
+                emailBody == content.trim() ||
+                emailBody.toLowerCase().startsWith('send mail') ||
+                emailBody.toLowerCase().startsWith('send email') ||
+                emailBody.toLowerCase().startsWith('draft email') ||
+                emailBody.toLowerCase().startsWith('draft a mail')) {
+              try {
+                emailBody = await _groq.chat(
+                  'Write a polite, concise, professional email body based on this user instruction: "$content". Do NOT include Subject lines, To lines, greetings placeholders, or bracketed blanks. Output only the email body text ready to send.',
+                  [],
+                );
+              } catch (_) {
+                emailBody = rawSubject.isNotEmpty
+                    ? 'Hi,\n\nI am writing to inquire regarding $rawSubject.\n\nPlease let me know your thoughts.\n\nBest regards,\nArsha'
+                    : 'Hi,\n\nHope you are having a productive day.\n\nBest regards,\nArsha';
+              }
+            }
+
+            final emailSubject = rawSubject.isNotEmpty
+                ? rawSubject
+                : 'Follow up regarding ${content.length > 25 ? content.substring(0, 25) : content}';
+
+            pendingAction = PendingApprovalAction(
+              id: 'draft_${DateTime.now().millisecondsSinceEpoch}',
+              actionType: 'email',
+              recipient: to,
+              subject: emailSubject,
+              content: emailBody,
+              status: ApprovalStatus.pending,
+            );
+
+            result = '$lookupNote I have prepared your email draft. **AIRA requires your explicit review and approval before sending.** Please review the details below:';
+          }
           break;
 
         case WorkspaceIntent.readEmails:
@@ -1290,71 +1416,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
           }
           break;
 
-        case WorkspaceIntent.sendEmail:
-          String to = command.params['to'] as String? ?? '';
-          final rawSubject = command.params['subject'] as String? ?? '';
-          final rawBody = command.params['body'] as String? ?? '';
-          String lookupNote = '';
-
-          if (to.isNotEmpty && !to.contains('@')) {
-            try {
-              final contactMatch = await _workspace.searchGoogleContactEmail(to);
-              if (contactMatch != null && contactMatch['email'] != null) {
-                final cName = contactMatch['name'] ?? to;
-                final cEmail = contactMatch['email']!;
-                lookupNote = '*Found in Google Contacts: **$cName** (`$cEmail`)*\n\n';
-                to = cEmail;
-              }
-            } catch (_) {}
-
-            if (!to.contains('@')) {
-              final memoryEmail = await _memoryService.findEmailForName(to);
-              if (memoryEmail != null) {
-                lookupNote = '*Retrieved email for **$to** from AI Memory (`$memoryEmail`)*\n\n';
-                to = memoryEmail;
-              }
-            }
-          }
-
-          if (to.isEmpty) {
-            result = 'Who should I send the email to? Please specify an email address or contact name like:\n> *"send email to Rahul asking about tomorrow\'s meeting"*';
-          } else if (!to.contains('@')) {
-            final emailSub = rawSubject.isNotEmpty ? rawSubject : "the details";
-            result = 'I see you want to send an email to **$to** regarding *"$emailSub"*, but I couldn\'t find them in your Google Contacts or AI Memory.\n\nPlease try again with their full email address:\n> *"send email to $to@gmail.com about $emailSub"*';
-          } else {
-            String emailBody = rawBody.trim();
-            if (emailBody.isEmpty ||
-                emailBody == content.trim() ||
-                emailBody.toLowerCase().startsWith('send mail') ||
-                emailBody.toLowerCase().startsWith('send email') ||
-                emailBody.toLowerCase().startsWith('send a mail')) {
-              try {
-                emailBody = await _groq.chat(
-                  'Write a polite, professional, short email body based on this user instruction: "$content". Do NOT include Subject lines, To lines, or placeholders. Write only the email body text ready to send.',
-                  [],
-                );
-              } catch (_) {
-                emailBody = rawSubject.isNotEmpty
-                    ? 'Hi,\n\nI am writing to inquire regarding $rawSubject.\n\nBest regards,\nAIRA'
-                    : 'Hi,\n\nHope you are doing well.\n\nBest regards,\nAIRA';
-              }
-            }
-
-            final emailSubject = rawSubject.isNotEmpty
-                ? rawSubject
-                : 'Message regarding ${content.length > 30 ? content.substring(0, 30) : content}';
-
-            await _workspace.sendEmail(
-              to: to,
-              subject: emailSubject,
-              body: emailBody,
-            );
-
-            final providerUsed = _groq.lastProviderName;
-            result = '$lookupNote sent successfully via Gmail! *(LLM Provider: $providerUsed)*\n\n**To:** $to\n**Subject:** $emailSubject\n\n> ${emailBody.replaceAll('\n', '\n> ')}';
-          }
-          break;
-
         case WorkspaceIntent.listEvents:
           final events = await _workspace.listEvents();
           if (events.isEmpty) {
@@ -1363,19 +1424,48 @@ class ChatNotifier extends StateNotifier<ChatState> {
             result = 'Your upcoming events:\n\n';
             for (final e in events) {
               final start = e['start'].toString().isNotEmpty ? e['start'] : 'No time set';
-              result += '**${e['title']}**\nLocation: $start\n${e['location'] != '' ? 'Location: ${e['location']}\n' : ''}\n';
+              result += '**${e['title']}**\nTime: $start\n${e['location'] != '' ? 'Location: ${e['location']}\n' : ''}\n';
             }
           }
           break;
 
-        case WorkspaceIntent.createEvent:
-          final title = command.params['title'] as String? ?? 'New Event';
-          final now = DateTime.now();
-          final start = DateTime(now.year, now.month, now.day + 1, 10, 0);
-          final end = start.add(const Duration(hours: 1));
+        case WorkspaceIntent.listDriveFiles:
+          final files = await _workspace.listRecentDriveFiles();
+          if (files.isEmpty) {
+            result = 'No files found in your Google Drive.';
+          } else {
+            result = 'Your Recent Google Drive Files:\n\n';
+            for (final f in files) {
+              final isFolder = (f['mimeType'] as String).contains('folder');
+              final icon = isFolder ? '📁' : '📄';
+              result += '$icon **[${f['name']}](${f['link']})** (${f['size']})\n';
+            }
+          }
+          break;
 
-          final event = await _workspace.createEvent(title: title, start: start, end: end);
-          result = 'Calendar event created!\n\n**${event['title']}**\nLink: ${event['link']}';
+        case WorkspaceIntent.searchDriveFiles:
+          final query = command.params['query'] as String? ?? '';
+          final files = await _workspace.searchDriveFiles(query);
+          if (files.isEmpty) {
+            result = 'No files or folders found matching **"$query"** in Google Drive.';
+          } else {
+            result = 'Google Drive Search Results for "$query":\n\n';
+            for (final f in files) {
+              final icon = (f['isFolder'] as bool) ? '📁' : '📄';
+              result += '$icon **[${f['name']}](${f['link']})**\n';
+            }
+          }
+          break;
+
+        case WorkspaceIntent.uploadToDrive:
+          final filename = command.params['filename'] as String? ?? 'Note';
+          final fileContent = command.params['content'] as String? ?? content;
+
+          final res = await _workspace.uploadTextFileToDrive(
+            filename: filename,
+            content: fileContent,
+          );
+          result = 'File Uploaded to Google Drive!\n\n**${res['name']}**\n[Open File in Drive](${res['link']})';
           break;
 
         case WorkspaceIntent.createDoc:
@@ -1433,7 +1523,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
 
       _removeLoadingMessage();
-      _addSystemMessage(result);
+      _addSystemMessage(
+        result,
+        pendingApproval: pendingAction,
+        workspaceCalendarData: calendarData,
+        workspaceEmails: emailsData,
+        workspaceEventPreview: eventPreview,
+      );
 
       if (_isVoiceEnabled && result.isNotEmpty) {
         await speakText(result);
@@ -1443,6 +1539,153 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final cleanErr = e.toString().replaceAll('Exception: ', '');
       _addSystemMessage('Workspace Action Failed\n\n$cleanErr');
     }
+  }
+
+  /// Approve and send an email draft via Gmail API (Human-in-the-Loop)
+  Future<void> approveWorkspaceDraft(PendingApprovalAction action, {String? editedContent}) async {
+    final finalContent = editedContent ?? action.content;
+    try {
+      await _workspace.sendEmail(
+        to: action.recipient,
+        subject: action.subject,
+        body: finalContent,
+      );
+      _addSystemMessage(
+        '✅ **Email Sent via Gmail!**\n\n**To:** ${action.recipient}\n**Subject:** ${action.subject}\n\n> ${finalContent.replaceAll('\n', '\n> ')}',
+      );
+      if (_isVoiceEnabled) {
+        await speakText('Your email to ${action.recipient} has been sent successfully.');
+      }
+    } catch (e) {
+      final cleanErr = e.toString().replaceAll('Exception: ', '');
+      _addSystemMessage('❌ **Failed to send email via Gmail:** $cleanErr');
+    }
+  }
+
+  /// Reject and cancel an email draft
+  void rejectWorkspaceDraft(PendingApprovalAction action) {
+    _addSystemMessage('🚫 Email draft to **${action.recipient}** was cancelled.');
+  }
+
+  /// Confirm and add a calendar event to Google Calendar
+  Future<void> confirmCreateEvent(Map<String, dynamic> preview) async {
+    try {
+      final title = preview['title'] as String? ?? 'New Event';
+      final start = DateTime.tryParse(preview['startIso'] ?? '') ?? DateTime.now().add(const Duration(days: 1));
+      final end = DateTime.tryParse(preview['endIso'] ?? '') ?? start.add(const Duration(hours: 1));
+      final desc = preview['description'] as String?;
+
+      final event = await _workspace.createEvent(
+        title: title,
+        start: start,
+        end: end,
+        description: desc,
+      );
+
+      final link = event['link'] ?? '';
+      _addSystemMessage(
+        '✅ **Calendar Event Confirmed!**\n\n**${event['title']}** has been added to your Google Calendar.\n${link.isNotEmpty ? '[Open in Calendar]($link)' : ''}',
+      );
+      if (_isVoiceEnabled) {
+        await speakText('Event $title has been added to your Google Calendar.');
+      }
+    } catch (e) {
+      final cleanErr = e.toString().replaceAll('Exception: ', '');
+      _addSystemMessage('❌ **Failed to create calendar event:** $cleanErr');
+    }
+  }
+
+  /// Cancel calendar event proposal
+  void cancelCreateEvent(Map<String, dynamic> preview) {
+    _addSystemMessage('🚫 Event proposal for **${preview['title']}** was cancelled.');
+  }
+
+  /// Draft a reply to an incoming email
+  Future<void> draftEmailReply(Map<String, dynamic> email) async {
+    final sender = email['from'] as String? ?? '';
+    final subject = email['subject'] as String? ?? '';
+    final snippet = email['snippet'] as String? ?? '';
+
+    String recipient = sender;
+    if (sender.contains('<') && sender.contains('>')) {
+      final match = RegExp(r'<([^>]+)>').firstMatch(sender);
+      if (match != null) recipient = match.group(1)!;
+    }
+
+    final replySubject = subject.toLowerCase().startsWith('re:') ? subject : 'Re: $subject';
+
+    _addLoadingMessage('Formulating polite response draft...');
+
+    try {
+      final safeSnippet = GoogleWorkspaceService.sanitizeUntrustedContent(snippet);
+      final draftBody = await _groq.chat(
+        'Write a polite, professional, concise reply to this email snippet: $safeSnippet. Do NOT include Subject lines, To lines, or placeholder brackets. Write only the reply body ready to send.',
+        [],
+      );
+
+      _removeLoadingMessage();
+
+      final pendingAction = PendingApprovalAction(
+        id: 'reply_${DateTime.now().millisecondsSinceEpoch}',
+        actionType: 'email',
+        recipient: recipient,
+        subject: replySubject,
+        content: draftBody,
+        status: ApprovalStatus.pending,
+      );
+
+      _addSystemMessage(
+        'I have drafted a response to **$sender**. **Please review and approve before sending:**',
+        pendingApproval: pendingAction,
+      );
+    } catch (e) {
+      _removeLoadingMessage();
+      _addSystemMessage('❌ Could not generate draft reply: $e');
+    }
+  }
+
+  static DateTime _parseDateParam(String dateStr, DateTime fallback) {
+    final d = dateStr.toLowerCase().trim();
+    if (d.contains('tomorrow')) return fallback.add(const Duration(days: 1));
+    if (d.contains('today')) return fallback;
+    final daysOfWeek = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    for (int i = 0; i < daysOfWeek.length; i++) {
+      if (d.contains(daysOfWeek[i])) {
+        final targetWeekday = i + 1;
+        var diff = targetWeekday - fallback.weekday;
+        if (diff <= 0) diff += 7;
+        return fallback.add(Duration(days: diff));
+      }
+    }
+    return fallback.add(const Duration(days: 1));
+  }
+
+  static DateTime _parseTimeParam(String timeStr, DateTime baseDate) {
+    final t = timeStr.toLowerCase().replaceAll(' ', '');
+    final isPm = t.contains('pm');
+    final digits = RegExp(r'(\d{1,2})(?::(\d{2}))?').firstMatch(t);
+    if (digits != null) {
+      var hour = int.tryParse(digits.group(1) ?? '10') ?? 10;
+      final min = int.tryParse(digits.group(2) ?? '0') ?? 0;
+      if (isPm && hour < 12) hour += 12;
+      if (!isPm && hour == 12) hour = 0;
+      return DateTime(baseDate.year, baseDate.month, baseDate.day, hour, min);
+    }
+    return DateTime(baseDate.year, baseDate.month, baseDate.day, 10, 0);
+  }
+
+  static String _formatTimeClock(DateTime dt) {
+    final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+    final min = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$min $period';
+  }
+
+  static String _formatTimeString(dynamic dtVal) {
+    if (dtVal == null) return '';
+    final dt = DateTime.tryParse(dtVal.toString());
+    if (dt == null) return dtVal.toString();
+    return _formatTimeClock(dt);
   }
 
   // ──────────────────── AI Chat ────────────────────
@@ -1594,13 +1837,23 @@ class ChatNotifier extends StateNotifier<ChatState> {
     state = state.copyWith(messages: [...state.messages, msg]);
   }
 
-  void _addSystemMessage(String content) {
+  void _addSystemMessage(
+    String content, {
+    PendingApprovalAction? pendingApproval,
+    Map<String, dynamic>? workspaceCalendarData,
+    List<Map<String, dynamic>>? workspaceEmails,
+    Map<String, dynamic>? workspaceEventPreview,
+  }) {
     final msg = ChatMessage(
       id: _uuid.v4(),
       conversationId: state.activeConversationId ?? 'local',
       role: 'assistant',
       content: content,
       createdAt: DateTime.now(),
+      pendingApproval: pendingApproval,
+      workspaceCalendarData: workspaceCalendarData,
+      workspaceEmails: workspaceEmails,
+      workspaceEventPreview: workspaceEventPreview,
     );
     state = state.copyWith(messages: [...state.messages, msg], isSending: false);
   }
