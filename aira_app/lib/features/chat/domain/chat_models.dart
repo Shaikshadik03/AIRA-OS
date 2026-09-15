@@ -16,6 +16,7 @@ class ChatMessage {
   final List<Map<String, dynamic>>? workspaceEmails;
   final Map<String, dynamic>? workspaceEventPreview;
   final Map<String, dynamic>? notificationDigestData;
+  final Map<String, dynamic>? androidActionData;
 
   const ChatMessage({
     required this.id,
@@ -31,6 +32,7 @@ class ChatMessage {
     this.workspaceEmails,
     this.workspaceEventPreview,
     this.notificationDigestData,
+    this.androidActionData,
   });
 
   bool get isUser => role == 'user';
@@ -54,6 +56,9 @@ class ChatMessage {
       workspaceEmails: json['workspaceEmails'] != null ? (json['workspaceEmails'] as List).cast<Map<String, dynamic>>() : null,
       workspaceEventPreview: json['workspaceEventPreview'] != null ? Map<String, dynamic>.from(json['workspaceEventPreview'] as Map) : null,
       notificationDigestData: json['notificationDigestData'] != null ? Map<String, dynamic>.from(json['notificationDigestData'] as Map) : null,
+      androidActionData: (json['androidActionData'] ?? json['android_action_data']) != null
+          ? Map<String, dynamic>.from((json['androidActionData'] ?? json['android_action_data']) as Map)
+          : null,
     );
   }
 
@@ -71,6 +76,8 @@ class ChatMessage {
       'workspaceEmails': workspaceEmails,
       'workspaceEventPreview': workspaceEventPreview,
       'notificationDigestData': notificationDigestData,
+      'androidActionData': androidActionData,
+      'android_action_data': androidActionData,
     };
   }
 
@@ -105,6 +112,7 @@ class ChatMessage {
     List<Map<String, dynamic>>? workspaceEmails,
     Map<String, dynamic>? workspaceEventPreview,
     Map<String, dynamic>? notificationDigestData,
+    Map<String, dynamic>? androidActionData,
   }) {
     return ChatMessage(
       id: id,
@@ -120,6 +128,7 @@ class ChatMessage {
       workspaceEmails: workspaceEmails ?? this.workspaceEmails,
       workspaceEventPreview: workspaceEventPreview ?? this.workspaceEventPreview,
       notificationDigestData: notificationDigestData ?? this.notificationDigestData,
+      androidActionData: androidActionData ?? this.androidActionData,
     );
   }
 }

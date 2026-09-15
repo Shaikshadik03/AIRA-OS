@@ -34,6 +34,9 @@ import 'package:aira_app/core/services/proactive_engine.dart';
 import 'package:aira_app/core/services/notification_monitor_service.dart';
 import 'package:aira_app/core/services/smart_reply_service.dart';
 import 'package:aira_app/core/services/social_world_monitor_service.dart';
+import 'package:aira_app/core/services/android_action_registry.dart';
+import 'package:aira_app/core/services/android_action_service.dart';
+import 'package:aira_app/features/chat/domain/android_action_detector.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -91,6 +94,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final NotificationService _notificationService = NotificationService();
   final RoutineService _routineService = RoutineService();
   final LaptopControlService _laptopService = LaptopControlService();
+  final AndroidActionService _androidActionService = AndroidActionService();
   final _uuid = const Uuid();
   final FlutterTts _tts = FlutterTts();
   bool _isVoiceEnabled = true;
@@ -310,6 +314,15 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
     }
 
+    // ── Check for Android Actions within Supported Boundaries (Stage K) ──
+    if (AndroidActionDetector.isAndroidAction(content)) {
+      final actionCommand = AndroidActionDetector.parse(content);
+      if (actionCommand != null) {
+        await _handleAndroidActionCommand(content, actionCommand);
+        return;
+      }
+    }
+
     // ── Check for WhatsApp Intent (Milestone Upgrade) ──
     final waCommand = WhatsAppIntentDetector.detect(content);
     if (waCommand.isWhatsAppCommand) {
@@ -439,6 +452,63 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
     // ── Normal AI chat flow (with auto web search) ──
     await _sendToAI(content, base64Image: base64Image);
+  }
+
+  // ──────────────────── Stage K: Android Actions & Boundaries Handlers ────────────────────
+
+  Future<void> _handleAndroidActionCommand(String content, AndroidActionCommand command) async {
+    _addUserMessage(content);
+    _addLoadingMessage('Preparing Android action...');
+
+    try {
+      _removeLoadingMessage();
+
+      final messageId = _uuid.v4();
+      final assistantMsg = ChatMessage(
+        id: messageId,
+        conversationId: state.activeConversationId ?? 'local',
+        role: 'assistant',
+        content: command.responseMessage,
+        createdAt: DateTime.now(),
+        androidActionData: command.actionData,
+      );
+
+      state = state.copyWith(messages: [...state.messages, assistantMsg]);
+
+      // If media action, execute immediately since it doesn't need drafting
+      if (command.type == AndroidActionType.controlMedia) {
+        final action = command.params['action'] as String? ?? 'play';
+        await _androidActionService.controlMedia(action: action);
+      }
+
+      if (_isVoiceEnabled) {
+        final cleanText = command.responseMessage.replaceAll(RegExp(r'[*#_`~]'), '');
+        await speakText(cleanText);
+      }
+    } catch (e) {
+      _removeLoadingMessage();
+      _addSystemMessage('❌ **Android action error:** $e');
+    }
+  }
+
+  /// Execute or launch an action from an interactive card in chat
+  Future<void> executeAndroidAction(Map<String, dynamic> actionData) async {
+    final type = actionData['actionType'] as String? ?? '';
+    if (type == AndroidActionType.composeMessage.name) {
+      await _androidActionService.launchMessageDraft(actionData);
+    } else if (type == AndroidActionType.calendarEvent.name) {
+      await _androidActionService.launchCalendarAction(actionData);
+    } else if (type == AndroidActionType.navigateMaps.name) {
+      final dest = actionData['destination'] as String? ?? 'Destination';
+      await _androidActionService.launchNavigation(destination: dest);
+    } else if (type == AndroidActionType.taskHandoff.name) {
+      final targetApp = actionData['targetApp'] as String? ?? 'App';
+      final query = actionData['searchQuery'] as String? ?? actionData['goal'] ?? '';
+      await _androidActionService.executeTaskHandoffLaunch(targetApp: targetApp, searchQuery: query);
+    } else if (type == 'safeLaunch') {
+      final targetApp = actionData['targetApp'] as String? ?? 'App';
+      await _androidActionService.launchAppSafely(targetApp);
+    }
   }
 
   // ──────────────────── WhatsApp Handlers ────────────────────

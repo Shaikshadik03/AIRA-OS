@@ -642,6 +642,130 @@ class MainActivity : FlutterActivity() {
                         result.success(mapOf("success" to success))
                     }
 
+                    // ── Stage K: Calendar Event Preparation Intent ──
+                    "createCalendarEvent" -> {
+                        val title = call.argument<String>("title") ?: "New Event"
+                        val description = call.argument<String>("description") ?: ""
+                        val location = call.argument<String>("location") ?: ""
+                        val beginTimeMs = (call.argument<Number>("beginTimeMs") ?: System.currentTimeMillis()).toLong()
+                        val endTimeMs = (call.argument<Number>("endTimeMs") ?: (beginTimeMs + 3600000)).toLong()
+                        val allDay = call.argument<Boolean>("allDay") ?: false
+
+                        val intent = Intent(Intent.ACTION_INSERT).apply {
+                            data = android.provider.CalendarContract.Events.CONTENT_URI
+                            putExtra(android.provider.CalendarContract.Events.TITLE, title)
+                            if (description.isNotEmpty()) putExtra(android.provider.CalendarContract.Events.DESCRIPTION, description)
+                            if (location.isNotEmpty()) putExtra(android.provider.CalendarContract.Events.EVENT_LOCATION, location)
+                            putExtra(android.provider.CalendarContract.EXTRA_EVENT_BEGIN_TIME, beginTimeMs)
+                            putExtra(android.provider.CalendarContract.EXTRA_EVENT_END_TIME, endTimeMs)
+                            putExtra(android.provider.CalendarContract.Events.ALL_DAY, allDay)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(mapOf(
+                            "success" to true,
+                            "title" to title,
+                            "beginTimeMs" to beginTimeMs,
+                            "endTimeMs" to endTimeMs
+                        ))
+                    }
+
+                    // ── Stage K: SMS Composer Intent (Separate prep from send) ──
+                    "composeSms" -> {
+                        val recipient = call.argument<String>("recipient") ?: ""
+                        val body = call.argument<String>("body") ?: ""
+                        val uri = if (recipient.isNotEmpty()) Uri.parse("smsto:$recipient") else Uri.parse("smsto:")
+                        val intent = Intent(Intent.ACTION_SENDTO, uri).apply {
+                            putExtra("sms_body", body)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(mapOf("success" to true, "recipient" to recipient, "body" to body))
+                    }
+
+                    // ── Stage K: Email Composer Intent ──
+                    "composeEmail" -> {
+                        val recipient = call.argument<String>("recipient") ?: ""
+                        val subject = call.argument<String>("subject") ?: ""
+                        val body = call.argument<String>("body") ?: ""
+                        val uri = if (recipient.isNotEmpty()) Uri.parse("mailto:$recipient") else Uri.parse("mailto:")
+                        val intent = Intent(Intent.ACTION_SENDTO, uri).apply {
+                            putExtra(Intent.EXTRA_SUBJECT, subject)
+                            putExtra(Intent.EXTRA_TEXT, body)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(mapOf("success" to true, "recipient" to recipient, "subject" to subject))
+                    }
+
+                    // ── Stage K: WhatsApp Message Intent ──
+                    "composeWhatsApp" -> {
+                        val phone = (call.argument<String>("phone") ?: "").replace("+", "").replace(" ", "").trim()
+                        val text = call.argument<String>("text") ?: ""
+                        val encodedText = URLEncoder.encode(text, "UTF-8")
+                        val url = if (phone.isNotEmpty()) {
+                            "https://api.whatsapp.com/send?phone=$phone&text=$encodedText"
+                        } else {
+                            "https://api.whatsapp.com/send?text=$encodedText"
+                        }
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            setPackage("com.whatsapp")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            startActivity(intent)
+                            result.success(mapOf("success" to true, "phone" to phone, "text" to text))
+                        } catch (e: Exception) {
+                            val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(fallbackIntent)
+                            result.success(mapOf("success" to true, "phone" to phone, "text" to text, "fallback" to true))
+                        }
+                    }
+
+                    // ── Stage K: Google Maps Navigation Intent ──
+                    "navigateMaps" -> {
+                        val destination = call.argument<String>("destination") ?: ""
+                        val mode = call.argument<String>("mode") ?: "d"
+                        val encodedDest = URLEncoder.encode(destination, "UTF-8")
+                        val uri = Uri.parse("google.navigation:q=$encodedDest&mode=$mode")
+                        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                            setPackage("com.google.android.apps.maps")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            startActivity(intent)
+                            result.success(mapOf("success" to true, "destination" to destination, "mode" to mode))
+                        } catch (e: Exception) {
+                            val webUri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$encodedDest")
+                            val fallbackIntent = Intent(Intent.ACTION_VIEW, webUri).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(fallbackIntent)
+                            result.success(mapOf("success" to true, "destination" to destination, "fallback" to true))
+                        }
+                    }
+
+                    // ── Stage K: Check if App is Installed ──
+                    "isAppInstalled" -> {
+                        val query = (call.argument<String>("query") ?: "").lowercase().trim()
+                        val pm = packageManager
+                        val pkg = popularApps[query] ?: query
+                        var isInstalled = false
+                        try {
+                            pm.getPackageInfo(pkg, 0)
+                            isInstalled = true
+                        } catch (e: Exception) {
+                            val installed = pm.getInstalledApplications(0)
+                            isInstalled = installed.any { 
+                                it.packageName.lowercase() == query ||
+                                it.loadLabel(pm).toString().lowercase() == query
+                            }
+                        }
+                        result.success(isInstalled)
+                    }
+
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {

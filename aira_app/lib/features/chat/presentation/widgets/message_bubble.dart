@@ -15,6 +15,7 @@ import 'package:aira_app/features/chat/presentation/widgets/workspace_calendar_c
 import 'package:aira_app/features/chat/presentation/widgets/workspace_event_preview_card.dart';
 import 'package:aira_app/features/chat/presentation/widgets/workspace_email_digest_card.dart';
 import 'package:aira_app/features/chat/presentation/widgets/notification_digest_card.dart';
+import 'package:aira_app/features/chat/presentation/widgets/android_action_card.dart';
 import 'package:aira_app/core/agent/action_guardrail_manager.dart';
 
 /// Pure Claude-Style Message Bubble with Live Artifacts:
@@ -324,6 +325,12 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           // ── Notification Intelligence Digest Card (Stage H) ──
           if (widget.message.notificationDigestData != null) ...[
             NotificationDigestCard(data: widget.message.notificationDigestData!),
+            const SizedBox(height: 8),
+          ],
+
+          // ── Android Actions & Boundaries Card (Stage K) ──
+          if (widget.message.androidActionData != null) ...[
+            AndroidActionCard(data: widget.message.androidActionData!),
             const SizedBox(height: 8),
           ],
 
