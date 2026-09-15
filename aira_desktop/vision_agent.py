@@ -13,15 +13,14 @@ import urllib.error
 import pyautogui
 from PIL import Image
 
-_DEFAULT_KEY = "".join([chr(c) for c in [103, 115, 107, 95, 78, 88, 114, 74, 115, 109, 57, 106, 72, 48, 65, 73, 117, 100, 121, 99, 105, 72, 74, 114, 87, 71, 100, 121, 98, 51, 70, 89, 67, 73, 75, 89, 57, 50, 52, 98, 74, 81, 75, 53, 110, 54, 74, 83, 75, 110, 115, 106, 83, 70, 87, 118]])
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", _DEFAULT_KEY)
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
 VISION_MODEL = "llama-3.2-11b-vision-preview"
 
 
 class VisionAgent:
     def __init__(self, groq_api_key: str = None):
-        self.api_key = groq_api_key or GROQ_API_KEY
+        self.api_key = (groq_api_key or GROQ_API_KEY or "").strip()
 
     def capture_screen_base64(self, max_width: int = 1280) -> tuple[str, int, int]:
         """Captures screen and returns resized base64 JPEG along with original screen dimensions."""
@@ -77,6 +76,8 @@ class VisionAgent:
         """
         Inspects screen visually to verify if a desired state or element is present.
         """
+        if not self.api_key:
+            return {"success": False, "verified": False, "error": "Groq API key not configured"}
         try:
             b64_img, orig_w, orig_h = self.capture_screen_base64()
             prompt = f"Look at this screenshot of a Windows laptop. Is the following condition TRUE or FALSE?\nCondition: {expected_condition}\nRespond with JSON: {{\"verified\": true/false, \"reason\": \"explanation\"}}"
@@ -117,6 +118,8 @@ class VisionAgent:
 
     def _detect_element_coordinates(self, b64_img: str, description: str, orig_w: int, orig_h: int) -> dict:
         """Calls Vision model to return normalized 0-1000 coordinates for the requested UI element."""
+        if not self.api_key:
+            return None
         prompt = (
             f"Locate the UI element described as: '{description}'.\n"
             f"Return the (x, y) pixel coordinates normalized to a 1000x1000 grid where (0,0) is top-left and (1000,1000) is bottom-right.\n"

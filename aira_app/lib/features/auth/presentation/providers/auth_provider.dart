@@ -12,11 +12,22 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
     _initAuthListener();
   }
 
-  final _supabase = Supabase.instance.client;
+  SupabaseClient? get _supabase {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
   String? errorMessage;
 
   void _initAuthListener() {
-    _supabase.auth.onAuthStateChange.listen((data) {
+    final client = _supabase;
+    if (client == null) {
+      state = AuthStatus.unauthenticated;
+      return;
+    }
+    client.auth.onAuthStateChange.listen((data) {
       if (data.session != null) {
         ApiService().setAuthToken(data.session!.accessToken);
         state = AuthStatus.authenticated;
@@ -30,13 +41,18 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
   /// Check if user is already logged in (session persists).
   Future<void> checkAuthStatus() async {
     state = AuthStatus.loading;
+    final client = _supabase;
+    if (client == null) {
+      state = AuthStatus.unauthenticated;
+      return;
+    }
     try {
-      final session = _supabase.auth.currentSession;
+      final session = client.auth.currentSession;
       if (session != null) {
         state = AuthStatus.authenticated;
       } else {
         await Future.delayed(const Duration(milliseconds: 300));
-        if (_supabase.auth.currentSession == null) {
+        if (client.auth.currentSession == null) {
           state = AuthStatus.unauthenticated;
         } else {
           state = AuthStatus.authenticated;
@@ -51,6 +67,12 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
   Future<bool> signIn(String email, String password) async {
     state = AuthStatus.loading;
     errorMessage = null;
+    final client = _supabase;
+    if (client == null) {
+      errorMessage = 'Supabase is not configured';
+      state = AuthStatus.error;
+      return false;
+    }
     try {
       if (email.trim().isEmpty || password.trim().isEmpty) {
         errorMessage = 'Please enter email and password';
@@ -58,7 +80,7 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
         return false;
       }
 
-      final response = await _supabase.auth.signInWithPassword(
+      final response = await client.auth.signInWithPassword(
         email: email.trim(),
         password: password.trim(),
       );
@@ -86,6 +108,12 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
   Future<bool> signUp(String email, String password) async {
     state = AuthStatus.loading;
     errorMessage = null;
+    final client = _supabase;
+    if (client == null) {
+      errorMessage = 'Supabase is not configured';
+      state = AuthStatus.error;
+      return false;
+    }
     try {
       if (email.trim().isEmpty || password.trim().isEmpty) {
         errorMessage = 'Please fill all fields';
@@ -93,7 +121,7 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
         return false;
       }
 
-      final response = await _supabase.auth.signUp(
+      final response = await client.auth.signUp(
         email: email.trim(),
         password: password.trim(),
       );
@@ -121,6 +149,12 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
   Future<bool> signInWithGoogle() async {
     state = AuthStatus.loading;
     errorMessage = null;
+    final client = _supabase;
+    if (client == null) {
+      errorMessage = 'Supabase is not configured';
+      state = AuthStatus.error;
+      return false;
+    }
     try {
       const webClientId = '952571077863-8ucblk4et686f7t1hqeuj90mot2othgp.apps.googleusercontent.com';
       
@@ -147,7 +181,7 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
         throw 'Missing Google Auth Tokens';
       }
 
-      await _supabase.auth.signInWithIdToken(
+      await client.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
         accessToken: accessToken,
@@ -173,7 +207,9 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
     try {
       await GoogleSignIn().signOut();
     } catch (_) {}
-    await _supabase.auth.signOut();
+    try {
+      await _supabase?.auth.signOut();
+    } catch (_) {}
     state = AuthStatus.unauthenticated;
     errorMessage = null;
   }
@@ -186,22 +222,33 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthStatus>((ref) {
 final currentUserProvider = Provider<UserModel?>((ref) {
   final authState = ref.watch(authProvider);
   if (authState == AuthStatus.authenticated) {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user != null) {
-      return UserModel(
-        id: user.id,
-        email: user.email ?? '',
-        displayName: user.userMetadata?['display_name'] ??
-            user.userMetadata?['name'] ??
-            user.userMetadata?['full_name'] ??
-            user.email?.split('@').first ??
-            'User',
-        timezone: 'Asia/Kolkata',
-        aiPersonality: 'mentor',
-        onboardingComplete: true,
-        createdAt: DateTime.tryParse(user.createdAt) ?? DateTime.now(),
-      );
-    }
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        return UserModel(
+          id: user.id,
+          email: user.email ?? '',
+          displayName: user.userMetadata?['display_name'] ??
+              user.userMetadata?['name'] ??
+              user.userMetadata?['full_name'] ??
+              user.email?.split('@').first ??
+              'User',
+          timezone: 'Asia/Kolkata',
+          aiPersonality: 'mentor',
+          onboardingComplete: true,
+          createdAt: DateTime.tryParse(user.createdAt) ?? DateTime.now(),
+        );
+      }
+    } catch (_) {}
+    return UserModel(
+      id: 'local_user',
+      email: 'user@aira.local',
+      displayName: 'AIRA Explorer',
+      timezone: 'Asia/Kolkata',
+      aiPersonality: 'mentor',
+      onboardingComplete: true,
+      createdAt: DateTime.now(),
+    );
   }
   return null;
 });

@@ -85,6 +85,7 @@ class DiagnosticLogger {
 
   void info(String tag, String message) => log(LogSeverity.info, tag, message);
   void warn(String tag, String message) => log(LogSeverity.warn, tag, message);
+  void warning(String tag, String message) => warn(tag, message);
   void error(String tag, String message, [dynamic error]) {
     final fullMessage = error != null ? '$message | Details: $error' : message;
     log(LogSeverity.error, tag, fullMessage);

@@ -7,10 +7,16 @@ class SupabaseMemoryService {
   factory SupabaseMemoryService() => _instance;
   SupabaseMemoryService._internal();
 
-  final _db = Supabase.instance.client;
+  SupabaseClient? get _db {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
   final List<Map<String, dynamic>> _localCache = [];
 
-  String? get _userId => _db.auth.currentUser?.id;
+  String? get _userId => _db?.auth.currentUser?.id;
 
   /// Save a new memory (e.g. "Rahul's email is rahul@gmail.com").
   Future<Map<String, dynamic>> saveMemory({
@@ -20,6 +26,7 @@ class SupabaseMemoryService {
     final cleanContent = content.trim();
     if (cleanContent.isEmpty) throw Exception('Memory content cannot be empty');
 
+    final db = _db;
     final uid = _userId;
     final item = {
       'id': DateTime.now().millisecondsSinceEpoch.toString(),
@@ -28,9 +35,9 @@ class SupabaseMemoryService {
       'created_at': DateTime.now().toIso8601String(),
     };
 
-    if (uid != null) {
+    if (db != null && uid != null) {
       try {
-        final resp = await _db.from('memories').insert({
+        final resp = await db.from('memories').insert({
           'user_id': uid,
           'content': cleanContent,
           'category': category,
@@ -49,10 +56,11 @@ class SupabaseMemoryService {
 
   /// List all memories stored for the current user.
   Future<List<Map<String, dynamic>>> listMemories() async {
+    final db = _db;
     final uid = _userId;
-    if (uid != null) {
+    if (db != null && uid != null) {
       try {
-        final response = await _db
+        final response = await db
             .from('memories')
             .select('id, content, category, created_at')
             .eq('user_id', uid)
@@ -71,10 +79,11 @@ class SupabaseMemoryService {
 
   /// Delete a memory by ID.
   Future<void> deleteMemory(String memoryId) async {
+    final db = _db;
     final uid = _userId;
-    if (uid != null) {
+    if (db != null && uid != null) {
       try {
-        await _db.from('memories').delete().eq('id', memoryId);
+        await db.from('memories').delete().eq('id', memoryId);
       } catch (_) {}
     }
     _localCache.removeWhere((m) => m['id'] == memoryId);
@@ -82,10 +91,11 @@ class SupabaseMemoryService {
 
   /// Clear all stored memories for the user.
   Future<void> clearAllMemories() async {
+    final db = _db;
     final uid = _userId;
-    if (uid != null) {
+    if (db != null && uid != null) {
       try {
-        await _db.from('memories').delete().eq('user_id', uid);
+        await db.from('memories').delete().eq('user_id', uid);
       } catch (_) {}
     }
     _localCache.clear();

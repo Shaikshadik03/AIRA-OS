@@ -175,9 +175,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 onPressed: () async {
                   final name = _nameController.text.trim();
                   if (name.isNotEmpty) {
-                    await Supabase.instance.client.auth.updateUser(
-                      UserAttributes(data: {'display_name': name}),
-                    );
+                    try {
+                      await Supabase.instance.client.auth.updateUser(
+                        UserAttributes(data: {'display_name': name}),
+                      );
+                    } catch (_) {}
                     // Force refresh of providers if needed, or simply navigate
                   }
                   if (context.mounted) context.go('/chat');

@@ -250,16 +250,27 @@ class LlmService {
       });
       return _parseOpenAiResponse(resp.data);
     } catch (e) {
-      if (model != 'openai/gpt-oss-20b' && base64Image == null) {
-        debugPrint('[GROQ] Retrying with model openai/gpt-oss-20b...');
-        final resp = await dio.post('/chat/completions', data: {
-          'model': 'openai/gpt-oss-20b',
-          'messages': messages,
-          'temperature': 0.7,
-          'max_tokens': 4096,
-          'stream': false,
-        });
-        return _parseOpenAiResponse(resp.data);
+      if (e is DioException && e.response?.statusCode == 429) {
+        DiagnosticLogger().warning('LLM_GROQ', 'Groq rate limit (HTTP 429) hit for model $model');
+      }
+      if (model != AppConfig.groqFallbackModel && base64Image == null) {
+        debugPrint('[GROQ] Primary model failed ($e). Retrying with fallback model ${AppConfig.groqFallbackModel}...');
+        try {
+          final resp = await dio.post('/chat/completions', data: {
+            'model': AppConfig.groqFallbackModel,
+            'messages': messages,
+            'temperature': 0.7,
+            'max_tokens': 4096,
+            'stream': false,
+          });
+          return _parseOpenAiResponse(resp.data);
+        } catch (retryErr) {
+          if (retryErr is DioException && retryErr.response?.statusCode == 429) {
+            DiagnosticLogger().warning('LLM_GROQ', 'Groq rate limit (HTTP 429) hit for fallback model ${AppConfig.groqFallbackModel}');
+          }
+          debugPrint('[GROQ] Fallback model also failed ($retryErr). Escalating to Gemini...');
+          rethrow;
+        }
       }
       rethrow;
     }
@@ -299,13 +310,19 @@ class LlmService {
 
     final model = AppConfig.geminiModel;
 
-    final resp = await dio.post(
-      '/models/$model:generateContent',
-      queryParameters: {'key': apiKey},
-      data: payload,
-    );
-
-    return parseGeminiResponse(resp.data);
+    try {
+      final resp = await dio.post(
+        '/models/$model:generateContent',
+        queryParameters: {'key': apiKey},
+        data: payload,
+      );
+      return parseGeminiResponse(resp.data);
+    } catch (e) {
+      if (e is DioException && e.response?.statusCode == 429) {
+        DiagnosticLogger().warning('LLM_GEMINI', 'Gemini rate limit (HTTP 429) hit');
+      }
+      rethrow;
+    }
   }
 
   // ──────────────────── OpenRouter Provider (OpenAI Style) ────────────────────
@@ -349,15 +366,21 @@ class LlmService {
         ? 'openai/gpt-4o-mini'
         : AppConfig.openRouterModel;
 
-    final resp = await dio.post('/chat/completions', data: {
-      'model': model,
-      'messages': messages,
-      'temperature': 0.7,
-      'max_tokens': 4096,
-      'stream': false,
-    });
-
-    return _parseOpenAiResponse(resp.data);
+    try {
+      final resp = await dio.post('/chat/completions', data: {
+        'model': model,
+        'messages': messages,
+        'temperature': 0.7,
+        'max_tokens': 4096,
+        'stream': false,
+      });
+      return _parseOpenAiResponse(resp.data);
+    } catch (e) {
+      if (e is DioException && e.response?.statusCode == 429) {
+        DiagnosticLogger().warning('LLM_OPENROUTER', 'OpenRouter rate limit (HTTP 429) hit');
+      }
+      rethrow;
+    }
   }
 
   // ──────────────────── Helpers & Adapters ────────────────────

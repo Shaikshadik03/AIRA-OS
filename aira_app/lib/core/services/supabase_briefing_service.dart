@@ -6,7 +6,13 @@ class SupabaseBriefingService {
   factory SupabaseBriefingService() => _instance;
   SupabaseBriefingService._internal();
 
-  final _db = Supabase.instance.client;
+  SupabaseClient? get _db {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Fetches the latest morning and night briefings.
   Future<Map<String, Map<String, dynamic>?>> getLatestBriefings() async {
@@ -15,9 +21,12 @@ class SupabaseBriefingService {
       'night': null,
     };
 
+    final db = _db;
+    if (db == null) return result;
+
     try {
       for (final mode in ['morning', 'night']) {
-        final response = await _db
+        final response = await db
             .from('briefings')
             .select('mode, content, created_at')
             .eq('mode', mode)

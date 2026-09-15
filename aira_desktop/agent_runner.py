@@ -21,12 +21,10 @@ import terminal_runner
 import clipboard_sync
 import vision_agent
 
-# Default Groq API key from environment or dynamic fallback
-_DEFAULT_KEY = "".join([chr(c) for c in [103, 115, 107, 95, 78, 88, 114, 74, 115, 109, 57, 106, 72, 48, 65, 73, 117, 100, 121, 99, 105, 72, 74, 114, 87, 71, 100, 121, 98, 51, 70, 89, 67, 73, 75, 89, 57, 50, 52, 98, 74, 81, 75, 53, 110, 54, 74, 83, 75, 110, 115, 106, 83, 70, 87, 118]])
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", _DEFAULT_KEY)
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "openai/gpt-oss-120b"
-GROQ_FALLBACK_MODEL = "openai/gpt-oss-20b"
+GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_FALLBACK_MODEL = "llama-3.1-8b-instant"
 
 
 PLANNER_SYSTEM_PROMPT = """You are AIRA Autonomous Agentic Task Planner.
@@ -77,6 +75,9 @@ class AgentRunner:
 
     def plan_task(self, prompt: str) -> List[Dict[str, Any]]:
         """Calls Groq LLM to decompose the user goal into atomic action steps."""
+        if not self.api_key:
+            return self._rule_based_fallback_plan(prompt)
+
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",

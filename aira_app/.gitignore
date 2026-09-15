@@ -45,5 +45,9 @@ app.*.map.json
 /android/app/release
 
 # Local secrets — never commit these
+.env
+.env.*
+!.env.example
 .env.local
 *.env.local
+

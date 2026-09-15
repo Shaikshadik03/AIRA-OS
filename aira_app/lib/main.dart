@@ -33,11 +33,20 @@ void main() async {
     ),
   );
 
-  // Initialize Supabase
-  await Supabase.initialize(
-    url: AppConfig.supabaseUrl,
-    publishableKey: AppConfig.supabaseAnonKey,
-  );
+  // Initialize Supabase (with fallback if credentials not provided)
+  if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnonKey.isNotEmpty) {
+    try {
+      await Supabase.initialize(
+        url: AppConfig.supabaseUrl,
+        publishableKey: AppConfig.supabaseAnonKey,
+      );
+      debugPrint('[SUPABASE] Initialized successfully');
+    } catch (e) {
+      debugPrint('[SUPABASE] Initialization failed ($e). Operating in offline/local cache mode.');
+    }
+  } else {
+    debugPrint('[SUPABASE] Not configured. Operating in offline/local cache mode.');
+  }
 
   // Initialize Hive for local chat storage
   await Hive.initFlutter();

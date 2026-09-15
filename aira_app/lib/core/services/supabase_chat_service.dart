@@ -8,18 +8,25 @@ class SupabaseChatService {
   factory SupabaseChatService() => _instance;
   SupabaseChatService._internal();
 
-  final _db = Supabase.instance.client;
+  SupabaseClient? get _db {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
 
-  String? get _userId => _db.auth.currentUser?.id;
+  String? get _userId => _db?.auth.currentUser?.id;
 
   // ──────────────────── Conversations ────────────────────
 
   /// Create a new conversation and return its ID.
   Future<String> createConversation({String? title}) async {
+    final db = _db;
     final uid = _userId;
-    if (uid == null) throw Exception('Not authenticated');
+    if (db == null || uid == null) throw Exception('Not authenticated');
 
-    final response = await _db.from('conversations').insert({
+    final response = await db.from('conversations').insert({
       'user_id': uid,
       'title': title ?? 'New Chat',
     }).select('id').single();
@@ -29,15 +36,19 @@ class SupabaseChatService {
 
   /// Update the title of a conversation.
   Future<void> updateConversationTitle(String conversationId, String title) async {
-    await _db.from('conversations').update({'title': title}).eq('id', conversationId);
+    final db = _db;
+    if (db != null) {
+      await db.from('conversations').update({'title': title}).eq('id', conversationId);
+    }
   }
 
   /// List all conversations for the current user, most recent first.
   Future<List<Map<String, dynamic>>> listConversations({int limit = 30}) async {
+    final db = _db;
     final uid = _userId;
-    if (uid == null) return [];
+    if (db == null || uid == null) return [];
 
-    final response = await _db
+    final response = await db
         .from('conversations')
         .select('id, title, created_at, updated_at')
         .eq('user_id', uid)
@@ -49,7 +60,10 @@ class SupabaseChatService {
 
   /// Delete a conversation and all its messages.
   Future<void> deleteConversation(String conversationId) async {
-    await _db.from('conversations').delete().eq('id', conversationId);
+    final db = _db;
+    if (db != null) {
+      await db.from('conversations').delete().eq('id', conversationId);
+    }
   }
 
   // ──────────────────── Messages ────────────────────
@@ -60,10 +74,11 @@ class SupabaseChatService {
     required String role,
     required String content,
   }) async {
+    final db = _db;
     final uid = _userId;
-    if (uid == null) return;
+    if (db == null || uid == null) return;
 
-    await _db.from('messages').insert({
+    await db.from('messages').insert({
       'conversation_id': conversationId,
       'user_id': uid,
       'role': role,
@@ -71,14 +86,17 @@ class SupabaseChatService {
     });
 
     // Bump the conversation's updated_at so it appears at top of list
-    await _db.from('conversations').update({
+    await db.from('conversations').update({
       'updated_at': DateTime.now().toIso8601String(),
     }).eq('id', conversationId);
   }
 
   /// Load all messages for a conversation.
   Future<List<ChatMessage>> loadMessages(String conversationId) async {
-    final response = await _db
+    final db = _db;
+    if (db == null) return [];
+
+    final response = await db
         .from('messages')
         .select('id, conversation_id, role, content, created_at')
         .eq('conversation_id', conversationId)
