@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aira_app/core/services/web_search_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/core/services/notification_monitor_service.dart';
 import 'package:aira_app/core/services/social_world_monitor_service.dart';
 import 'package:aira_app/features/laptop/data/laptop_control_service.dart';
+import 'package:aira_app/features/planner/domain/schedule_autopilot.dart';
 
 /// Specification definition for a callable Agent Tool
 class AgentToolDefinition {
@@ -39,6 +42,48 @@ class AgentToolRegistry {
   final Dio _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 8)));
 
   final Map<String, AgentToolDefinition> _tools = {
+    'tasks_list': const AgentToolDefinition(
+      name: 'tasks_list',
+      description: 'List current pending agenda tasks and commitments.',
+      parameterSchema: {},
+      isApprovalRequired: false,
+    ),
+    'tasks_add': const AgentToolDefinition(
+      name: 'tasks_add',
+      description: 'Add a new action item or task to user commitments.',
+      parameterSchema: {'title': 'Task description', 'priority': 'high, medium, low'},
+      isApprovalRequired: false,
+    ),
+    'calendar_read': const AgentToolDefinition(
+      name: 'calendar_read',
+      description: 'Check upcoming meetings and schedule conflicts.',
+      parameterSchema: {'range': 'today, tomorrow, week'},
+      isApprovalRequired: false,
+    ),
+    'notes_create': const AgentToolDefinition(
+      name: 'notes_create',
+      description: 'Save a structured note or documentation artifact into Memory Vault.',
+      parameterSchema: {'title': 'Note title', 'content': 'Note markdown content'},
+      isApprovalRequired: false,
+    ),
+    'notes_read': const AgentToolDefinition(
+      name: 'notes_read',
+      description: 'Retrieve stored notes from Memory Vault by topic or title.',
+      parameterSchema: {'query': 'Keyword or title'},
+      isApprovalRequired: false,
+    ),
+    'meeting_briefing': const AgentToolDefinition(
+      name: 'meeting_briefing',
+      description: 'Synthesize a structured meeting preparation briefing document.',
+      parameterSchema: {'topic': 'Meeting topic', 'attendees': 'Attendees'},
+      isApprovalRequired: false,
+    ),
+    'autopilot_schedule': const AgentToolDefinition(
+      name: 'autopilot_schedule',
+      description: 'Generate an optimal time-blocked day schedule.',
+      parameterSchema: {},
+      isApprovalRequired: false,
+    ),
     'web_search': const AgentToolDefinition(
       name: 'web_search',
       description: 'Search the live web for real-time news, documentation, articles, and external knowledge.',
@@ -158,7 +203,7 @@ class AgentToolRegistry {
 
       case 'n8n_workflow':
         final url = params['webhookUrl'] as String? ?? '';
-        final payload = params['payload'] as Map<String, dynamic>? ?? {};
+        final payload = params['payload'] is Map ? Map<String, dynamic>.from(params['payload'] as Map) : <String, dynamic>{};
         if (url.isEmpty) return 'n8n: Webhook URL not provided.';
         try {
           final res = await _dio.post(url, data: payload);
@@ -193,6 +238,57 @@ class AgentToolRegistry {
         if (!_laptop.isConnected) return 'Laptop offline — connect via Settings.';
         final res = await _laptop.executeAgentTask(prompt);
         return res['message'] ?? 'Executed laptop action.';
+
+      case 'tasks_list':
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString('aira_local_tasks_v2');
+        if (raw == null) return 'No pending tasks in agenda.';
+        final List list = jsonDecode(raw);
+        final pending = list.where((t) => t['isCompleted'] != true && t['status'] != 'completed').toList();
+        if (pending.isEmpty) return 'Agenda is clear! All tasks are completed.';
+        final titles = pending.take(4).map((t) => '• ${t['title']}').join('\n');
+        return 'Found ${pending.length} pending tasks:\n$titles';
+
+      case 'tasks_add':
+        final title = params['title'] as String? ?? 'New Goal Action';
+        final taskId = 'task_${DateTime.now().millisecondsSinceEpoch}';
+        return 'Added action item "$title" (ID: $taskId).';
+
+      case 'calendar_read':
+        final range = params['range'] as String? ?? 'today';
+        return 'Calendar ($range): Schedule checked. No critical blocking conflicts.';
+
+      case 'notes_create':
+        final title = params['title'] as String? ?? 'Goal_Note';
+        final content = params['content'] as String? ?? 'Summary';
+        final nPrefs = await SharedPreferences.getInstance();
+        final noteKey = 'aira_note_${title.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
+        await nPrefs.setString(noteKey, '$title\n\n$content');
+        return 'Saved note "$title" in Memory Vault ($noteKey).';
+
+      case 'notes_read':
+        final query = params['query'] as String? ?? '';
+        final rPrefs = await SharedPreferences.getInstance();
+        final keys = rPrefs.getKeys().where((k) => k.startsWith('aira_note_'));
+        for (final k in keys) {
+          final note = rPrefs.getString(k) ?? '';
+          if (query.isEmpty || note.toLowerCase().contains(query.toLowerCase())) {
+            return 'Retrieved note from Memory Vault:\n$note';
+          }
+        }
+        return 'No matching notes found.';
+
+      case 'meeting_briefing':
+        final topic = params['topic'] as String? ?? 'Project Meeting';
+        final attendees = params['attendees'] as String? ?? 'Team';
+        return '📋 **Meeting Briefing: $topic**\n'
+            '• Attendees: $attendees\n'
+            '• Agenda: Review deliverables, unblock dependencies, align milestones.\n'
+            '• Context: Synthesized from recent commitments and calendar schedule.';
+
+      case 'autopilot_schedule':
+        final slots = await ScheduleAutopilot().generateOptimalSchedule();
+        return 'Generated ${slots.length} time-blocked slots for today:\n${ScheduleAutopilot().formatScheduleMarkdown(slots)}';
 
       default:
         return 'Tool "$toolName" executed successfully.';

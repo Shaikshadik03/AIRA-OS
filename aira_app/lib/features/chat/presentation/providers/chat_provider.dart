@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:aira_app/core/agent/plan_models.dart';
 import 'package:aira_app/core/agent/goal_planner_engine.dart';
 import 'package:aira_app/core/agent/action_guardrail_manager.dart';
 import 'package:aira_app/features/chat/domain/agentic_workflow_engine.dart';
@@ -392,6 +393,22 @@ class ChatNotifier extends StateNotifier<ChatState> {
             }).toList();
             state = state.copyWith(messages: updatedMessages);
           },
+          onApprovalRequired: (pendingStep) {
+            final updatedMessages = state.messages.map((m) {
+              if (m.id == messageId) {
+                return ChatMessage(
+                  id: m.id,
+                  conversationId: m.conversationId,
+                  role: m.role,
+                  content: '⏸️ Step ${pendingStep.stepId} requires your authorization: **${pendingStep.title}**',
+                  createdAt: m.createdAt,
+                  plan: plan,
+                );
+              }
+              return m;
+            }).toList();
+            state = state.copyWith(messages: updatedMessages);
+          },
           onTaskCreated: (title) async {
             await PlannerNotifier.active.addTask(title: title);
           },
@@ -509,6 +526,138 @@ class ChatNotifier extends StateNotifier<ChatState> {
       final targetApp = actionData['targetApp'] as String? ?? 'App';
       await _androidActionService.launchAppSafely(targetApp);
     }
+  }
+
+  /// Approve a waiting plan step and resume multi-step execution
+  Future<void> approvePlanStep(String planId, int stepId) async {
+    final msgIndex = state.messages.indexWhere((m) => m.plan?.id == planId);
+    if (msgIndex == -1) return;
+    final plan = state.messages[msgIndex].plan!;
+    final step = plan.steps.firstWhere((s) => s.stepId == stepId, orElse: () => plan.steps.first);
+    step.status = PlanStepStatus.pending;
+    plan.isPaused = false;
+    plan.pausedReason = null;
+
+    final goalPlanner = GoalPlannerEngine();
+    final messageId = state.messages[msgIndex].id;
+
+    final report = await goalPlanner.resumePlan(
+      plan,
+      onStepUpdate: (updatedStep) {
+        final updatedMessages = state.messages.map((m) {
+          if (m.id == messageId) {
+            return ChatMessage(
+              id: m.id,
+              conversationId: m.conversationId,
+              role: m.role,
+              content: m.content,
+              createdAt: m.createdAt,
+              plan: plan,
+            );
+          }
+          return m;
+        }).toList();
+        state = state.copyWith(messages: updatedMessages);
+      },
+      onApprovalRequired: (pendingStep) {
+        final updatedMessages = state.messages.map((m) {
+          if (m.id == messageId) {
+            return ChatMessage(
+              id: m.id,
+              conversationId: m.conversationId,
+              role: m.role,
+              content: '⏸️ Step ${pendingStep.stepId} requires authorization: **${pendingStep.title}**',
+              createdAt: m.createdAt,
+              plan: plan,
+            );
+          }
+          return m;
+        }).toList();
+        state = state.copyWith(messages: updatedMessages);
+      },
+      onTaskCreated: (title) async {
+        await PlannerNotifier.active.addTask(title: title);
+      },
+    );
+
+    final finalMessages = state.messages.map((m) {
+      if (m.id == messageId) {
+        return ChatMessage(
+          id: m.id,
+          conversationId: m.conversationId,
+          role: m.role,
+          content: report,
+          createdAt: m.createdAt,
+          plan: plan,
+        );
+      }
+      return m;
+    }).toList();
+    state = state.copyWith(messages: finalMessages);
+  }
+
+  /// Resume active plan execution from where it left off
+  Future<void> resumeActivePlan(String planId) async {
+    final msgIndex = state.messages.indexWhere((m) => m.plan?.id == planId);
+    if (msgIndex == -1) return;
+    final plan = state.messages[msgIndex].plan!;
+
+    final goalPlanner = GoalPlannerEngine();
+    final messageId = state.messages[msgIndex].id;
+
+    final report = await goalPlanner.resumePlan(
+      plan,
+      onStepUpdate: (updatedStep) {
+        final updatedMessages = state.messages.map((m) {
+          if (m.id == messageId) {
+            return ChatMessage(
+              id: m.id,
+              conversationId: m.conversationId,
+              role: m.role,
+              content: m.content,
+              createdAt: m.createdAt,
+              plan: plan,
+            );
+          }
+          return m;
+        }).toList();
+        state = state.copyWith(messages: updatedMessages);
+      },
+      onApprovalRequired: (pendingStep) {
+        final updatedMessages = state.messages.map((m) {
+          if (m.id == messageId) {
+            return ChatMessage(
+              id: m.id,
+              conversationId: m.conversationId,
+              role: m.role,
+              content: '⏸️ Step ${pendingStep.stepId} requires authorization: **${pendingStep.title}**',
+              createdAt: m.createdAt,
+              plan: plan,
+            );
+          }
+          return m;
+        }).toList();
+        state = state.copyWith(messages: updatedMessages);
+      },
+      onTaskCreated: (title) async {
+        await PlannerNotifier.active.addTask(title: title);
+      },
+    );
+
+    final finalMessages = state.messages.map((m) {
+      if (m.id == messageId) {
+        return ChatMessage(
+          id: m.id,
+          conversationId: m.conversationId,
+          role: m.role,
+          content: report,
+          createdAt: m.createdAt,
+          plan: plan,
+        );
+      }
+      return m;
+    }).toList();
+    state = state.copyWith(messages: finalMessages);
   }
 
   // ──────────────────── WhatsApp Handlers ────────────────────

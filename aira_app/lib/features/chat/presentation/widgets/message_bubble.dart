@@ -241,7 +241,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           // Rendered Markdown
           // ── Autonomous Goal Execution Plan Card ──
           if (widget.message.plan != null)
-            PlanExecutionCard(plan: widget.message.plan!),
+            PlanExecutionCard(
+              plan: widget.message.plan!,
+              onResume: () {
+                ref.read(chatProvider.notifier).resumeActivePlan(widget.message.plan!.id);
+              },
+              onApproveStep: (stepId) {
+                ref.read(chatProvider.notifier).approvePlanStep(widget.message.plan!.id, stepId);
+              },
+              onRetryStep: (stepId) {
+                ref.read(chatProvider.notifier).approvePlanStep(widget.message.plan!.id, stepId);
+              },
+            ),
 
           // ── Human-in-the-Loop Action Approval Card ──
           if (widget.message.pendingApproval != null)

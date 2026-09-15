@@ -4,12 +4,19 @@ import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/core/agent/plan_models.dart';
 
 /// Interactive UI Card displaying the live decomposition and progress of an Autonomous Agent Goal Plan
+/// Updated for Stage L with stage badges, evidence drawers, approval prompts, and resumption controls.
 class PlanExecutionCard extends StatefulWidget {
   final AgentGoalPlan plan;
+  final VoidCallback? onResume;
+  final Function(int stepId)? onApproveStep;
+  final Function(int stepId)? onRetryStep;
 
   const PlanExecutionCard({
     super.key,
     required this.plan,
+    this.onResume,
+    this.onApproveStep,
+    this.onRetryStep,
   });
 
   @override
@@ -89,17 +96,23 @@ class _PlanExecutionCardState extends State<PlanExecutionCard> {
                               decoration: BoxDecoration(
                                 color: widget.plan.isCompleted
                                     ? Colors.green.withValues(alpha: 0.15)
-                                    : AiraColors.claudeTerracotta.withValues(alpha: 0.15),
+                                    : (widget.plan.isPaused
+                                        ? Colors.amber.withValues(alpha: 0.15)
+                                        : AiraColors.claudeTerracotta.withValues(alpha: 0.15)),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
                                 widget.plan.isCompleted
                                     ? 'COMPLETED ($completed/$total)'
-                                    : 'EXECUTING ($completed/$total)',
+                                    : (widget.plan.isPaused
+                                        ? 'PAUSED ($completed/$total)'
+                                        : 'EXECUTING ($completed/$total)'),
                                 style: GoogleFonts.sourceSerif4(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.w700,
-                                  color: widget.plan.isCompleted ? Colors.green : AiraColors.claudeTerracotta,
+                                  color: widget.plan.isCompleted
+                                      ? Colors.green
+                                      : (widget.plan.isPaused ? Colors.amber : AiraColors.claudeTerracotta),
                                 ),
                               ),
                             ),
@@ -139,11 +152,48 @@ class _PlanExecutionCardState extends State<PlanExecutionCard> {
                 minHeight: 4,
                 backgroundColor: isDark ? Colors.white10 : Colors.black12,
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  widget.plan.isCompleted ? Colors.green : AiraColors.claudeTerracotta,
+                  widget.plan.isCompleted
+                      ? Colors.green
+                      : (widget.plan.isPaused ? Colors.amber : AiraColors.claudeTerracotta),
                 ),
               ),
             ),
           ),
+
+          // Paused Warning Banner with Resume Action
+          if (widget.plan.isPaused)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: isDark ? 0.12 : 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.pause_circle_filled_rounded, color: Colors.amber, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.plan.pausedReason ?? 'Paused. User authorization needed to proceed.',
+                      style: GoogleFonts.sourceSerif4(fontSize: 12, color: theme.colorScheme.onSurface),
+                    ),
+                  ),
+                  if (widget.onResume != null)
+                    TextButton(
+                      onPressed: widget.onResume,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        backgroundColor: AiraColors.claudeTerracotta,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                      child: Text('Resume', style: GoogleFonts.firaCode(fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                ],
+              ),
+            ),
 
           if (_expanded) ...[
             const SizedBox(height: 10),
@@ -172,6 +222,34 @@ class _PlanExecutionCardState extends State<PlanExecutionCard> {
                 return _buildStepTile(step, isDark, theme);
               },
             ),
+
+            // Evidence Summary Footer
+            if (widget.plan.evidenceSummary != null && widget.plan.evidenceSummary!.isNotEmpty)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.02),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: borderColor),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.verified_outlined, color: Colors.green, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Verified Evidence: ${widget.plan.evidenceSummary!.length} concrete artifacts generated.',
+                        style: GoogleFonts.firaCode(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ] else
             const SizedBox(height: 8),
         ],
@@ -196,7 +274,8 @@ class _PlanExecutionCardState extends State<PlanExecutionCard> {
         textColor = AiraColors.claudeTerracotta;
         break;
       case PlanStepStatus.failed:
-        leadingIcon = const Icon(Icons.cancel_rounded, color: Colors.red, size: 18);
+        leadingIcon = const Icon(Icons.error_outline_rounded, color: Colors.red, size: 18);
+        textColor = Colors.red;
         break;
       case PlanStepStatus.waitingApproval:
         leadingIcon = const Icon(Icons.shield_outlined, color: Colors.amber, size: 18);
@@ -213,8 +292,14 @@ class _PlanExecutionCardState extends State<PlanExecutionCard> {
         break;
     }
 
+    final stageBadge = switch (step.stage) {
+      StepStage.preparation => 'PREP',
+      StepStage.execution => 'EXEC',
+      StepStage.delivery => 'DELIVERY',
+    };
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -229,15 +314,39 @@ class _PlanExecutionCardState extends State<PlanExecutionCard> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      'Step ${step.stepId}: ${step.title}',
-                      style: GoogleFonts.sourceSerif4(
-                        fontSize: 13,
-                        fontWeight: step.status == PlanStepStatus.running ? FontWeight.w700 : FontWeight.w500,
-                        color: textColor,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        stageBadge,
+                        style: GoogleFonts.firaCode(fontSize: 8.5, fontWeight: FontWeight.bold),
                       ),
                     ),
-                    const Spacer(),
+                    Expanded(
+                      child: Text(
+                        'Step ${step.stepId}: ${step.title}',
+                        style: GoogleFonts.sourceSerif4(
+                          fontSize: 13,
+                          fontWeight: step.status == PlanStepStatus.running ? FontWeight.w700 : FontWeight.w500,
+                          color: textColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (step.isReadOnly)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Text(
+                          '⚡',
+                          style: GoogleFonts.firaCode(fontSize: 9),
+                        ),
+                      ),
+                    const SizedBox(width: 6),
                     Text(
                       step.tool.replaceAll('_', ' ').toUpperCase(),
                       style: GoogleFonts.firaCode(
@@ -258,6 +367,44 @@ class _PlanExecutionCardState extends State<PlanExecutionCard> {
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                if (step.errorMessage != null && step.errorMessage!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Error: ${step.errorMessage}',
+                      style: GoogleFonts.sourceSerif4(fontSize: 11, color: Colors.redAccent),
+                    ),
+                  ),
+                // Inline Approve action for waiting step
+                if (step.status == PlanStepStatus.waitingApproval && widget.onApproveStep != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: ElevatedButton.icon(
+                      onPressed: () => widget.onApproveStep!(step.stepId),
+                      icon: const Icon(Icons.check, size: 14),
+                      label: Text('Approve & Continue', style: GoogleFonts.firaCode(fontSize: 11)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AiraColors.claudeTerracotta,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                    ),
+                  ),
+                // Inline Retry action for failed step
+                if (step.status == PlanStepStatus.failed && widget.onRetryStep != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: TextButton.icon(
+                      onPressed: () => widget.onRetryStep!(step.stepId),
+                      icon: const Icon(Icons.refresh, size: 14),
+                      label: Text('Retry Step', style: GoogleFonts.firaCode(fontSize: 11)),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.amber,
+                        padding: EdgeInsets.zero,
+                      ),
                     ),
                   ),
               ],
