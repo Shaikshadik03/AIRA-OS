@@ -15,6 +15,8 @@ import 'package:aira_app/core/services/wake_word_service.dart';
 import 'package:aira_app/core/services/notification_monitor_service.dart';
 import 'package:aira_app/core/services/social_world_monitor_service.dart';
 import 'package:aira_app/core/services/smart_reply_service.dart';
+import 'package:aira_app/core/services/automation_control_service.dart';
+import 'package:aira_app/core/services/usage_metrics_service.dart';
 import 'package:aira_app/app.dart';
 import 'package:aira_app/routing/app_router.dart';
 
@@ -71,6 +73,10 @@ void main() async {
   await NotificationMonitorService().init();
   await SocialWorldMonitorService().init();
   await SmartReplyService().init();
+
+  // Initialize Stage M: Emergency Kill-Switch & Reliability Metrics
+  await AutomationControlService().init();
+  await UsageMetricsService().init();
 
   runApp(
     const ProviderScope(

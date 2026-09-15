@@ -6,6 +6,7 @@ import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/user_profile_service.dart';
 import 'package:aira_app/core/services/personality_engine.dart';
 import 'package:aira_app/core/services/check_in_service.dart';
+import 'package:aira_app/core/services/automation_control_service.dart';
 
 /// AIRA Proactive Intelligence Engine
 ///
@@ -75,7 +76,7 @@ class ProactiveEngine {
 
   /// Main check loop — evaluates all proactive rules
   Future<void> _runProactiveCheck() async {
-    if (!_isEnabled) return;
+    if (!_isEnabled || AutomationControlService().isPaused) return;
 
     final now = DateTime.now();
     final hour = now.hour;
@@ -308,6 +309,11 @@ class ProactiveEngine {
     required String title,
     required String body,
   }) async {
+    if (AutomationControlService().isPaused) {
+      debugPrint('[PROACTIVE] ⏸️ Suppression: Automations are paused by emergency kill switch.');
+      return;
+    }
+
     // 1. Send Android system push notification
     await _notifications.showNotification(
       id: id.hashCode.abs() % 100000,

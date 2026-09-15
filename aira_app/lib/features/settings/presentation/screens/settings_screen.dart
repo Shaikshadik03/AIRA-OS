@@ -10,9 +10,16 @@ import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
 import 'package:aira_app/core/services/voice_service.dart';
 import 'package:aira_app/core/theme/theme_provider.dart';
+import 'package:flutter/services.dart';
 import 'package:aira_app/core/services/user_profile_service.dart';
 import 'package:aira_app/core/services/wake_word_service.dart';
 import 'package:aira_app/core/services/personality_engine.dart';
+import 'package:aira_app/core/services/automation_control_service.dart';
+import 'package:aira_app/core/services/setup_checklist_service.dart';
+import 'package:aira_app/core/services/connection_diagnostics_service.dart';
+import 'package:aira_app/core/services/diagnostic_logger.dart';
+import 'package:aira_app/core/services/usage_metrics_service.dart';
+import 'package:aira_app/core/services/data_backup_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -120,6 +127,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
+
+          const SizedBox(height: 16),
+
+          // ── Emergency Automation Kill-Switch (Stage M) ──
+          _buildEmergencyAutomationCard(isDark, cardBg, borderColor),
 
           const SizedBox(height: 24),
 
@@ -287,17 +299,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 24),
 
           // ── Privacy & Diagnostics ──
-          _sectionTitle('DIAGNOSTICS & ACCOUNT'),
+          _sectionTitle('RELIABILITY & DIAGNOSTICS'),
+          _settingsTile(
+            Icons.checklist_rounded,
+            'First-Run Setup Checklist',
+            'Verify readiness across AI, mic, alerts & laptop',
+            iconColor: const Color(0xFF4CAF50),
+            onTap: _showChecklistDialog,
+          ),
+          _settingsTile(
+            Icons.network_check_rounded,
+            'Connection & Provider Health',
+            'Real-time latency ping for Groq, Gemini & laptop',
+            iconColor: AiraColors.electricCyan,
+            onTap: _showConnectionDiagnosticsDialog,
+          ),
+          _settingsTile(
+            Icons.analytics_outlined,
+            'System Health & Reliability Metrics',
+            'Track query volume, latency averages & success rate',
+            iconColor: AiraColors.claudeTerracotta,
+            onTap: _showMetricsDialog,
+          ),
+          _settingsTile(
+            Icons.terminal_rounded,
+            'Redacted Diagnostic Logs',
+            'Sanitized, token-scrubbed system events & errors',
+            iconColor: AiraColors.claudeAmber,
+            onTap: _showDiagnosticLogsDialog,
+          ),
+          _settingsTile(
+            Icons.cloud_sync_outlined,
+            'Data Backup, Restore & Wipe (GDPR)',
+            'Export personal context or erase all local data',
+            iconColor: AiraColors.purpleLight,
+            onTap: _showDataBackupDialog,
+          ),
           _settingsTile(
             Icons.memory_rounded,
-            'Device & Storage Diagnostics',
+            'Device & Hardware Details',
             'Check RAM, battery & hardware details',
             onTap: _showStorageInfoDialog,
           ),
           _settingsTile(
             Icons.shield_outlined,
-            'Privacy & Data Security',
-            'End-to-end encrypted with Supabase RLS',
+            'Privacy & Security Architecture',
+            'Guaranteed boundary security & local encryption',
             onTap: _showPrivacyDialog,
           ),
           _settingsTile(
@@ -1341,6 +1388,505 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ── Stage M: Reliability, Emergency Control & Diagnostics ─────────────
+
+  Widget _buildEmergencyAutomationCard(bool isDark, Color cardBg, Color borderColor) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AutomationControlService().isPausedNotifier,
+      builder: (context, isPaused, _) {
+        final alertColor = isPaused ? const Color(0xFFE53935) : const Color(0xFF4CAF50);
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: isPaused
+                ? const Color(0xFFE53935).withValues(alpha: isDark ? 0.15 : 0.08)
+                : cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isPaused
+                  ? const Color(0xFFE53935).withValues(alpha: 0.5)
+                  : borderColor,
+              width: isPaused ? 1.5 : 1.0,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: alertColor.withValues(alpha: 0.15),
+                ),
+                child: Icon(
+                  isPaused ? Icons.pause_circle_filled_rounded : Icons.bolt_rounded,
+                  color: alertColor,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isPaused ? 'AUTOMATIONS PAUSED' : 'Autonomous Automations',
+                      style: GoogleFonts.sourceSerif4(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: isPaused ? const Color(0xFFE53935) : Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isPaused
+                          ? 'All background proactive nudges, goal plans & laptop actions stopped.'
+                          : 'Proactive nudges, goal planners & companion tasks active.',
+                      style: GoogleFonts.sourceSerif4(
+                        fontSize: 11.5,
+                        color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Switch(
+                value: !isPaused,
+                activeThumbColor: const Color(0xFF4CAF50),
+                inactiveThumbColor: const Color(0xFFE53935),
+                inactiveTrackColor: const Color(0xFFE53935).withValues(alpha: 0.3),
+                onChanged: (active) async {
+                  if (active) {
+                    await AutomationControlService().resumeAutomation();
+                  } else {
+                    await AutomationControlService().pauseAllAutomation(reason: 'Paused by user via Settings.');
+                  }
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showChecklistDialog() async {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final report = await SetupChecklistService().evaluateReadiness();
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            const Icon(Icons.checklist_rounded, color: Color(0xFF4CAF50)),
+            const SizedBox(width: 10),
+            Text(
+              'First-Run Setup Checklist',
+              style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700, fontSize: 17),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: (report.isProductionReady ? const Color(0xFF4CAF50) : AiraColors.claudeAmber)
+                      .withValues(alpha: isDark ? 0.15 : 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      '${report.readinessPercentage}%',
+                      style: GoogleFonts.sourceSerif4(fontSize: 22, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            report.isProductionReady ? 'Production Ready' : 'Setup Incomplete',
+                            style: GoogleFonts.sourceSerif4(fontWeight: FontWeight.w700, fontSize: 13),
+                          ),
+                          Text(
+                            '${report.completedCount} of ${report.totalCount} core pillars active',
+                            style: GoogleFonts.sourceSerif4(fontSize: 11.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: report.items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, idx) {
+                    final item = report.items[idx];
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        item.isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                        color: item.isCompleted ? const Color(0xFF4CAF50) : AiraColors.textMuted,
+                        size: 20,
+                      ),
+                      title: Text(item.title, style: GoogleFonts.sourceSerif4(fontSize: 13, fontWeight: FontWeight.w600)),
+                      subtitle: Text(item.description, style: GoogleFonts.sourceSerif4(fontSize: 11)),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Done', style: GoogleFonts.sourceSerif4(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConnectionDiagnosticsDialog() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return FutureBuilder<DiagnosticsReport>(
+          future: ConnectionDiagnosticsService().runAllDiagnostics(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return AlertDialog(
+                backgroundColor: theme.colorScheme.surface,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                content: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(color: AiraColors.claudeTerracotta),
+                      const SizedBox(height: 16),
+                      Text('Running Real-Time Connection Diagnostics...', style: GoogleFonts.sourceSerif4(fontSize: 13.5)),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final rep = snapshot.data!;
+            final targets = [rep.internet, rep.groq, rep.gemini, rep.openRouter, rep.laptop, rep.storage];
+
+            return AlertDialog(
+              backgroundColor: theme.colorScheme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              title: Row(
+                children: [
+                  const Icon(Icons.network_check_rounded, color: AiraColors.electricCyan),
+                  const SizedBox(width: 10),
+                  Text('System Diagnostics', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700, fontSize: 17)),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: targets.length,
+                  separatorBuilder: (_, __) => const Divider(height: 8),
+                  itemBuilder: (_, i) {
+                    final t = targets[i];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(t.target, style: GoogleFonts.sourceSerif4(fontWeight: FontWeight.w600, fontSize: 13)),
+                                Text(t.details, style: GoogleFonts.sourceSerif4(fontSize: 11, color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight)),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: (t.status == DiagnosticStatus.healthy ? const Color(0xFF4CAF50) : AiraColors.error).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              t.statusBadge,
+                              style: GoogleFonts.sourceSerif4(fontSize: 10.5, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Close', style: GoogleFonts.sourceSerif4(fontWeight: FontWeight.w600)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showMetricsDialog() {
+    final theme = Theme.of(context);
+    final m = UsageMetricsService();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            const Icon(Icons.analytics_outlined, color: AiraColors.claudeTerracotta),
+            const SizedBox(width: 10),
+            Text('Reliability Metrics', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700, fontSize: 17)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _metricRow('Total Queries Processed', '${m.totalQueries}'),
+            _metricRow('Successful Tool Actions', '${m.successfulToolExecutions}'),
+            _metricRow('Failed Tool Actions', '${m.failedToolExecutions}'),
+            _metricRow('Tool Success Rate', '${m.toolSuccessRatePercent}%'),
+            _metricRow('Average AI Latency', '${m.averageLatencyMs} ms'),
+            _metricRow('Total Automations Run', '${m.totalAutomationsRun}'),
+            _metricRow('Automations Paused', '${m.totalAutomationsPaused}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await m.resetMetrics();
+              if (ctx.mounted) Navigator.pop(ctx);
+              setState(() {});
+            },
+            child: Text('Reset', style: GoogleFonts.sourceSerif4(color: AiraColors.error)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(backgroundColor: AiraColors.claudeTerracotta),
+            child: Text('OK', style: GoogleFonts.sourceSerif4(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: GoogleFonts.sourceSerif4(fontSize: 12.5)),
+          Text(value, style: GoogleFonts.sourceSerif4(fontWeight: FontWeight.w700, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  void _showDiagnosticLogsDialog() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final logText = DiagnosticLogger().exportRedactedLogs();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            const Icon(Icons.terminal_rounded, color: AiraColors.claudeAmber),
+            const SizedBox(width: 10),
+            Text('Redacted Diagnostic Logs', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700, fontSize: 16)),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF10100E) : const Color(0xFFF5F5F0),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: isDark ? AiraColors.borderDark : AiraColors.borderLight),
+            ),
+            child: SingleChildScrollView(
+              child: Text(
+                logText,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 10.5, height: 1.4),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              DiagnosticLogger().clear();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: Text('Clear', style: GoogleFonts.sourceSerif4(color: AiraColors.error)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: logText));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Redacted logs copied to clipboard.'), behavior: SnackBarBehavior.floating),
+              );
+            },
+            icon: const Icon(Icons.copy_rounded, size: 16, color: Colors.white),
+            label: Text('Copy', style: GoogleFonts.sourceSerif4(color: Colors.white, fontWeight: FontWeight.w700)),
+            style: ElevatedButton.styleFrom(backgroundColor: AiraColors.claudeTerracotta),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDataBackupDialog() {
+    final theme = Theme.of(context);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            const Icon(Icons.cloud_sync_outlined, color: AiraColors.purpleLight),
+            const SizedBox(width: 10),
+            Text('Data Backup & Privacy', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700, fontSize: 17)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Export your complete personal context, memory facts, tasks, and notes, or permanently erase all local storage.',
+              style: GoogleFonts.sourceSerif4(fontSize: 12.5),
+            ),
+            const SizedBox(height: 18),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.download_rounded),
+              label: Text('Export Data Backup (JSON)', style: GoogleFonts.sourceSerif4(fontWeight: FontWeight.w600)),
+              onPressed: () async {
+                final json = await DataBackupService().exportBackupJson();
+                await Clipboard.setData(ClipboardData(text: json));
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Complete data backup copied to clipboard! Save it safely.'),
+                      backgroundColor: Color(0xFF4CAF50),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.delete_forever_rounded, color: AiraColors.error),
+              label: Text('Delete All Data (GDPR Wipe)', style: GoogleFonts.sourceSerif4(color: AiraColors.error, fontWeight: FontWeight.w700)),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _showConfirmDataWipeDialog();
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Close', style: GoogleFonts.sourceSerif4()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConfirmDataWipeDialog() {
+    final theme = Theme.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: AiraColors.error),
+            const SizedBox(width: 10),
+            Text('Confirm Data Wipe', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700, fontSize: 17, color: AiraColors.error)),
+          ],
+        ),
+        content: Text(
+          'This action is IRREVERSIBLE. It will permanently delete all your memories, habits, local tasks, saved notes, and active goal plans from this device.',
+          style: GoogleFonts.sourceSerif4(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: GoogleFonts.sourceSerif4()),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AiraColors.error),
+            onPressed: () async {
+              await DataBackupService().deleteAllData();
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('All personal data has been erased. Device reset to factory state.'),
+                    backgroundColor: AiraColors.error,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            child: Text('Erase Everything', style: GoogleFonts.sourceSerif4(color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ],
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aira_app/core/agent/plan_models.dart';
 import 'package:aira_app/core/agent/agent_tool_registry.dart';
+import 'package:aira_app/core/services/automation_control_service.dart';
 
 /// Durable & Resumable Execution Service for Multi-Step Autonomous Goal Plans (Stage L / Stage 11).
 ///
@@ -41,6 +42,18 @@ class PlanExecutionService {
       plan.steps.removeRange(maxAllowedSteps, plan.steps.length);
     }
 
+    // Emergency Automation Kill-Switch Check
+    if (AutomationControlService().isPaused) {
+      plan.isExecuting = false;
+      plan.isPaused = true;
+      final customReason = AutomationControlService().pausedReason;
+      plan.pausedReason = (customReason != null && customReason.isNotEmpty)
+          ? 'All automations are paused by emergency kill switch: $customReason'
+          : 'All automations are paused by emergency kill switch.';
+      await saveActivePlan(plan);
+      return _generateProgressReport(plan, paused: true);
+    }
+
     plan.isExecuting = true;
     plan.isPaused = false;
     plan.pausedReason = null;
@@ -51,6 +64,18 @@ class PlanExecutionService {
     try {
       int i = 0;
       while (i < plan.steps.length) {
+        // Enforce emergency automation pause
+        if (AutomationControlService().isPaused) {
+          plan.isExecuting = false;
+          plan.isPaused = true;
+          final customReason = AutomationControlService().pausedReason;
+          plan.pausedReason = (customReason != null && customReason.isNotEmpty)
+              ? 'All automations are paused by emergency kill switch: $customReason'
+              : 'All automations are paused by emergency kill switch.';
+          await saveActivePlan(plan);
+          return _generateProgressReport(plan, paused: true);
+        }
+
         // Enforce total plan execution timeout
         if (DateTime.now().difference(startTime).inSeconds > defaultPlanTimeoutSeconds) {
           throw TimeoutException('Plan execution exceeded timeout limit of $defaultPlanTimeoutSeconds seconds.');

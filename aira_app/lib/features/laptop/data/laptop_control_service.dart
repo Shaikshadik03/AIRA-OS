@@ -954,6 +954,56 @@ class LaptopControlService {
     }
   }
 
+  /// Pause all autonomous operations on connected laptop
+  Future<bool> pauseLaptopAutomation() async {
+    _isRemotePaused = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_isRemotePausedKey, true);
+    } catch (_) {}
+    if (!isConfigured) return false;
+    try {
+      await _dio.post('/automation/pause').timeout(const Duration(seconds: 3));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Resume autonomous operations on connected laptop
+  Future<bool> resumeLaptopAutomation() async {
+    _isRemotePaused = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_isRemotePausedKey, false);
+    } catch (_) {}
+    if (!isConfigured) return false;
+    try {
+      await _dio.post('/automation/resume').timeout(const Duration(seconds: 3));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Get companion system status and health info
+  Future<Map<String, dynamic>> getSystemStatus() async {
+    if (!isConfigured) return {'success': false, 'error': 'Laptop not configured'};
+    try {
+      final res = await _dio.get('/health').timeout(const Duration(seconds: 3));
+      if (res.statusCode == 200 && res.data is Map) {
+        final data = Map<String, dynamic>.from(res.data as Map);
+        if (data.containsKey('hostname')) {
+          _hostname = data['hostname']?.toString();
+        }
+        return {'success': true, ...data};
+      }
+      return {'success': false, 'error': 'Companion returned ${res.statusCode}'};
+    } catch (e) {
+      return {'success': false, 'error': _friendlyError(e)};
+    }
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────
 
   String _friendlyError(dynamic e) {

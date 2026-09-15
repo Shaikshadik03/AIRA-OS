@@ -147,6 +147,21 @@ class MemoryEngine {
     final threshold = (existWords.length * 0.5).ceil();
     return overlap.length >= threshold;
   }
+
+  /// Wipes all memory facts and episodes from memory and persistent storage
+  Future<void> clearAll() async {
+    _facts.clear();
+    _episodes.clear();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_factsKey);
+    await prefs.remove(_episodesKey);
+  }
+
+  /// Restore memory facts from backup
+  Future<void> restoreFacts(List<MemoryFact> newFacts) async {
+    _facts = List.from(newFacts);
+    await _save();
+  }
 }
 
 // ── Data Classes ────────────────────────────────────────────────────────

@@ -5,6 +5,8 @@ import 'package:aira_app/config/app_config.dart';
 import 'package:aira_app/core/services/personality_engine.dart';
 import 'package:aira_app/core/services/user_profile_service.dart';
 import 'package:aira_app/core/services/memory_engine.dart';
+import 'package:aira_app/core/services/diagnostic_logger.dart';
+import 'package:aira_app/core/services/usage_metrics_service.dart';
 import 'package:intl/intl.dart';
 
 
@@ -123,6 +125,8 @@ class LlmService {
       }
     }
 
+    final sw = Stopwatch()..start();
+
     // ── TEXT CHAT ROUTING (Groq -> Gemini -> OpenRouter) ──
     // ── STEP 1: Try Primary Provider (Groq) ──
     if (!forceGroqFail) {
@@ -135,6 +139,9 @@ class LlmService {
           base64Image: base64Image,
         );
         _lastUsedProvider = LlmProvider.groq;
+        sw.stop();
+        UsageMetricsService().recordLlmCall(latencyMs: sw.elapsedMilliseconds, success: true);
+        DiagnosticLogger().info('LLM', 'Responded via GROQ in ${sw.elapsedMilliseconds}ms');
         debugPrint('[LLM FALLBACK] ✅ Responded via GROQ');
         return result;
       } catch (e) {
@@ -155,6 +162,9 @@ class LlmService {
           base64Image: base64Image,
         );
         _lastUsedProvider = LlmProvider.gemini;
+        sw.stop();
+        UsageMetricsService().recordLlmCall(latencyMs: sw.elapsedMilliseconds, success: true);
+        DiagnosticLogger().info('LLM', 'Responded via GEMINI in ${sw.elapsedMilliseconds}ms');
         debugPrint('[LLM FALLBACK] ✅ Responded via GEMINI (Fallback 1)');
         return result;
       } catch (e) {
@@ -174,9 +184,15 @@ class LlmService {
         base64Image: base64Image,
       );
       _lastUsedProvider = LlmProvider.openRouter;
+      sw.stop();
+      UsageMetricsService().recordLlmCall(latencyMs: sw.elapsedMilliseconds, success: true);
+      DiagnosticLogger().info('LLM', 'Responded via OPENROUTER in ${sw.elapsedMilliseconds}ms');
       debugPrint('[LLM FALLBACK] ✅ Responded via OPENROUTER (Fallback 2)');
       return result;
     } catch (e) {
+      sw.stop();
+      UsageMetricsService().recordLlmCall(latencyMs: sw.elapsedMilliseconds, success: false);
+      DiagnosticLogger().error('LLM', 'All LLM providers failed', e);
       debugPrint('[LLM FALLBACK] ❌ All LLM Providers Failed: $e');
       return '⚠️ **AI API Key Setup**\n\n'
           'To start chatting with AIRA:\n'

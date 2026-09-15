@@ -21,6 +21,7 @@ import 'package:aira_app/features/nav_shell/presentation/widgets/app_drawer.dart
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:aira_app/core/services/smart_reply_service.dart';
 import 'package:aira_app/features/chat/presentation/widgets/pending_reply_card.dart';
+import 'package:aira_app/core/services/automation_control_service.dart';
 import 'package:go_router/go_router.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -263,6 +264,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: Column(
         children: [
+          // Emergency Automation Paused Banner
+          _buildAutomationPausedBanner(),
           // Pending Smart Reply Drafts (WhatsApp / Telegram / SMS Review-before-send)
           _buildPendingRepliesSection(),
           // Messages or empty state
@@ -306,6 +309,78 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _buildInputBar(chatState.isSending),
         ],
       ),
+    );
+  }
+
+  Widget _buildAutomationPausedBanner() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AutomationControlService().isPausedNotifier,
+      builder: (context, isPaused, _) {
+        if (!isPaused) return const SizedBox.shrink();
+        final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE53935).withValues(alpha: isDark ? 0.2 : 0.12),
+            border: Border(
+              bottom: BorderSide(
+                color: const Color(0xFFE53935).withValues(alpha: 0.4),
+                width: 1.0,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.pause_circle_filled_rounded, color: Color(0xFFE53935), size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Automations Paused',
+                      style: GoogleFonts.sourceSerif4(
+                        color: const Color(0xFFE53935),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      AutomationControlService().pausedReason ?? 'All background proactive tasks & planners halted.',
+                      style: GoogleFonts.sourceSerif4(
+                        color: isDark ? Colors.white70 : Colors.black87,
+                        fontSize: 11.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE53935),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  AutomationControlService().resumeAutomation();
+                },
+                child: Text(
+                  'RESUME',
+                  style: GoogleFonts.sourceSerif4(fontSize: 11.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

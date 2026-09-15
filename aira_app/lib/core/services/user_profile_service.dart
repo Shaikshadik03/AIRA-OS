@@ -14,12 +14,14 @@ class UserProfileService {
   Map<String, dynamic> _profile = {};
   Map<String, dynamic> get profile => Map.unmodifiable(_profile);
 
-  bool get isProfileSetUp =>
-      _profile['name'] != null && (_profile['name'] as String).isNotEmpty;
+  bool get isProfileSetUp {
+    final name = _profile['name'] ?? _profile['displayName'];
+    return name != null && name.toString().trim().isNotEmpty;
+  }
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_profileKey);
+    final raw = prefs.getString(_profileKey) ?? prefs.getString('aira_user_profile');
     if (raw != null && raw.isNotEmpty) {
       _profile = Map<String, dynamic>.from(jsonDecode(raw));
     } else {
@@ -41,6 +43,11 @@ class UserProfileService {
   /// Update multiple fields at once
   Future<void> updateProfile(Map<String, dynamic> updates) async {
     _profile.addAll(updates);
+    if (updates.containsKey('name')) {
+      _profile['displayName'] = updates['name'];
+    } else if (updates.containsKey('displayName')) {
+      _profile['name'] = updates['displayName'];
+    }
     await save();
   }
 
@@ -48,7 +55,13 @@ class UserProfileService {
   dynamic getField(String key) => _profile[key];
 
   /// Get display name
-  String get displayName => _profile['name'] ?? 'there';
+  String get displayName {
+    final name = _profile['name'] ?? _profile['displayName'];
+    if (name != null && name.toString().trim().isNotEmpty) {
+      return name.toString().trim();
+    }
+    return 'there';
+  }
 
   /// Reset profile
   Future<void> clearProfile() async {
@@ -84,6 +97,7 @@ class UserProfileService {
   Map<String, dynamic> _defaultProfile() {
     return {
       'name': '',
+      'displayName': '',
       'occupation': '',
       'college': '',
       'year': '',

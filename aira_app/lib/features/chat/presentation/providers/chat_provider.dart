@@ -38,6 +38,8 @@ import 'package:aira_app/core/services/social_world_monitor_service.dart';
 import 'package:aira_app/core/services/android_action_registry.dart';
 import 'package:aira_app/core/services/android_action_service.dart';
 import 'package:aira_app/features/chat/domain/android_action_detector.dart';
+import 'package:aira_app/core/services/diagnostic_logger.dart';
+import 'package:aira_app/core/services/usage_metrics_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -236,6 +238,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> sendMessage(String content, {String? base64Image}) async {
     if (content.trim().isEmpty && base64Image == null) return;
+
+    // Track usage metrics & log sanitized query
+    UsageMetricsService().recordQuery();
+    DiagnosticLogger().info('USER_PROMPT', content);
 
     // Immediately stop active TTS speech (Interruption on user input)
     await stopTts();

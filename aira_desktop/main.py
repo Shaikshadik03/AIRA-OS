@@ -399,6 +399,45 @@ def list_paired_devices(auth: dict = Depends(verify_auth)):
     return {"devices": device_list, "is_paused": is_remote_paused}
 
 
+# ── Stage M: Emergency Automation Control & Health Endpoints ───────────────
+
+@app.post("/automation/pause")
+def pause_automation():
+    global is_remote_paused
+    is_remote_paused = True
+    print("\n  🛑  [AUTOMATION PAUSE] All autonomous desktop tasks and remote controls are PAUSED.")
+    return {"success": True, "status": "paused", "is_paused": True, "message": "All automations paused on desktop companion."}
+
+@app.post("/automation/resume")
+def resume_automation():
+    global is_remote_paused
+    is_remote_paused = False
+    print("\n  ▶️  [AUTOMATION RESUME] Autonomous desktop tasks and remote controls RESUMED.")
+    return {"success": True, "status": "active", "is_paused": False, "message": "Automations resumed on desktop companion."}
+
+@app.get("/automation/status")
+def get_automation_status():
+    global is_remote_paused
+    return {
+        "success": True,
+        "is_paused": is_remote_paused,
+        "hostname": socket.gethostname(),
+        "version": AGENT_VERSION,
+        "timestamp": time.time(),
+    }
+
+@app.get("/health")
+def health_check():
+    global is_remote_paused
+    return {
+        "status": "healthy" if not is_remote_paused else "paused",
+        "is_paused": is_remote_paused,
+        "hostname": socket.gethostname(),
+        "version": AGENT_VERSION,
+        "timestamp": time.time(),
+    }
+
+
 # ── Durable Idempotent Remote Command Pipeline ────────────────────────────
 
 @app.post("/command/execute")
@@ -412,6 +451,18 @@ def execute_durable_command(cmd: DurableCommandRequest, auth: dict = Depends(ver
     """
     start_time = time.time()
     now_ms = int(start_time * 1000)
+
+    # 0. Emergency Host Automation Kill-Switch Check
+    if is_remote_paused:
+        print(f"  🛑  [HALTED COMMAND] '{cmd.tool}' rejected: Host PC automations are paused.")
+        return {
+            "command_id": cmd.command_id,
+            "status": "paused",
+            "output": "Execution halted: Automations are paused on the host PC by emergency kill-switch.",
+            "executed_at": now_ms,
+            "duration_ms": 0,
+            "replayed": False,
+        }
 
     # 1. Expiry Check (reject actions safe-to-defer that expired, e.g. stale clicks)
     if now_ms > cmd.expires_at:
