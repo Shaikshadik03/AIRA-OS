@@ -12,3 +12,5 @@ comtypes==1.4.8
 pycaw==20240210
 screen-brightness-control==0.23.0
 pystray>=0.19.5
+pytest>=8.0.0
+httpx>=0.28.0

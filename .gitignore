@@ -59,3 +59,8 @@ Thumbs.db
 coverage/
 .coverage
 htmlcov/
+.pytest_cache/
+
+# Desktop Companion Runtime State
+**/aira_desktop/paired_devices.json
+**/aira_desktop/command_receipts.json
