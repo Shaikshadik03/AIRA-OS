@@ -4,6 +4,7 @@ import 'package:aira_app/features/auth/domain/user_model.dart';
 import 'package:aira_app/core/services/api_service.dart';
 
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
@@ -38,54 +39,70 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
     });
   }
 
-  /// Check if user is already logged in (session persists).
+  static const String _kLocalAuthKey = 'aira_auth_logged_in';
+  static const String _kLocalEmailKey = 'aira_auth_user_email';
+  static const String _kLocalNameKey = 'aira_auth_user_name';
+
+  /// Check if user is already logged in (session persists across restarts).
   Future<void> checkAuthStatus() async {
     state = AuthStatus.loading;
     final client = _supabase;
-    if (client == null) {
-      state = AuthStatus.unauthenticated;
-      return;
-    }
-    try {
-      final session = client.auth.currentSession;
-      if (session != null) {
-        state = AuthStatus.authenticated;
-      } else {
-        await Future.delayed(const Duration(milliseconds: 300));
-        if (client.auth.currentSession == null) {
-          state = AuthStatus.unauthenticated;
-        } else {
+    if (client != null) {
+      try {
+        final session = client.auth.currentSession;
+        if (session != null) {
           state = AuthStatus.authenticated;
+          return;
         }
-      }
-    } catch (e) {
-      state = AuthStatus.unauthenticated;
+      } catch (_) {}
     }
+
+    // Check offline / local auth persistence
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isLocallyLoggedIn = prefs.getBool(_kLocalAuthKey) ?? false;
+      if (isLocallyLoggedIn) {
+        state = AuthStatus.authenticated;
+        return;
+      }
+    } catch (_) {}
+
+    state = AuthStatus.unauthenticated;
   }
 
-  /// Sign in with email and password via Supabase.
+  /// Sign in with email and password via Supabase (or local offline persistence).
   Future<bool> signIn(String email, String password) async {
     state = AuthStatus.loading;
     errorMessage = null;
-    final client = _supabase;
-    if (client == null) {
-      errorMessage = 'Supabase is not configured';
+
+    if (email.trim().isEmpty || password.trim().isEmpty) {
+      errorMessage = 'Please enter email and password';
       state = AuthStatus.error;
       return false;
     }
-    try {
-      if (email.trim().isEmpty || password.trim().isEmpty) {
-        errorMessage = 'Please enter email and password';
-        state = AuthStatus.error;
-        return false;
-      }
 
+    final client = _supabase;
+    if (client == null) {
+      // Offline / Local auth mode when Supabase is unconfigured
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kLocalAuthKey, true);
+      await prefs.setString(_kLocalEmailKey, email.trim());
+      final name = email.trim().split('@').first;
+      await prefs.setString(_kLocalNameKey, name.isNotEmpty ? name : 'User');
+      state = AuthStatus.authenticated;
+      return true;
+    }
+
+    try {
       final response = await client.auth.signInWithPassword(
         email: email.trim(),
         password: password.trim(),
       );
 
       if (response.session != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_kLocalAuthKey, true);
+        await prefs.setString(_kLocalEmailKey, email.trim());
         state = AuthStatus.authenticated;
         return true;
       } else {
@@ -104,29 +121,39 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
     }
   }
 
-  /// Sign up with email and password via Supabase.
+  /// Sign up with email and password via Supabase (or local offline persistence).
   Future<bool> signUp(String email, String password) async {
     state = AuthStatus.loading;
     errorMessage = null;
-    final client = _supabase;
-    if (client == null) {
-      errorMessage = 'Supabase is not configured';
+
+    if (email.trim().isEmpty || password.trim().isEmpty) {
+      errorMessage = 'Please fill all fields';
       state = AuthStatus.error;
       return false;
     }
-    try {
-      if (email.trim().isEmpty || password.trim().isEmpty) {
-        errorMessage = 'Please fill all fields';
-        state = AuthStatus.error;
-        return false;
-      }
 
+    final client = _supabase;
+    if (client == null) {
+      // Offline / Local account creation when Supabase is unconfigured
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kLocalAuthKey, true);
+      await prefs.setString(_kLocalEmailKey, email.trim());
+      final name = email.trim().split('@').first;
+      await prefs.setString(_kLocalNameKey, name.isNotEmpty ? name : 'User');
+      state = AuthStatus.authenticated;
+      return true;
+    }
+
+    try {
       final response = await client.auth.signUp(
         email: email.trim(),
         password: password.trim(),
       );
 
       if (response.user != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_kLocalAuthKey, true);
+        await prefs.setString(_kLocalEmailKey, email.trim());
         state = AuthStatus.authenticated;
         return true;
       } else {
@@ -196,8 +223,14 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
     }
   }
 
-  /// Instant Guest Demo mode entry.
-  void signInGuest() {
+  /// Instant Guest Demo mode entry (persisted locally across app restarts).
+  Future<void> signInGuest() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kLocalAuthKey, true);
+      await prefs.setString(_kLocalEmailKey, 'guest@aira.local');
+      await prefs.setString(_kLocalNameKey, 'AIRA Explorer');
+    } catch (_) {}
     state = AuthStatus.authenticated;
     errorMessage = null;
   }
@@ -209,6 +242,12 @@ class AuthNotifier extends StateNotifier<AuthStatus> {
     } catch (_) {}
     try {
       await _supabase?.auth.signOut();
+    } catch (_) {}
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kLocalAuthKey);
+      await prefs.remove(_kLocalEmailKey);
+      await prefs.remove(_kLocalNameKey);
     } catch (_) {}
     state = AuthStatus.unauthenticated;
     errorMessage = null;

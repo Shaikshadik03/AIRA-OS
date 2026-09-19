@@ -6,6 +6,7 @@ import 'package:aira_app/core/theme/aira_typography.dart';
 import 'package:aira_app/core/widgets/aira_button.dart';
 import 'package:aira_app/core/widgets/aira_text_field.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:aira_app/config/app_config.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -83,9 +84,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           action: SnackBarAction(
             label: 'Guest Access',
             textColor: AiraColors.electricCyan,
-            onPressed: () {
-              ref.read(authProvider.notifier).signInGuest();
-              context.go('/chat');
+            onPressed: () async {
+              await ref.read(authProvider.notifier).signInGuest();
+              if (mounted) context.go('/chat');
             },
           ),
         ),
@@ -145,7 +146,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   color: AiraColors.textSecondary,
                 ),
               ),
-              const SizedBox(height: 32),
+              if (!AppConfig.isSupabaseConfigured) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AiraColors.electricCyan.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AiraColors.electricCyan.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.cloud_off_rounded, color: AiraColors.electricCyan, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Local / Offline Mode Active. Instant guest access or email login works without cloud setup.',
+                          style: AiraTypography.caption.copyWith(
+                            color: Colors.white70,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
               // Email field
               AiraTextField(
                 controller: _emailController,
@@ -232,9 +259,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 12),
               // Instant Guest Demo Button
               ElevatedButton.icon(
-                onPressed: () {
-                  ref.read(authProvider.notifier).signInGuest();
-                  context.go('/chat');
+                onPressed: () async {
+                  await ref.read(authProvider.notifier).signInGuest();
+                  if (context.mounted) context.go('/chat');
                 },
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),

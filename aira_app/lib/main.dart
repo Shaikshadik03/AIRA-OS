@@ -51,14 +51,8 @@ void main() async {
   // Initialize Hive for local chat storage
   await Hive.initFlutter();
 
-  // Initialize offline chat cache (was missing — caused silent cache failures)
+  // Initialize offline chat cache
   await ChatCacheService.init();
-
-  // Initialize AIRA Brain: Personality, Profile, Memory, and Cognitive Graph
-  await PersonalityEngine().load();
-  await UserProfileService().load();
-  await MemoryEngine().load();
-  await CognitiveMemoryEngine().init();
 
   // Initialize Notification Service for local alerts
   await NotificationService().initialize();
@@ -70,27 +64,41 @@ void main() async {
     } catch (_) {}
   };
 
-  // Initialize Proactive Intelligence Engine (auto-reminders, nudges)
-  final proactive = ProactiveEngine();
-  await proactive.load();
-  proactive.start();
-
-  // Initialize Wake Word Service (Hey AIRA hands-free)
-  await WakeWordService().load();
-
-  // Initialize Notification Intelligence & Social World Radar
-  await NotificationMonitorService().init();
-  await SocialWorldMonitorService().init();
-  await SmartReplyService().init();
-
-  // Initialize Stage M: Emergency Kill-Switch & Reliability Metrics
-  await AutomationControlService().init();
-  await UsageMetricsService().init();
+  // Parallel fast-load of essential AIRA Brain state
+  await Future.wait([
+    PersonalityEngine().load(),
+    UserProfileService().load(),
+    MemoryEngine().load(),
+    CognitiveMemoryEngine().init(),
+  ]);
 
   runApp(
     const ProviderScope(
       child: AiraApp(),
     ),
   );
+
+  // Defer background monitors & secondary services (non-blocking post-launch)
+  Future.microtask(() async {
+    try {
+      final proactive = ProactiveEngine();
+      await proactive.load();
+      proactive.start();
+    } catch (_) {}
+
+    try {
+      await WakeWordService().load();
+    } catch (_) {}
+
+    try {
+      await Future.wait([
+        NotificationMonitorService().init(),
+        SocialWorldMonitorService().init(),
+        SmartReplyService().init(),
+        AutomationControlService().init(),
+        UsageMetricsService().init(),
+      ]);
+    } catch (_) {}
+  });
 }
 

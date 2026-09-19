@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aira_app/core/theme/aira_colors.dart';
 import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:dio/dio.dart';
+import 'package:aira_app/core/services/llm_service.dart';
 import 'package:aira_app/features/chat/presentation/providers/chat_provider.dart';
 import 'package:aira_app/core/services/notification_service.dart';
 import 'package:aira_app/core/services/android_device_service.dart';
@@ -1051,6 +1053,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final groqController = TextEditingController(text: prefs.getString('aira_custom_groq_key') ?? '');
     final geminiController = TextEditingController(text: prefs.getString('aira_custom_gemini_key') ?? '');
+    final openRouterController = TextEditingController(text: prefs.getString('aira_custom_openrouter_key') ?? '');
+
+    String? testResult;
+    bool isTesting = false;
+    bool isTestSuccess = false;
 
     if (!mounted) return;
     final theme = Theme.of(context);
@@ -1058,113 +1065,246 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.key_rounded, color: AiraColors.claudeTerracotta, size: 22),
-            const SizedBox(width: 10),
-            Text(
-              'AI Model & API Keys',
-              style: GoogleFonts.playfairDisplay(
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-                color: theme.colorScheme.onSurface,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          Future<void> testGroqKey() async {
+            final key = LlmService.sanitizeApiKey(groqController.text);
+            if (key.isEmpty) {
+              setDialogState(() {
+                testResult = 'Please enter a Groq API key first.';
+                isTestSuccess = false;
+              });
+              return;
+            }
+
+            setDialogState(() {
+              isTesting = true;
+              testResult = 'Verifying key with Groq Cloud...';
+            });
+
+            try {
+              final dio = Dio(BaseOptions(
+                connectTimeout: const Duration(seconds: 8),
+                receiveTimeout: const Duration(seconds: 8),
+              ));
+              final resp = await dio.get(
+                'https://api.groq.com/openai/v1/models',
+                options: Options(headers: {'Authorization': 'Bearer $key'}),
+              );
+              if (resp.statusCode == 200) {
+                setDialogState(() {
+                  isTesting = false;
+                  isTestSuccess = true;
+                  testResult = '✅ Key Valid! Connected to Groq Cloud.';
+                });
+              } else {
+                setDialogState(() {
+                  isTesting = false;
+                  isTestSuccess = false;
+                  testResult = '⚠️ Server returned code ${resp.statusCode}.';
+                });
+              }
+            } on DioException catch (e) {
+              setDialogState(() {
+                isTesting = false;
+                isTestSuccess = false;
+                if (e.response?.statusCode == 401) {
+                  testResult = '❌ Invalid API Key (HTTP 401 Unauthorized).';
+                } else if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.connectionError) {
+                  testResult = '⚠️ Network timeout. Check internet connection.';
+                } else {
+                  testResult = '❌ Connection failed: ${e.response?.statusCode ?? e.message}';
+                }
+              });
+            } catch (e) {
+              setDialogState(() {
+                isTesting = false;
+                isTestSuccess = false;
+                testResult = '❌ Verification error: $e';
+              });
+            }
+          }
+
+          return AlertDialog(
+            backgroundColor: theme.scaffoldBackgroundColor,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(Icons.key_rounded, color: AiraColors.claudeTerracotta, size: 22),
+                const SizedBox(width: 10),
+                Text(
+                  'AI Model & API Keys',
+                  style: GoogleFonts.playfairDisplay(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.12 : 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AiraColors.claudeTerracotta.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      '💡 AIRA works with free API keys from Groq or Google Gemini. Get a free Groq key in 10 seconds at console.groq.com/keys.',
+                      style: GoogleFonts.sourceSerif4(
+                        fontSize: 12.5,
+                        color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Groq API Key (Primary)',
+                        style: GoogleFonts.sourceSerif4(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: isTesting ? null : testGroqKey,
+                        icon: isTesting
+                            ? const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AiraColors.claudeTerracotta),
+                              )
+                            : const Icon(Icons.flash_on_rounded, size: 14, color: AiraColors.claudeTerracotta),
+                        label: Text(
+                          isTesting ? 'Testing...' : 'Test Key',
+                          style: GoogleFonts.sourceSerif4(fontSize: 11, fontWeight: FontWeight.w700, color: AiraColors.claudeTerracotta),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: groqController,
+                    decoration: InputDecoration(
+                      hintText: 'gsk_...',
+                      hintStyle: GoogleFonts.firaCode(fontSize: 12),
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    style: GoogleFonts.firaCode(fontSize: 12),
+                    obscureText: true,
+                  ),
+                  if (testResult != null) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isTestSuccess
+                            ? AiraColors.success.withValues(alpha: 0.12)
+                            : AiraColors.error.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        testResult!,
+                        style: GoogleFonts.sourceSerif4(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isTestSuccess ? AiraColors.success : AiraColors.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Text(
+                    'Gemini API Key (Optional Fallback 1)',
+                    style: GoogleFonts.sourceSerif4(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: geminiController,
+                    decoration: InputDecoration(
+                      hintText: 'AIzaSy...',
+                      hintStyle: GoogleFonts.firaCode(fontSize: 12),
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    style: GoogleFonts.firaCode(fontSize: 12),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'OpenRouter API Key (Optional Fallback 2)',
+                    style: GoogleFonts.sourceSerif4(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: openRouterController,
+                    decoration: InputDecoration(
+                      hintText: 'sk-or-v1-...',
+                      hintStyle: GoogleFonts.firaCode(fontSize: 12),
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    style: GoogleFonts.firaCode(fontSize: 12),
+                    obscureText: true,
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AiraColors.claudeTerracotta.withValues(alpha: isDark ? 0.12 : 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AiraColors.claudeTerracotta.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  '💡 AIRA works with free API keys from Groq or Google Gemini. Get a free Groq key in 10 seconds at console.groq.com/keys.',
-                  style: GoogleFonts.sourceSerif4(
-                    fontSize: 12.5,
-                    color: isDark ? AiraColors.textPrimary : AiraColors.textPrimaryLight,
-                    height: 1.5,
-                  ),
-                ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('Cancel', style: GoogleFonts.sourceSerif4()),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Groq API Key (Recommended)',
-                style: GoogleFonts.sourceSerif4(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: groqController,
-                decoration: InputDecoration(
-                  hintText: 'gsk_...',
-                  hintStyle: GoogleFonts.firaCode(fontSize: 12),
-                  border: const OutlineInputBorder(),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
-                style: GoogleFonts.firaCode(fontSize: 12),
-                obscureText: true,
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Gemini API Key (Optional Fallback)',
-                style: GoogleFonts.sourceSerif4(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: geminiController,
-                decoration: InputDecoration(
-                  hintText: 'AIzaSy...',
-                  hintStyle: GoogleFonts.firaCode(fontSize: 12),
-                  border: const OutlineInputBorder(),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
-                style: GoogleFonts.firaCode(fontSize: 12),
-                obscureText: true,
+              ElevatedButton(
+                onPressed: () async {
+                  final cleanGroq = LlmService.sanitizeApiKey(groqController.text);
+                  final cleanGemini = LlmService.sanitizeApiKey(geminiController.text);
+                  final cleanOpenRouter = LlmService.sanitizeApiKey(openRouterController.text);
+
+                  await prefs.setString('aira_custom_groq_key', cleanGroq);
+                  await prefs.setString('aira_custom_gemini_key', cleanGemini);
+                  await prefs.setString('aira_custom_openrouter_key', cleanOpenRouter);
+
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('AI API keys saved and verified successfully!'),
+                        backgroundColor: AiraColors.claudeTerracotta,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AiraColors.claudeTerracotta),
+                child: Text('Save Keys', style: GoogleFonts.sourceSerif4(color: Colors.white, fontWeight: FontWeight.w700)),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: GoogleFonts.sourceSerif4()),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              await prefs.setString('aira_custom_groq_key', groqController.text.trim());
-              await prefs.setString('aira_custom_gemini_key', geminiController.text.trim());
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('AI API keys saved successfully!'),
-                    backgroundColor: AiraColors.claudeTerracotta,
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AiraColors.claudeTerracotta),
-            child: Text('Save Keys', style: GoogleFonts.sourceSerif4(color: Colors.white, fontWeight: FontWeight.w700)),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

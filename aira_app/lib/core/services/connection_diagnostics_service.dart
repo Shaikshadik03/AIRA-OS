@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aira_app/config/app_config.dart';
+import 'package:aira_app/core/services/llm_service.dart';
 import 'package:aira_app/features/laptop/data/laptop_control_service.dart';
 import 'package:aira_app/core/services/diagnostic_logger.dart';
 
@@ -127,8 +128,8 @@ class ConnectionDiagnosticsService {
 
   Future<DiagnosticTargetResult> _testGroq() async {
     final prefs = await SharedPreferences.getInstance();
-    final customKey = prefs.getString('aira_custom_groq_key')?.trim();
-    final key = (customKey != null && customKey.isNotEmpty) ? customKey : AppConfig.groqApiKey;
+    final customKey = LlmService.sanitizeApiKey(prefs.getString('aira_custom_groq_key'));
+    final key = customKey.isNotEmpty ? customKey : LlmService.sanitizeApiKey(AppConfig.groqApiKey);
 
     if (key.isEmpty) {
       return const DiagnosticTargetResult(
@@ -174,8 +175,8 @@ class ConnectionDiagnosticsService {
 
   Future<DiagnosticTargetResult> _testGemini() async {
     final prefs = await SharedPreferences.getInstance();
-    final customKey = prefs.getString('aira_custom_gemini_key')?.trim();
-    final key = (customKey != null && customKey.isNotEmpty) ? customKey : AppConfig.geminiApiKey;
+    final customKey = LlmService.sanitizeApiKey(prefs.getString('aira_custom_gemini_key'));
+    final key = customKey.isNotEmpty ? customKey : LlmService.sanitizeApiKey(AppConfig.geminiApiKey);
 
     if (key.isEmpty) {
       return const DiagnosticTargetResult(
@@ -220,8 +221,8 @@ class ConnectionDiagnosticsService {
 
   Future<DiagnosticTargetResult> _testOpenRouter() async {
     final prefs = await SharedPreferences.getInstance();
-    final customKey = prefs.getString('aira_custom_openrouter_key')?.trim();
-    final key = (customKey != null && customKey.isNotEmpty) ? customKey : AppConfig.openRouterApiKey;
+    final customKey = LlmService.sanitizeApiKey(prefs.getString('aira_custom_openrouter_key'));
+    final key = customKey.isNotEmpty ? customKey : LlmService.sanitizeApiKey(AppConfig.openRouterApiKey);
 
     if (key.isEmpty) {
       return const DiagnosticTargetResult(

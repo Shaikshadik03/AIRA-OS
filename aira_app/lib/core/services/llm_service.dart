@@ -74,6 +74,20 @@ class LlmService {
     return prompt;
   }
 
+  /// Clean and sanitize user-provided API keys (strips whitespace, quotes, and Bearer prefix).
+  static String sanitizeApiKey(String? key) {
+    if (key == null) return '';
+    var sanitized = key.trim();
+    if ((sanitized.startsWith('"') && sanitized.endsWith('"')) ||
+        (sanitized.startsWith("'") && sanitized.endsWith("'"))) {
+      sanitized = sanitized.substring(1, sanitized.length - 1).trim();
+    }
+    if (sanitized.toLowerCase().startsWith('bearer ')) {
+      sanitized = sanitized.substring(7).trim();
+    }
+    return sanitized;
+  }
+
   // ──────────────────── Unified API Entrypoint ────────────────────
 
   /// Main interface function: Executes LLM query with fallback chain.
@@ -126,6 +140,7 @@ class LlmService {
     }
 
     final sw = Stopwatch()..start();
+    Object? primaryError;
 
     // ── TEXT CHAT ROUTING (Groq -> Gemini -> OpenRouter) ──
     // ── STEP 1: Try Primary Provider (Groq) ──
@@ -145,6 +160,7 @@ class LlmService {
         debugPrint('[LLM FALLBACK] ✅ Responded via GROQ');
         return result;
       } catch (e) {
+        primaryError = e;
         debugPrint('[LLM FALLBACK] ⚠️ Groq Failed ($e). Retrying on Gemini (Fallback 1)...');
       }
     } else {
@@ -168,6 +184,7 @@ class LlmService {
         debugPrint('[LLM FALLBACK] ✅ Responded via GEMINI (Fallback 1)');
         return result;
       } catch (e) {
+        primaryError ??= e;
         debugPrint('[LLM FALLBACK] ⚠️ Gemini Failed ($e). Retrying on OpenRouter (Fallback 2)...');
       }
     } else {
@@ -194,6 +211,39 @@ class LlmService {
       UsageMetricsService().recordLlmCall(latencyMs: sw.elapsedMilliseconds, success: false);
       DiagnosticLogger().error('LLM', 'All LLM providers failed', e);
       debugPrint('[LLM FALLBACK] ❌ All LLM Providers Failed: $e');
+
+      final prefs = await SharedPreferences.getInstance();
+      final customGroq = sanitizeApiKey(prefs.getString('aira_custom_groq_key'));
+      final customGemini = sanitizeApiKey(prefs.getString('aira_custom_gemini_key'));
+      final customOpenRouter = sanitizeApiKey(prefs.getString('aira_custom_openrouter_key'));
+      final hasAnyKey = customGroq.isNotEmpty ||
+          customGemini.isNotEmpty ||
+          customOpenRouter.isNotEmpty ||
+          AppConfig.groqApiKey.isNotEmpty;
+
+      final errStr = (primaryError ?? e).toString();
+      if (hasAnyKey) {
+        if (errStr.contains('401') || errStr.toLowerCase().contains('invalid api key') || errStr.toLowerCase().contains('unauthorized')) {
+          return '⚠️ **AI Authentication Error**\n\n'
+              'Your API key was rejected by the provider (Invalid or Expired).\n\n'
+              '1. Go to [console.groq.com/keys](https://console.groq.com/keys) to create a new free API key.\n'
+              '2. Open **Settings ⚙️ → AI Model & API Keys**, paste it, and tap **Save Keys**.\n\n'
+              '💡 *Tip: Make sure to copy the entire key without missing characters.*';
+        }
+        if (errStr.contains('429') || errStr.toLowerCase().contains('rate limit')) {
+          return '⚠️ **AI Rate Limit Exceeded**\n\n'
+              'You have reached the temporary rate limit on Groq Cloud.\n'
+              'Please wait 30–60 seconds before sending your next message, or configure a fallback key (Gemini) in Settings.';
+        }
+        if (errStr.contains('SocketException') || errStr.contains('connectTimeout') || errStr.contains('receiveTimeout') || errStr.contains('connection')) {
+          return '⚠️ **Network Connection Error**\n\n'
+              'AIRA could not reach the AI servers. Please check your WiFi or mobile data connection and try again.';
+        }
+        return '⚠️ **AI Service Error**\n\n'
+            'Could not reach AI provider: ${primaryError ?? e}\n\n'
+            'Please verify your API key and network in **Settings ⚙️ → AI Model & API Keys**.';
+      }
+
       return '⚠️ **AI API Key Setup**\n\n'
           'To start chatting with AIRA:\n'
           '1. Open **Settings ⚙️ → AI Model & API Keys**\n'
@@ -212,10 +262,10 @@ class LlmService {
   }) async {
     // Check SharedPreferences for user-provided custom Groq key first
     final prefs = await SharedPreferences.getInstance();
-    final customKey = prefs.getString('aira_custom_groq_key')?.trim();
-    final apiKey = (customKey != null && customKey.isNotEmpty)
+    final customKey = sanitizeApiKey(prefs.getString('aira_custom_groq_key'));
+    final apiKey = customKey.isNotEmpty
         ? customKey
-        : AppConfig.groqApiKey;
+        : sanitizeApiKey(AppConfig.groqApiKey);
 
     if (apiKey.isEmpty) {
       throw Exception('Groq API Key is not set. Please add a free key in Settings.');
@@ -285,10 +335,10 @@ class LlmService {
     String? base64Image,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final customKey = prefs.getString('aira_custom_gemini_key')?.trim();
-    final apiKey = (customKey != null && customKey.isNotEmpty)
+    final customKey = sanitizeApiKey(prefs.getString('aira_custom_gemini_key'));
+    final apiKey = customKey.isNotEmpty
         ? customKey
-        : AppConfig.geminiApiKey;
+        : sanitizeApiKey(AppConfig.geminiApiKey);
 
     if (apiKey.isEmpty) {
       throw Exception('Gemini API Key is not configured.');
@@ -334,10 +384,10 @@ class LlmService {
     String? base64Image,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final customKey = prefs.getString('aira_custom_openrouter_key')?.trim();
-    final apiKey = (customKey != null && customKey.isNotEmpty)
+    final customKey = sanitizeApiKey(prefs.getString('aira_custom_openrouter_key'));
+    final apiKey = customKey.isNotEmpty
         ? customKey
-        : AppConfig.openRouterApiKey;
+        : sanitizeApiKey(AppConfig.openRouterApiKey);
 
     if (apiKey.isEmpty) {
       throw Exception('OpenRouter API Key is not configured.');

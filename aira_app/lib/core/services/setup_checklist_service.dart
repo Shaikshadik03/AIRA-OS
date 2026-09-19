@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:aira_app/config/app_config.dart';
+import 'package:aira_app/core/services/llm_service.dart';
 import 'package:aira_app/core/services/user_profile_service.dart';
 import 'package:aira_app/core/services/memory_engine.dart';
 import 'package:aira_app/features/laptop/data/laptop_control_service.dart';
@@ -52,9 +53,9 @@ class SetupChecklistService {
     final prefs = await SharedPreferences.getInstance();
 
     // 1. AI API Key configured
-    final groqKey = prefs.getString('aira_custom_groq_key')?.trim() ?? AppConfig.groqApiKey;
-    final geminiKey = prefs.getString('aira_custom_gemini_key')?.trim() ?? AppConfig.geminiApiKey;
-    final openRouterKey = prefs.getString('aira_custom_openrouter_key')?.trim() ?? AppConfig.openRouterApiKey;
+    final groqKey = LlmService.sanitizeApiKey(prefs.getString('aira_custom_groq_key') ?? AppConfig.groqApiKey);
+    final geminiKey = LlmService.sanitizeApiKey(prefs.getString('aira_custom_gemini_key') ?? AppConfig.geminiApiKey);
+    final openRouterKey = LlmService.sanitizeApiKey(prefs.getString('aira_custom_openrouter_key') ?? AppConfig.openRouterApiKey);
     final hasAiKey = groqKey.isNotEmpty || geminiKey.isNotEmpty || openRouterKey.isNotEmpty;
 
     // 2. Microphone / Voice Permissions

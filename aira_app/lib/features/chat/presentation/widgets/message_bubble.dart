@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,68 +30,7 @@ class MessageBubble extends ConsumerStatefulWidget {
   ConsumerState<MessageBubble> createState() => _MessageBubbleState();
 }
 
-class _MessageBubbleState extends ConsumerState<MessageBubble>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _glowController;
-  Timer? _wordTimer;
-  List<String> _words = [];
-  int _displayedWordCount = 0;
-  bool _isAnimating = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _glowController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 750),
-    )..repeat(reverse: true);
-
-    if (widget.message.isAssistant) {
-      _initWordStreaming();
-    }
-  }
-
-  @override
-  void didUpdateWidget(MessageBubble oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.message.isAssistant &&
-        oldWidget.message.content != widget.message.content) {
-      _initWordStreaming();
-    }
-  }
-
-  void _initWordStreaming() {
-    if (widget.message.content.isEmpty) return;
-
-    _words = widget.message.content.split(' ');
-    if (_words.isEmpty) return;
-
-    _displayedWordCount = 1;
-    _isAnimating = true;
-    _wordTimer?.cancel();
-
-    _wordTimer = Timer.periodic(const Duration(milliseconds: 26), (timer) {
-      if (!mounted) return;
-      if (_displayedWordCount < _words.length) {
-        setState(() => _displayedWordCount++);
-      } else {
-        timer.cancel();
-        if (mounted) setState(() => _isAnimating = false);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _glowController.dispose();
-    _wordTimer?.cancel();
-    super.dispose();
-  }
-
-  String get _streamedText {
-    if (!_isAnimating) return widget.message.content;
-    return _words.take(_displayedWordCount).join(' ');
-  }
+class _MessageBubbleState extends ConsumerState<MessageBubble> {
 
   List<_ArtifactSnippet> _extractArtifacts(String text) {
     final artifacts = <_ArtifactSnippet>[];
@@ -204,24 +142,18 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                AnimatedBuilder(
-                  animation: _glowController,
-                  builder: (_, __) => Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AiraColors.claudeTerracotta,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AiraColors.claudeTerracotta.withValues(
-                            alpha: 0.8 * _glowController.value,
-                          ),
-                          blurRadius: 7 * _glowController.value,
-                          spreadRadius: 2 * _glowController.value,
-                        ),
-                      ],
-                    ),
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AiraColors.claudeTerracotta,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AiraColors.claudeTerracotta.withValues(alpha: 0.4),
+                        blurRadius: 4,
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 7),
@@ -346,7 +278,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           ],
 
           MarkdownBody(
-            data: _streamedText,
+            data: widget.message.content,
             styleSheet: MarkdownStyleSheet(
               p: GoogleFonts.sourceSerif4(
                 color: textColor,
@@ -411,42 +343,13 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           ),
 
           // ── Claude Artifacts Live Cards (if code blocks are present) ──
-          if (!_isAnimating && artifacts.isNotEmpty) ...[
+          if (artifacts.isNotEmpty) ...[
             const SizedBox(height: 10),
             ...artifacts.map((art) => _buildArtifactCard(art, isDark)),
           ],
 
-          // Pulsing glowing orb indicator while streaming
-          if (_isAnimating) ...[
-            const SizedBox(height: 10),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedBuilder(
-                  animation: _glowController,
-                  builder: (_, __) => Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AiraColors.claudeTerracotta,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AiraColors.claudeTerracotta
-                              .withValues(alpha: 0.9 * _glowController.value),
-                          blurRadius: 10 * _glowController.value,
-                          spreadRadius: 3 * _glowController.value,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-
-          // Action buttons after message is finished
-          if (!_isAnimating && widget.message.content.isNotEmpty) ...[
+          // Action buttons after message is rendered
+          if (widget.message.content.isNotEmpty) ...[
             const SizedBox(height: 8),
             Row(
               mainAxisSize: MainAxisSize.min,

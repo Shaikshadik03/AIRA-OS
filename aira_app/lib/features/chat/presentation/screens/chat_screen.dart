@@ -682,7 +682,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
 
         // Real message → MessageBubble
-        return MessageBubble(message: message);
+        return MessageBubble(
+          key: ValueKey(message.id),
+          message: message,
+        );
       },
     );
   }
