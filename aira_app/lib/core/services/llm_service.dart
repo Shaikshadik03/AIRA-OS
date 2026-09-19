@@ -222,34 +222,50 @@ class LlmService {
           AppConfig.groqApiKey.isNotEmpty;
 
       final errStr = (primaryError ?? e).toString();
-      if (hasAnyKey) {
-        if (errStr.contains('401') || errStr.toLowerCase().contains('invalid api key') || errStr.toLowerCase().contains('unauthorized')) {
-          return '⚠️ **AI Authentication Error**\n\n'
-              'Your API key was rejected by the provider (Invalid or Expired).\n\n'
-              '1. Go to [console.groq.com/keys](https://console.groq.com/keys) to create a new free API key.\n'
-              '2. Open **Settings ⚙️ → AI Model & API Keys**, paste it, and tap **Save Keys**.\n\n'
-              '💡 *Tip: Make sure to copy the entire key without missing characters.*';
-        }
-        if (errStr.contains('429') || errStr.toLowerCase().contains('rate limit')) {
-          return '⚠️ **AI Rate Limit Exceeded**\n\n'
-              'You have reached the temporary rate limit on Groq Cloud.\n'
-              'Please wait 30–60 seconds before sending your next message, or configure a fallback key (Gemini) in Settings.';
-        }
-        if (errStr.contains('SocketException') || errStr.contains('connectTimeout') || errStr.contains('receiveTimeout') || errStr.contains('connection')) {
-          return '⚠️ **Network Connection Error**\n\n'
-              'AIRA could not reach the AI servers. Please check your WiFi or mobile data connection and try again.';
-        }
-        return '⚠️ **AI Service Error**\n\n'
-            'Could not reach AI provider: ${primaryError ?? e}\n\n'
-            'Please verify your API key and network in **Settings ⚙️ → AI Model & API Keys**.';
-      }
-
-      return '⚠️ **AI API Key Setup**\n\n'
-          'To start chatting with AIRA:\n'
-          '1. Open **Settings ⚙️ → AI Model & API Keys**\n'
-          '2. Paste your free **Groq API Key** (get one instantly at [console.groq.com/keys](https://console.groq.com/keys)) or **Gemini Key**.\n\n'
-          '💡 *Tip: Your offline features like Laptop Remote Control, TickTick Tasks, DSA Problems, and Alarms work 100% anytime!*';
+      return formatDiagnosticMessage(
+        hasAnyKey: hasAnyKey,
+        errorString: errStr,
+      );
     }
+  }
+
+  /// Formats user-friendly, actionable diagnostic messages for LLM failures.
+  static String formatDiagnosticMessage({
+    required bool hasAnyKey,
+    required String errorString,
+  }) {
+    if (hasAnyKey) {
+      if (errorString.contains('401') ||
+          errorString.toLowerCase().contains('invalid api key') ||
+          errorString.toLowerCase().contains('unauthorized')) {
+        return '⚠️ **AI Authentication Error**\n\n'
+            'Your API key was rejected by the provider (Invalid or Expired).\n\n'
+            '1. Go to [console.groq.com/keys](https://console.groq.com/keys) to create a new free API key.\n'
+            '2. Open **Settings ⚙️ → AI Model & API Keys**, paste it, and tap **Save Keys**.\n\n'
+            '💡 *Tip: Make sure to copy the entire key without missing characters.*';
+      }
+      if (errorString.contains('429') || errorString.toLowerCase().contains('rate limit')) {
+        return '⚠️ **AI Rate Limit Exceeded**\n\n'
+            'You have reached the temporary rate limit on Groq Cloud.\n'
+            'Please wait 30–60 seconds before sending your next message, or configure a fallback key (Gemini) in Settings.';
+      }
+      if (errorString.contains('SocketException') ||
+          errorString.contains('connectTimeout') ||
+          errorString.contains('receiveTimeout') ||
+          errorString.contains('connection')) {
+        return '⚠️ **Network Connection Error**\n\n'
+            'AIRA could not reach the AI servers. Please check your WiFi or mobile data connection and try again.';
+      }
+      return '⚠️ **AI Service Error**\n\n'
+          'Could not reach AI provider: $errorString\n\n'
+          'Please verify your API key and network in **Settings ⚙️ → AI Model & API Keys**.';
+    }
+
+    return '⚠️ **AI API Key Setup**\n\n'
+        'To start chatting with AIRA:\n'
+        '1. Open **Settings ⚙️ → AI Model & API Keys**\n'
+        '2. Paste your free **Groq API Key** (get one instantly at [console.groq.com/keys](https://console.groq.com/keys)) or **Gemini Key**.\n\n'
+        '💡 *Tip: Your offline features like Laptop Remote Control, TickTick Tasks, DSA Problems, and Alarms work 100% anytime!*';
   }
 
   // ──────────────────── Groq Provider (OpenAI Style) ────────────────────

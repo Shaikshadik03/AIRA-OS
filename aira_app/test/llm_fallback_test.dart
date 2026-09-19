@@ -86,5 +86,43 @@ void main() {
         llm.forceGeminiFail = false;
       }
     });
+    test('sanitizeApiKey cleanly strips whitespace, quotes, and Bearer prefixes', () {
+      expect(LlmService.sanitizeApiKey(''), equals(''));
+      expect(LlmService.sanitizeApiKey(null), equals(''));
+      expect(LlmService.sanitizeApiKey('  gsk_abc123  '), equals('gsk_abc123'));
+      expect(LlmService.sanitizeApiKey('"gsk_abc123"'), equals('gsk_abc123'));
+      expect(LlmService.sanitizeApiKey("'gsk_abc123'"), equals('gsk_abc123'));
+      expect(LlmService.sanitizeApiKey('Bearer gsk_abc123'), equals('gsk_abc123'));
+      expect(LlmService.sanitizeApiKey('  "Bearer gsk_abc123"  '), equals('gsk_abc123'));
+    });
+
+    test('Diagnostic message formatting for API failures', () {
+      final keyNeeded = LlmService.formatDiagnosticMessage(
+        hasAnyKey: false,
+        errorString: 'No key provided',
+      );
+      expect(keyNeeded, contains('AI API Key Setup'));
+      expect(keyNeeded, contains('Groq'));
+
+      final invalidMsg = LlmService.formatDiagnosticMessage(
+        hasAnyKey: true,
+        errorString: 'Exception: 401 Unauthorized - Invalid API Key',
+      );
+      expect(invalidMsg, contains('Invalid or Expired'));
+      expect(invalidMsg, contains('AI Authentication Error'));
+
+      final rateLimitMsg = LlmService.formatDiagnosticMessage(
+        hasAnyKey: true,
+        errorString: 'Exception: 429 Too Many Requests - Rate limit reached',
+      );
+      expect(rateLimitMsg, contains('Rate Limit Exceeded'));
+      expect(rateLimitMsg, contains('30–60 seconds'));
+
+      final networkMsg = LlmService.formatDiagnosticMessage(
+        hasAnyKey: true,
+        errorString: 'SocketException: OS Error: Connection timed out',
+      );
+      expect(networkMsg, contains('Network Connection Error'));
+    });
   });
 }
