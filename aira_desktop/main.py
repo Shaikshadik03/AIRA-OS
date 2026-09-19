@@ -1167,7 +1167,7 @@ def get_local_ip():
 if __name__ == "__main__":
     local_ip = get_local_ip()
     print("\n" + "="*55)
-    print("  🤖  AIRA Desktop Agent v3.0.0 — ONLINE")
+    print(f"  🤖  AIRA Desktop Agent v{AGENT_VERSION} — ONLINE")
     print("="*55)
     print(f"  📡  Local IP  :  http://{local_ip}:{PORT}")
     print(f"  🔑  Your PIN  :  {AIRA_PIN}")
