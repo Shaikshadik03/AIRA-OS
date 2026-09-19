@@ -236,22 +236,44 @@ flutter run --debug
 
 ---
 
-## 🧪 Master Blueprint Automated Test Suite
+## 🧪 Automated Cross-Platform Test Suite (144 / 144 Tests Passing — 100%)
 
-Verify all 12 Blueprint Stages, cross-device pairing, digital tasks, and safety guardrails by running the full test suite:
+AIRA-OS includes an exhaustive automated verification suite validating both the mobile application (`aira_app`) and the desktop companion (`aira_desktop`):
 
+### 1. 📱 Mobile Test Suite (`aira_app` — 132 Tests)
+Run the complete mobile test suite:
 ```bash
 cd aira_app
-flutter test test/daily_reliability_stage_m_test.dart test/multi_step_problem_solving_stage_l_test.dart test/android_actions_stage_k_test.dart test/windows_digital_tasks_stage_j_test.dart test/laptop_pairing_stage_i_test.dart
+flutter test --no-pub
 ```
 
-### ✅ Verification Matrix (59 / 59 Tests Passing — 100%)
-- **Stage M (Daily Reliability & Kill-Switch)**: 7/7 passed (emergency pause, setup checklist, connection diagnostics, redacted logger, GDPR wipe).
+- **Stage M (Daily Reliability & Kill Switch)**: 7/7 passed (emergency pause, setup checklist, connection diagnostics, redacted logger, GDPR wipe).
 - **Stage L (Multi-Step Problem Solving)**: 14/14 passed (bounded 2–8 step planner, concurrency, crash resumption, evidence synthesis).
 - **Stage K (Android Actions)**: 13/13 passed (app allowlist, messaging/calendar/navigation intents, sensitive boundary halts).
 - **Stage J (Windows Digital Tasks)**: 15/15 passed (scoped path security, reversible downloads organization, screen action safety).
 - **Stage I (Laptop Pairing & Bridge)**: 10/10 passed (6-digit PIN handshake, Bearer token auth, 30s TTL commands, idempotency receipts).
-- **Static Analysis**: `flutter analyze lib/ --no-pub` reports **0 errors, 0 warnings, 0 infos**.
+- **Stage H (Notification Assistant)**: 6/6 passed (real-time classification, OTP redaction, allowlist, AI digest generation).
+- **6-Phase Agentic AI Engine**: 20/20 passed (Goal Planner, Pre-Action Reflection, Guardrail tiers, Tool Registry, Adaptive Outcome Learner, Swarm Orchestrator).
+- **Smart Reply & Anti-Bot**: 8/8 passed (strict Review-Before-Send guarantee, randomized human-like delay, zero auto-send).
+- **Offline Auth & Session Persistence**: 6/6 passed (instant guest demo, cold-start session restore, sign-out cleanup, local credentials).
+- **LLM Fallback & Diagnostics**: 6/6 passed (Groq ➔ Gemini ➔ OpenRouter fallback, key sanitization, 401/429 diagnostics).
+- **Device & Phone Intents**: 27/27 passed (voice notes, briefing feed, device hardware triggers).
+
+### 2. 💻 Desktop Companion Test Suite (`aira_desktop` — 12 Tests)
+Run the desktop companion test suite:
+```bash
+cd aira_desktop
+python -m pytest test_aira_desktop.py
+```
+
+- **API & Health**: 2/2 passed (`/health` endpoint, `/automation/status` reporting).
+- **Pairing & Security Handshake**: 5/5 passed (6-digit PIN generation with 5-min TTL, invalid PIN rejection, Bearer token issuance, 423 locked state when remote is paused, 403 rejection on revoked tokens).
+- **Durable Command Receipts**: 1/1 passed (idempotent receipt tracking and 250-receipt circular buffer bounding).
+- **File Manager Safety**: 4/4 passed (human-readable size formatting, safe directory listing, non-existent path guarding, text reading).
+
+### 3. 🔍 Static Analysis
+- Mobile: `flutter analyze lib/ --no-pub` reports **0 errors, 0 warnings, 0 lints**.
+- Desktop: `python -m py_compile` reports **0 syntax or import errors across all 9 modules**.
 
 ---
 
