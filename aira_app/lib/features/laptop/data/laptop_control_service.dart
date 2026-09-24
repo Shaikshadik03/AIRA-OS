@@ -156,8 +156,11 @@ class LaptopControlService {
       final wsUrl = 'ws://$host:$_port/ws/trackpad';
       _ws = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 3));
 
-      // Send auth PIN as first message
-      _ws!.add(jsonEncode({'pin': _laptopPin ?? '123456'}));
+      // Send auth PIN and paired token as first message
+      _ws!.add(jsonEncode({
+        'pin': _laptopPin ?? '123456',
+        'token': _deviceToken,
+      }));
 
       _ws!.listen(
         (data) {},
@@ -781,6 +784,59 @@ class LaptopControlService {
         'error': _friendlyError(e),
         'message': _friendlyError(e),
       };
+    }
+  }
+
+  /// Stream autonomous multi-step agent workflow progress over WebSocket
+  Stream<Map<String, dynamic>> streamAgentTask(String prompt, {String? customGroqKey}) async* {
+    if (!isConfigured) {
+      yield {'type': 'error', 'message': 'Laptop not configured.'};
+      return;
+    }
+
+    WebSocket? ws;
+    try {
+      final host = _sanitizeHost(_laptopIp);
+      final wsUrl = 'ws://$host:$_port/ws/agent';
+      ws = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 4));
+
+      // Send auth + prompt
+      ws.add(jsonEncode({
+        'pin': _laptopPin ?? '123456',
+        'token': _deviceToken,
+        'prompt': prompt,
+        'custom_groq_key': customGroqKey,
+      }));
+
+      await for (final raw in ws) {
+        if (raw is String) {
+          try {
+            final data = jsonDecode(raw) as Map<String, dynamic>;
+            yield data;
+            if (data['type'] == 'done' || data['type'] == 'error') {
+              break;
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      // Graceful fallback to HTTP executeAgentTask if WebSocket is unavailable
+      try {
+        yield {'type': 'status', 'message': 'Executing task via HTTP fallback...'};
+        final result = await executeAgentTask(prompt, customGroqKey: customGroqKey);
+        yield {
+          'type': 'done',
+          'success': result['success'] == true,
+          'message': result['message'] ?? 'Task completed',
+          'results': result['results'] ?? [],
+        };
+      } catch (fallbackErr) {
+        yield {'type': 'error', 'message': _friendlyError(e)};
+      }
+    } finally {
+      try {
+        await ws?.close();
+      } catch (_) {}
     }
   }
 

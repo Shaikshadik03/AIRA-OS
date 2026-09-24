@@ -1133,14 +1133,19 @@ def live_desktop_command(req: LiveDesktopCommandRequest, auth: bool = Depends(ve
 async def agent_ws(websocket: WebSocket):
     """
     WebSocket endpoint for real-time autonomous task execution streaming.
-    Phone sends: {"pin": "123456", "prompt": "open youtube and search...", "custom_groq_key": "..."}
+    Phone sends: {"pin": "123456", "token": "...", "prompt": "open youtube and search...", "custom_groq_key": "..."}
     Server streams: {"type": "plan", "steps": [...]}, then {"type": "step_update", "step": 1, ...}, then {"type": "done", "success": true}
     """
     await websocket.accept()
     try:
         init_data = await websocket.receive_json()
-        if init_data.get("pin") != AIRA_PIN:
-            await websocket.send_json({"error": "Invalid PIN"})
+        pin = init_data.get("pin")
+        token = init_data.get("token") or init_data.get("device_token")
+        is_pin_valid = (pin == AIRA_PIN)
+        is_token_valid = bool(token and verify_device_token(token))
+
+        if not is_pin_valid and not is_token_valid:
+            await websocket.send_json({"type": "error", "error": "Invalid PIN or Device Token"})
             await websocket.close()
             return
 
@@ -1189,50 +1194,7 @@ async def agent_ws(websocket: WebSocket):
             pass
 
 
-# ── WebSocket for Live Trackpad ───────────────────────────────────────────
 
-@app.websocket("/ws/trackpad")
-async def trackpad_ws(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time trackpad control.
-    Phone sends JSON events like:
-        {"type": "move", "dx": 5, "dy": -3}
-        {"type": "click", "button": "left"}
-        {"type": "scroll", "amount": -3}
-    """
-    await websocket.accept()
-    # Verify PIN in first message
-    try:
-        auth_msg = await websocket.receive_json()
-        if auth_msg.get("pin") != AIRA_PIN:
-            await websocket.send_json({"error": "Invalid PIN"})
-            await websocket.close()
-            return
-        await websocket.send_json({"status": "connected", "message": "AIRA trackpad ready"})
-
-        while True:
-            data = await websocket.receive_json()
-            event_type = data.get("type")
-
-            if event_type == "move":
-                mouse_control.move_mouse(data.get("dx", 0), data.get("dy", 0))
-            elif event_type == "click":
-                btn = data.get("button", "left")
-                if btn == "right":
-                    mouse_control.right_click()
-                elif btn == "double":
-                    mouse_control.double_click()
-                else:
-                    mouse_control.left_click()
-            elif event_type == "scroll":
-                mouse_control.scroll(data.get("amount", 0))
-            elif event_type == "type":
-                mouse_control.type_text(data.get("text", ""))
-            elif event_type == "hotkey":
-                mouse_control.hotkey(*data.get("keys", []))
-
-    except WebSocketDisconnect:
-        pass
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────

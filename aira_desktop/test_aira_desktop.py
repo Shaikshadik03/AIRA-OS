@@ -255,3 +255,68 @@ class TestWebSocketTrackpad:
             resp = json.loads(websocket.receive_text())
             assert resp.get("status") == "unauthorized"
 
+
+class TestWebSocketAgent:
+    def test_websocket_agent_rejects_bad_auth(self):
+        import json
+        with client.websocket_connect("/ws/agent") as websocket:
+            websocket.send_json({"pin": "wrong_pin_999999"})
+            resp = websocket.receive_json()
+            assert resp.get("type") == "error"
+            assert "Invalid PIN" in resp.get("error", "")
+
+    def test_websocket_agent_streaming_workflow(self, monkeypatch):
+        # Mock engine to avoid live LLM network latency in unit tests
+        mock_steps = [
+            {"description": "Open Notepad", "action": "open_app", "target": "notepad"},
+            {"description": "Type Greeting", "action": "type", "text": "Hello AIRA"}
+        ]
+        monkeypatch.setattr(main.agent_engine, "plan_task", lambda prompt: mock_steps)
+        monkeypatch.setattr(main.agent_engine, "execute_plan", lambda steps: {
+            "success": True,
+            "total_steps": len(steps),
+            "results": [{"step": 1, "status": "completed", "output": "Opened"}]
+        })
+
+        with client.websocket_connect("/ws/agent") as websocket:
+            # 1. Authenticate with PIN and send prompt
+            websocket.send_json({"pin": main.AIRA_PIN, "prompt": "open notepad and type hello"})
+
+            # 2. Status message
+            msg1 = websocket.receive_json()
+            assert msg1.get("type") == "status"
+            assert "Analyzing goal" in msg1.get("message", "")
+
+            # 3. Plan message
+            msg2 = websocket.receive_json()
+            assert msg2.get("type") == "plan"
+            assert msg2.get("total_steps") == 2
+            assert len(msg2.get("steps", [])) == 2
+
+            # 4. Step 1 progress (running)
+            msg3 = websocket.receive_json()
+            assert msg3.get("type") == "step_progress"
+            assert msg3.get("status") == "running"
+            assert msg3.get("step") == 1
+
+            # 5. Step 1 progress (completed)
+            msg4 = websocket.receive_json()
+            assert msg4.get("type") == "step_progress"
+            assert msg4.get("status") == "completed"
+
+            # 6. Step 2 progress (running)
+            msg5 = websocket.receive_json()
+            assert msg5.get("type") == "step_progress"
+            assert msg5.get("step") == 2
+
+            # 7. Step 2 progress (completed)
+            msg6 = websocket.receive_json()
+            assert msg6.get("type") == "step_progress"
+            assert msg6.get("status") == "completed"
+
+            # 8. Done message
+            msg7 = websocket.receive_json()
+            assert msg7.get("type") == "done"
+            assert msg7.get("success") is True
+
+

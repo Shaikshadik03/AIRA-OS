@@ -548,14 +548,31 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
                                     final status = stepMap['status'] ?? 'completed';
                                     final desc = stepMap['description'] ?? '';
                                     final output = stepMap['output'] ?? '';
-                                    final isOk = status == 'completed';
+
+                                    Widget statusWidget;
+                                    if (status == 'completed' || status == 'success') {
+                                      statusWidget = const Text('✅', style: TextStyle(fontSize: 13));
+                                    } else if (status == 'running') {
+                                      statusWidget = const Padding(
+                                        padding: EdgeInsets.only(top: 2),
+                                        child: SizedBox(
+                                          width: 13,
+                                          height: 13,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: AiraColors.claudeTerracotta),
+                                        ),
+                                      );
+                                    } else if (status == 'pending') {
+                                      statusWidget = const Icon(Icons.radio_button_unchecked_rounded, size: 14, color: Colors.grey);
+                                    } else {
+                                      statusWidget = const Text('❌', style: TextStyle(fontSize: 13));
+                                    }
 
                                     return Padding(
                                       padding: const EdgeInsets.only(bottom: 6),
                                       child: Row(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(isOk ? '✅' : '❌', style: const TextStyle(fontSize: 13)),
+                                          statusWidget,
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Column(
@@ -685,40 +702,95 @@ class _LaptopControlScreenState extends State<LaptopControlScreen>
     if (text.isEmpty || _isAiAgentExecuting) return;
 
     _aiAgentInputController.clear();
+    final List<Map<String, dynamic>> liveSteps = [];
+
     setState(() {
       _aiAgentMessages.add({
         'role': 'user',
         'content': text,
         'time': DateTime.now(),
       });
+      _aiAgentMessages.add({
+        'role': 'assistant',
+        'content': 'Analyzing goal and connecting to laptop agent...',
+        'success': true,
+        'steps': liveSteps,
+        'time': DateTime.now(),
+      });
       _isAiAgentExecuting = true;
     });
 
-    try {
-      final result = await _service.executeAgentTask(text);
-      final success = result['success'] == true;
-      final results = (result['results'] as List?) ?? [];
-      final message = result['message'] ?? (success ? 'Task executed successfully on laptop' : 'Some steps encountered issues');
+    final assistantMsgIndex = _aiAgentMessages.length - 1;
 
-      setState(() {
-        _isAiAgentExecuting = false;
-        _aiAgentMessages.add({
-          'role': 'assistant',
-          'content': message,
-          'success': success,
-          'steps': results,
-          'time': DateTime.now(),
-        });
-      });
+    try {
+      await for (final event in _service.streamAgentTask(text)) {
+        final type = event['type']?.toString();
+
+        if (type == 'status') {
+          setState(() {
+            _aiAgentMessages[assistantMsgIndex]['content'] = event['message'] ?? 'Planning steps...';
+          });
+        } else if (type == 'plan') {
+          final total = event['total_steps'] ?? 0;
+          final rawSteps = (event['steps'] as List?) ?? [];
+          setState(() {
+            _aiAgentMessages[assistantMsgIndex]['content'] = 'Executing $total-step plan on laptop...';
+            liveSteps.clear();
+            for (final st in rawSteps) {
+              liveSteps.add({
+                'description': st['description'] ?? 'Step',
+                'status': 'pending',
+                'output': '',
+              });
+            }
+          });
+        } else if (type == 'step_progress') {
+          final stepNum = (event['step'] as int?) ?? 1;
+          final status = event['status']?.toString() ?? 'running';
+          final desc = event['description']?.toString() ?? '';
+          final output = event['output']?.toString() ?? '';
+
+          setState(() {
+            final targetIdx = stepNum - 1;
+            if (targetIdx >= 0 && targetIdx < liveSteps.length) {
+              liveSteps[targetIdx]['status'] = status;
+              if (output.isNotEmpty) liveSteps[targetIdx]['output'] = output;
+              if (desc.isNotEmpty) liveSteps[targetIdx]['description'] = desc;
+            } else if (targetIdx == liveSteps.length) {
+              liveSteps.add({
+                'description': desc,
+                'status': status,
+                'output': output,
+              });
+            }
+          });
+        } else if (type == 'done') {
+          final success = event['success'] == true;
+          final msg = event['message'] ?? (success ? 'Task executed successfully on laptop!' : 'Some steps encountered issues.');
+          setState(() {
+            _aiAgentMessages[assistantMsgIndex]['content'] = msg;
+            _aiAgentMessages[assistantMsgIndex]['success'] = success;
+            if (event['results'] is List && liveSteps.isEmpty) {
+              liveSteps.addAll(List<Map<String, dynamic>>.from(event['results']));
+            }
+          });
+          break;
+        } else if (type == 'error') {
+          setState(() {
+            _aiAgentMessages[assistantMsgIndex]['content'] = 'Error: ${event['message']}';
+            _aiAgentMessages[assistantMsgIndex]['success'] = false;
+          });
+          break;
+        }
+      }
     } catch (e) {
       setState(() {
+        _aiAgentMessages[assistantMsgIndex]['content'] = 'Error executing task on laptop: $e';
+        _aiAgentMessages[assistantMsgIndex]['success'] = false;
+      });
+    } finally {
+      setState(() {
         _isAiAgentExecuting = false;
-        _aiAgentMessages.add({
-          'role': 'assistant',
-          'content': 'Error executing task on laptop: $e',
-          'success': false,
-          'time': DateTime.now(),
-        });
       });
     }
   }

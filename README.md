@@ -236,7 +236,7 @@ flutter run --debug
 
 ---
 
-## 🧪 Automated Cross-Platform Test Suite (176 / 176 Tests Passing — 100%)
+## 🧪 Automated Cross-Platform Test Suite (178 / 178 Tests Passing — 100%)
 
 AIRA-OS includes an exhaustive automated verification suite validating both the mobile application (`aira_app`) and the desktop companion (`aira_desktop`):
 
@@ -263,7 +263,7 @@ flutter test --no-pub
 - **LLM Fallback & Diagnostics**: 6/6 passed (Groq ➔ Gemini ➔ OpenRouter fallback, key sanitization, 401/429 diagnostics).
 - **Device & Phone Intents**: 27/27 passed (voice notes, briefing feed, device hardware triggers).
 
-### 2. 💻 Desktop Companion Test Suite (`aira_desktop` — 20 Tests)
+### 2. 💻 Desktop Companion Test Suite (`aira_desktop` — 22 Tests)
 Run the desktop companion test suite:
 ```bash
 cd aira_desktop
@@ -275,6 +275,7 @@ python -m pytest test_aira_desktop.py
 - **Durable Command Receipts**: 1/1 passed (idempotent receipt tracking and 250-receipt circular buffer bounding).
 - **File Manager Safety & System Boundaries**: 10/10 passed (human size formatting, safe listing, path traversal blocking, Windows system prefix lockouts, read/delete safety guardrails, rename traversal defense, FastAPI endpoint enforcement).
 - **WebSocket 0ms Trackpad**: 2/2 passed (PIN/Bearer token WebSocket handshake, ping-pong liveness, ctypes direct hardware mouse glide).
+- **WebSocket Agent Streaming**: 2/2 passed (PIN/Bearer token auth rejection on bad PIN, real-time multi-step task execution progress streaming).
 
 ### 3. 🔍 Static Analysis
 - Mobile: `flutter analyze lib/ --no-pub` reports **0 errors, 0 warnings, 0 lints**.
