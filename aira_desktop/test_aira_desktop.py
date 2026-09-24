@@ -172,6 +172,62 @@ class TestFileManagerCore:
         assert result.get("success") is False
         assert "File not found" in result.get("error", "")
 
+    def test_system_directory_access_blocked(self):
+        # 1. Direct system directories
+        res_win = file_manager.list_directory(r"C:\Windows")
+        assert res_win.get("success") is False
+        assert "blocked for security" in res_win.get("error", "").lower()
+
+        res_pf = file_manager.list_directory(r"C:\Program Files")
+        assert res_pf.get("success") is False
+        assert "blocked for security" in res_pf.get("error", "").lower()
+
+    def test_path_traversal_to_system_directory_blocked(self):
+        # Path traversal using '..' targeting Windows directory
+        traversal_path = os.path.join(os.path.expanduser("~"), "..", "..", "Windows")
+        res = file_manager.list_directory(traversal_path)
+        assert res.get("success") is False
+        assert "blocked for security" in res.get("error", "").lower()
+
+    def test_read_system_file_blocked(self):
+        res = file_manager.read_text_file(r"C:\Windows\System32\drivers\etc\hosts")
+        assert res.get("success") is False
+        assert "blocked for security" in res.get("error", "").lower()
+
+    def test_delete_file_safety_guardrails(self):
+        # System file deletion blocked
+        res_sys = file_manager.delete_file(r"C:\Windows\System32\cmd.exe")
+        assert res_sys.get("success") is False
+        assert "blocked for security" in res_sys.get("error", "").lower()
+
+        # Root drive deletion blocked
+        res_root = file_manager.delete_file("C:\\")
+        assert res_root.get("success") is False
+        assert "blocked for security" in res_root.get("error", "").lower()
+
+    def test_rename_file_traversal_blocked(self):
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        test_file = os.path.join(cwd, "test_aira_desktop.py")
+        res = file_manager.rename_file(test_file, "../escaped_target.py")
+        assert res.get("success") is False
+        assert "traversal are not allowed" in res.get("error", "").lower()
+
+    def test_fastapi_file_endpoints_enforce_safety_boundaries(self):
+        # API level enforcement
+        headers = {"X-AIRA-PIN": main.AIRA_PIN}
+        
+        # 1. /files/list blocked on C:\Windows
+        res_list = client.post("/files/list", json={"path": r"C:\Windows"}, headers=headers)
+        assert res_list.status_code == 200
+        assert res_list.json().get("success") is False
+        assert "blocked for security" in res_list.json().get("error", "").lower()
+
+        # 2. /files/read blocked on C:\Windows
+        res_read = client.post("/files/read", json={"path": r"C:\Windows\win.ini"}, headers=headers)
+        assert res_read.status_code == 200
+        assert res_read.json().get("success") is False
+        assert "blocked for security" in res_read.json().get("error", "").lower()
+
 
 class TestWebSocketTrackpad:
     def test_websocket_trackpad_authentication(self):

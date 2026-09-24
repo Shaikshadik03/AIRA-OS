@@ -103,4 +103,5 @@ Based on current stability and code health:
 
 ### 🚀 Priority 3: Milestone 2 Preparation (Windows Local Agent)
 - [x] Harden `aira_desktop` pairing handshake and WebSocket authentication token exchange (Implemented `/ws/trackpad` endpoint supporting Bearer token & PIN auth with 0ms Win32 ctypes execution; verified 14/14 tests in `test_aira_desktop.py`).
-- [ ] Add safety boundaries / path whitelisting for Windows desktop agent automation actions.
+- [x] Add safety boundaries / path whitelisting for Windows desktop agent automation actions (Implemented `is_safe_path` guardrails across `file_manager.py` blocking Windows system prefixes, path traversals, and root drive deletion; verified via 20/20 pytest tests in `test_aira_desktop.py`).
+

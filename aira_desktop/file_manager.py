@@ -6,6 +6,39 @@ import os
 import subprocess
 import json
 from pathlib import Path
+from typing import Tuple, Optional
+
+DISALLOWED_SYSTEM_PREFIXES = [
+    os.environ.get("WINDIR", r"C:\Windows").lower(),
+    os.environ.get("SystemRoot", r"C:\Windows").lower(),
+    os.environ.get("ProgramFiles", r"C:\Program Files").lower(),
+    os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)").lower(),
+    os.environ.get("ProgramData", r"C:\ProgramData").lower(),
+]
+
+
+def is_safe_path(path: Optional[str], allow_read_only: bool = False) -> Tuple[bool, str]:
+    """
+    Validates and resolves a path to ensure it does not access or modify
+    sensitive Windows system directories or perform path traversal.
+    """
+    if not path or not path.strip():
+        return True, str(Path.home())
+
+    expanded = os.path.expandvars(os.path.expanduser(path.strip()))
+    resolved = os.path.abspath(expanded)
+    resolved_lower = resolved.lower()
+
+    for prefix in DISALLOWED_SYSTEM_PREFIXES:
+        if resolved_lower == prefix or resolved_lower.startswith(prefix + os.sep) or resolved_lower.startswith(prefix + "/"):
+            return False, f"Access to system folder '{prefix}' is blocked for security."
+
+    # Block root drive direct deletion or modification
+    if resolved_lower in ["c:\\", "c:/", "d:\\", "d:/", "e:\\", "e:/"]:
+        if not allow_read_only:
+            return False, f"Modification of root drive '{resolved}' is blocked for security."
+
+    return True, resolved
 
 
 def list_directory(path: str = None) -> dict:
@@ -13,10 +46,11 @@ def list_directory(path: str = None) -> dict:
     List contents of a directory.
     Defaults to the user's home directory if no path given.
     """
-    if not path:
-        path = str(Path.home())
+    safe, resolved = is_safe_path(path, allow_read_only=True)
+    if not safe:
+        return {"success": False, "error": resolved}
 
-    expanded = os.path.expandvars(os.path.expanduser(path))
+    expanded = resolved
 
     if not os.path.exists(expanded):
         return {"success": False, "error": f"Path does not exist: {expanded}"}
@@ -59,7 +93,11 @@ def open_file(path: str) -> dict:
     Open a file or folder with its default Windows application.
     Example: open_file('C:/Users/arsha/report.pdf') opens it in Adobe Reader.
     """
-    expanded = os.path.expandvars(os.path.expanduser(path))
+    safe, resolved = is_safe_path(path, allow_read_only=False)
+    if not safe:
+        return {"success": False, "error": resolved}
+
+    expanded = resolved
 
     if not os.path.exists(expanded):
         return {"success": False, "error": f"File not found: {expanded}"}
@@ -73,7 +111,11 @@ def open_file(path: str) -> dict:
 
 def open_in_explorer(path: str) -> dict:
     """Open Windows Explorer at the given folder path."""
-    expanded = os.path.expandvars(os.path.expanduser(path))
+    safe, resolved = is_safe_path(path, allow_read_only=True)
+    if not safe:
+        return {"success": False, "error": resolved}
+
+    expanded = resolved
     try:
         subprocess.Popen(["explorer", expanded])
         return {"success": True, "path": expanded}
@@ -86,7 +128,11 @@ def read_text_file(path: str, max_chars: int = 5000) -> dict:
     Read and return the text content of a file (e.g. .txt, .py, .md).
     Limited to max_chars characters for mobile display.
     """
-    expanded = os.path.expandvars(os.path.expanduser(path))
+    safe, resolved = is_safe_path(path, allow_read_only=True)
+    if not safe:
+        return {"success": False, "error": resolved}
+
+    expanded = resolved
 
     if not os.path.exists(expanded):
         return {"success": False, "error": f"File not found: {expanded}"}
@@ -107,7 +153,16 @@ def read_text_file(path: str, max_chars: int = 5000) -> dict:
 
 def delete_file(path: str) -> dict:
     """Delete a file (moves to Recycle Bin on Windows via shell command)."""
-    expanded = os.path.expandvars(os.path.expanduser(path))
+    safe, resolved = is_safe_path(path, allow_read_only=False)
+    if not safe:
+        return {"success": False, "error": resolved}
+
+    home_dir = str(Path.home()).lower()
+    # Prevent deleting outside user space or secondary drives
+    if not (resolved.lower().startswith(home_dir + os.sep) or resolved.lower().startswith("d:\\") or resolved.lower().startswith("e:\\")):
+        return {"success": False, "error": f"Deletion of files outside user workspace ('{resolved}') is blocked for security."}
+
+    expanded = resolved
 
     if not os.path.exists(expanded):
         return {"success": False, "error": "File not found."}
@@ -127,7 +182,15 @@ def delete_file(path: str) -> dict:
 
 def rename_file(path: str, new_name: str) -> dict:
     """Rename a file or folder."""
-    expanded = os.path.expandvars(os.path.expanduser(path))
+    safe, resolved = is_safe_path(path, allow_read_only=False)
+    if not safe:
+        return {"success": False, "error": resolved}
+
+    # Disallow path separators in new_name to prevent directory traversal
+    if "/" in new_name or "\\" in new_name or ".." in new_name:
+        return {"success": False, "error": "Invalid file name: directory separators and traversal are not allowed."}
+
+    expanded = resolved
     parent = str(Path(expanded).parent)
     new_path = os.path.join(parent, new_name)
 
