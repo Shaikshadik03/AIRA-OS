@@ -95,7 +95,7 @@ Based on current stability and code health:
 
 ### 🚀 Priority 1: Milestone 1 Production Polish
 - [x] Add automatic OAuth2 token refresh interceptor using `google_sign_in` silent re-authentication (Implemented in `google_workspace_service.dart:167-187`, verified with 0 analyzer warnings).
-- [ ] Implement a visual Google Drive file picker modal in Flutter for selecting files directly in chat.
+- [x] Implement a visual Google Drive file picker modal in Flutter for selecting files directly in chat (Implemented via `DriveFilePickerSheet` and verified via `test/drive_file_picker_test.dart`).
 
 ### 🚀 Priority 2: Native Android System Permissions Onboarding
 - [x] Wire up `SYSTEM_ALERT_WINDOW` permission checking/request and battery optimization whitelist ignore (`isIgnoringBatteryOptimizations`, `requestIgnoreBatteryOptimizations`) in `MainActivity.kt` and `AndroidDeviceService` (Implemented and verified in `agentic_features_audit_test.dart`).

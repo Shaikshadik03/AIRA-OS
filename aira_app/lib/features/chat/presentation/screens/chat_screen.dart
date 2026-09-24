@@ -22,6 +22,7 @@ import 'package:aira_app/features/auth/presentation/providers/auth_provider.dart
 import 'package:aira_app/core/services/smart_reply_service.dart';
 import 'package:aira_app/features/chat/presentation/widgets/pending_reply_card.dart';
 import 'package:aira_app/core/services/automation_control_service.dart';
+import 'package:aira_app/features/chat/presentation/widgets/drive_file_picker_sheet.dart';
 import 'package:go_router/go_router.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -1049,12 +1050,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   isDark: isDark,
                 ),
                 _buildAttachmentOption(
-                  icon: Icons.tune_rounded,
-                  label: 'Laptop Remote',
-                  color: Colors.teal,
+                  icon: Icons.add_to_drive_rounded,
+                  label: 'Google Drive Files',
+                  color: Colors.amber.shade800,
                   onTap: () {
                     Navigator.pop(ctx);
-                    context.push('/laptop');
+                    DriveFilePickerSheet.show(
+                      context,
+                      onFileSelected: (file) {
+                        final name = file['name'] ?? 'File';
+                        final link = file['link'] ?? '';
+                        final size = file['size'] != null && file['size'] != '' ? ' (${file['size']})' : '';
+                        final text = 'Please review this Google Drive file: [$name]($link)$size';
+                        _textController.text = text;
+                        _sendMessage();
+                      },
+                    );
                   },
                   theme: theme,
                   isDark: isDark,
