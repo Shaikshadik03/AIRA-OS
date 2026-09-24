@@ -156,15 +156,39 @@ class GoogleWorkspaceService {
   String get userEmail => _currentUser?.email ?? (_isSandboxMode ? 'user@gmail.com' : '');
   String get userName => _currentUser?.displayName ?? (_isSandboxMode ? 'User' : '');
 
-  Dio _buildDio(String baseUrl) => Dio(BaseOptions(
-        baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 30),
-        headers: {
-          'Authorization': 'Bearer $_accessToken',
-          'Content-Type': 'application/json',
+  Dio _buildDio(String baseUrl) {
+    final dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 30),
+      headers: {
+        if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+        'Content-Type': 'application/json',
+      },
+    ));
+
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException error, ErrorInterceptorHandler handler) async {
+          if (error.response?.statusCode == 401 && _currentUser != null) {
+            try {
+              final auth = await _currentUser!.authentication;
+              _accessToken = auth.accessToken;
+              if (_accessToken != null) {
+                final options = error.requestOptions;
+                options.headers['Authorization'] = 'Bearer $_accessToken';
+                final response = await dio.fetch(options);
+                return handler.resolve(response);
+              }
+            } catch (_) {}
+          }
+          return handler.next(error);
         },
-      ));
+      ),
+    );
+
+    return dio;
+  }
 
   // ──────────────────── Google Drive API ────────────────────
 
