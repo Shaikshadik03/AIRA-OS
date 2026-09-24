@@ -24,6 +24,26 @@ class AndroidDeviceService {
 
   // ── Siri / Bixby Floating Overlay ─────────────────────────────────────────
 
+  /// Check whether floating overlay permission is granted
+  Future<bool> canDrawOverlays() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('canDrawOverlays');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Request floating overlay permission (opens Android System Settings)
+  Future<bool> requestOverlayPermission() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('requestOverlayPermission');
+      return res ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Start system-wide Siri/Bixby floating overlay bar (appears on top of any app).
   Future<Map<String, dynamic>> startOverlayService() async {
     try {
@@ -31,6 +51,38 @@ class AndroidDeviceService {
       return result ?? {'success': true};
     } on PlatformException catch (e) {
       throw Exception('Overlay Error: ${e.message ?? e.code}');
+    }
+  }
+
+  /// Stop system-wide floating overlay bar.
+  Future<Map<String, dynamic>> stopOverlayService() async {
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>('stopOverlay');
+      return result ?? {'success': true};
+    } on PlatformException catch (e) {
+      throw Exception('Overlay Stop Error: ${e.message ?? e.code}');
+    }
+  }
+
+  // ── Battery Optimization Whitelist ──────────────────────────────────────────
+
+  /// Check whether app is whitelisted from battery optimizations
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Request battery optimization whitelist (prompts user or opens system settings)
+  Future<bool> requestIgnoreBatteryOptimizations() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('requestIgnoreBatteryOptimizations');
+      return res ?? true;
+    } catch (_) {
+      return false;
     }
   }
 

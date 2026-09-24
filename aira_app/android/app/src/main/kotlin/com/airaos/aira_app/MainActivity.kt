@@ -478,7 +478,7 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
 
-                    "startOverlay" -> {
+                    "startOverlay", "startOverlayService" -> {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
                             result.error("NO_PERMISSION", "Overlay permission not granted.", null)
                         } else {
@@ -488,13 +488,33 @@ class MainActivity : FlutterActivity() {
                             } else {
                                 startService(intent)
                             }
-                            result.success(true)
+                            result.success(mapOf("success" to true))
                         }
                     }
 
                     "stopOverlay" -> {
                         val intent = Intent(this, OverlayService::class.java)
                         stopService(intent)
+                        result.success(mapOf("success" to true))
+                    }
+
+                    "isIgnoringBatteryOptimizations" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                            result.success(powerManager.isIgnoringBatteryOptimizations(packageName))
+                        } else {
+                            result.success(true)
+                        }
+                    }
+
+                    "requestIgnoreBatteryOptimizations" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = Uri.parse("package:$packageName")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                        }
                         result.success(true)
                     }
 

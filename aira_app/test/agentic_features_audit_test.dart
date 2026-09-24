@@ -30,6 +30,12 @@ void main() {
       if (call.method == 'getBatteryStatus') {
         return {'level': 85, 'isCharging': false};
       }
+      if (call.method == 'canDrawOverlays' ||
+          call.method == 'requestOverlayPermission' ||
+          call.method == 'isIgnoringBatteryOptimizations' ||
+          call.method == 'requestIgnoreBatteryOptimizations') {
+        return true;
+      }
       return {'success': true};
     });
 
@@ -90,11 +96,27 @@ void main() {
     });
 
     // ── Item 11: AIRA Everywhere Floating Overlay ──
-    test('11. AIRA Everywhere: Floating overlay service starts via platform channel', () async {
+    test('11. AIRA Everywhere: Floating overlay and battery optimization methods', () async {
       final device = AndroidDeviceService();
       final res = await device.startOverlayService();
       expect(res, isNotNull);
       expect(res['success'], isTrue);
+
+      final stopRes = await device.stopOverlayService();
+      expect(stopRes, isNotNull);
+      expect(stopRes['success'], isTrue);
+
+      final canDraw = await device.canDrawOverlays();
+      expect(canDraw, isA<bool>());
+
+      final reqPerm = await device.requestOverlayPermission();
+      expect(reqPerm, isTrue);
+
+      final isIgnoring = await device.isIgnoringBatteryOptimizations();
+      expect(isIgnoring, isA<bool>());
+
+      final reqIgnore = await device.requestIgnoreBatteryOptimizations();
+      expect(reqIgnore, isTrue);
     });
 
     // ── Item 12: Smart Notifications & Reminders ──
