@@ -20,6 +20,7 @@ class GoogleWorkspaceService {
 
   // Cache for recently used spreadsheets: name -> spreadsheetId
   final Map<String, String> _sheetCache = {};
+  final Map<String, List<List<String>>> _sandboxSheetData = {};
 
   GoogleSignIn _getGoogleSignIn() {
     _googleSignIn ??= GoogleSignIn(
@@ -272,6 +273,15 @@ class GoogleWorkspaceService {
   }) async {
     _requireConnection();
 
+    if (_isSandboxMode && _accessToken == null) {
+      final fileId = 'file_drv_${DateTime.now().millisecondsSinceEpoch}';
+      return {
+        'id': fileId,
+        'name': filename.endsWith('.txt') ? filename : '$filename.txt',
+        'link': 'https://drive.google.com/file/d/$fileId/view',
+      };
+    }
+
     final dio = Dio(BaseOptions(
       baseUrl: 'https://www.googleapis.com/upload/drive/v3',
       connectTimeout: const Duration(seconds: 20),
@@ -324,6 +334,26 @@ class GoogleWorkspaceService {
     _requireConnection();
     final lowerQuery = nameQuery.toLowerCase().trim();
     if (lowerQuery.isEmpty) return null;
+
+    if (_isSandboxMode && _accessToken == null) {
+      final contacts = [
+        {'name': 'Rahul Sharma', 'phone': '+91 9876543210', 'email': 'rahul.sharma@example.com'},
+        {'name': 'Priya Patel', 'phone': '+91 9812345678', 'email': 'priya.patel@example.com'},
+        {'name': 'Shaik Shadik', 'phone': '+91 9988776655', 'email': 'shaikshadik03@gmail.com'},
+        {'name': 'Mummy', 'phone': '+91 9123456780', 'email': 'mummy@family.com'},
+      ];
+      final match = contacts.firstWhere(
+        (c) => c['name']!.toLowerCase().contains(lowerQuery),
+        orElse: () => {},
+      );
+      if (match.isNotEmpty) {
+        return {
+          'name': match['name']!,
+          'phone': match['phone']!,
+        };
+      }
+      return null;
+    }
 
     final dio = _buildDio('https://people.googleapis.com/v1');
 
@@ -394,10 +424,29 @@ class GoogleWorkspaceService {
   /// Search Google Contacts for a person by name and return their email address & display name.
   /// Uses Google People API (v1).
   Future<Map<String, String>?> searchGoogleContactEmail(String nameQuery) async {
-
     _requireConnection();
     final lowerQuery = nameQuery.toLowerCase().trim();
     if (lowerQuery.isEmpty) return null;
+
+    if (_isSandboxMode && _accessToken == null) {
+      final contacts = [
+        {'name': 'Rahul Sharma', 'phone': '+91 9876543210', 'email': 'rahul.sharma@example.com'},
+        {'name': 'Priya Patel', 'phone': '+91 9812345678', 'email': 'priya.patel@example.com'},
+        {'name': 'Shaik Shadik', 'phone': '+91 9988776655', 'email': 'shaikshadik03@gmail.com'},
+        {'name': 'Mummy', 'phone': '+91 9123456780', 'email': 'mummy@family.com'},
+      ];
+      final match = contacts.firstWhere(
+        (c) => c['name']!.toLowerCase().contains(lowerQuery),
+        orElse: () => {},
+      );
+      if (match.isNotEmpty) {
+        return {
+          'name': match['name']!,
+          'email': match['email']!,
+        };
+      }
+      return null;
+    }
 
     final dio = _buildDio('https://people.googleapis.com/v1');
 
@@ -668,6 +717,16 @@ class GoogleWorkspaceService {
   /// Create a new Google Doc and return its link.
   Future<Map<String, dynamic>> createDoc({required String title}) async {
     _requireConnection();
+
+    if (_isSandboxMode && _accessToken == null) {
+      final docId = 'doc_sandbox_${DateTime.now().millisecondsSinceEpoch}';
+      return {
+        'id': docId,
+        'title': title,
+        'link': 'https://docs.google.com/document/d/$docId/edit',
+      };
+    }
+
     final dio = _buildDio('https://docs.googleapis.com/v1');
 
     try {
@@ -690,6 +749,19 @@ class GoogleWorkspaceService {
   /// Create a new Google Sheet (Spreadsheet).
   Future<Map<String, dynamic>> createSheet({required String title}) async {
     _requireConnection();
+
+    if (_isSandboxMode && _accessToken == null) {
+      final spreadsheetId = 'sheet_sandbox_${DateTime.now().millisecondsSinceEpoch}';
+      final link = 'https://docs.google.com/spreadsheets/d/$spreadsheetId/edit';
+      _sheetCache[title.toLowerCase()] = spreadsheetId;
+      _sandboxSheetData[spreadsheetId] = [];
+      return {
+        'id': spreadsheetId,
+        'title': title,
+        'link': link,
+      };
+    }
+
     final dio = _buildDio('https://sheets.googleapis.com/v1');
 
     try {
@@ -731,6 +803,10 @@ class GoogleWorkspaceService {
       return _sheetCache[lowerName];
     }
 
+    if (_isSandboxMode && _accessToken == null) {
+      return _sheetCache[lowerName] ?? 'sheet_sandbox_default';
+    }
+
     final dio = _buildDio('https://www.googleapis.com/drive/v3');
 
     try {
@@ -755,6 +831,18 @@ class GoogleWorkspaceService {
     required List<String> values,
   }) async {
     _requireConnection();
+
+    if (_isSandboxMode && _accessToken == null) {
+      final spreadsheetId = await findSpreadsheetId(sheetTarget) ?? 'sheet_sandbox_default';
+      _sandboxSheetData.putIfAbsent(spreadsheetId, () => []);
+      _sandboxSheetData[spreadsheetId]!.add(values);
+      return {
+        'spreadsheetId': spreadsheetId,
+        'updatedRange': 'Sheet1!A${_sandboxSheetData[spreadsheetId]!.length}',
+        'updatedRows': 1,
+        'link': 'https://docs.google.com/spreadsheets/d/$spreadsheetId/edit',
+      };
+    }
 
     final spreadsheetId = await findSpreadsheetId(sheetTarget);
     if (spreadsheetId == null) {
@@ -793,6 +881,19 @@ class GoogleWorkspaceService {
     String range = 'Sheet1!A1:Z50',
   }) async {
     _requireConnection();
+
+    if (_isSandboxMode && _accessToken == null) {
+      final spreadsheetId = await findSpreadsheetId(sheetTarget) ?? 'sheet_sandbox_default';
+      final rows = _sandboxSheetData[spreadsheetId] ?? [
+        ['Item', 'Quantity', 'Status'],
+        ['AIRA Core', '1', 'Operational'],
+      ];
+      return {
+        'spreadsheetId': spreadsheetId,
+        'rows': rows,
+        'link': 'https://docs.google.com/spreadsheets/d/$spreadsheetId/edit',
+      };
+    }
 
     final spreadsheetId = await findSpreadsheetId(sheetTarget);
     if (spreadsheetId == null) {
