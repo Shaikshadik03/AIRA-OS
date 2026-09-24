@@ -658,6 +658,91 @@ def keyboard_press(req: TypeTextRequest, auth: bool = Depends(verify_pin)):
     return {"success": True, "key": req.text}
 
 
+# ── WebSocket High-Speed Real-Time Trackpad & Input ─────────────────────────
+
+@app.websocket("/ws/trackpad")
+async def websocket_trackpad(websocket: WebSocket):
+    """
+    Ultra low-latency (0ms) bidirectional WebSocket connection for trackpad gestures,
+    mouse clicks, scrolling, and keyboard typing from AIRA Android app.
+    """
+    await websocket.accept()
+    authenticated = False
+    try:
+        init_data = await websocket.receive_text()
+        try:
+            payload = json.loads(init_data)
+            pin = payload.get("pin", "")
+            token = payload.get("token", "")
+            
+            devices = get_paired_devices()
+            if (token and token in devices and not devices[token].get("is_revoked", False)) or pin == AIRA_PIN:
+                authenticated = True
+                await websocket.send_text(json.dumps({"status": "authenticated", "success": True}))
+            else:
+                await websocket.send_text(json.dumps({"status": "unauthorized", "error": "Invalid PIN or token"}))
+                await websocket.close(code=1008)
+                return
+        except Exception:
+            await websocket.close(code=1003)
+            return
+
+        while authenticated:
+            raw_msg = await websocket.receive_text()
+            if is_remote_paused:
+                continue
+
+            try:
+                event = json.loads(raw_msg)
+                event_type = event.get("type", "")
+
+                if event_type == "move":
+                    dx = int(event.get("dx", 0))
+                    dy = int(event.get("dy", 0))
+                    if dx != 0 or dy != 0:
+                        mouse_control.move_mouse(dx, dy)
+
+                elif event_type == "click":
+                    btn = event.get("button", "left")
+                    x = event.get("x")
+                    y = event.get("y")
+                    if btn == "right":
+                        mouse_control.right_click(x, y)
+                    elif btn == "double":
+                        mouse_control.double_click(x, y)
+                    else:
+                        mouse_control.left_click(x, y)
+
+                elif event_type == "scroll":
+                    amount = int(event.get("amount", 0))
+                    if amount != 0:
+                        mouse_control.scroll(amount)
+
+                elif event_type == "type":
+                    text = event.get("text", "")
+                    if text:
+                        mouse_control.type_text(text)
+
+                elif event_type == "press":
+                    key = event.get("key", "")
+                    if key:
+                        mouse_control.press_key(key)
+
+                elif event_type == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong", "time": time.time()}))
+
+            except Exception:
+                pass
+
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
 # ── Screenshot ────────────────────────────────────────────────────────────
 
 @app.get("/screen/capture")

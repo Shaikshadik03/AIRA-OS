@@ -27,7 +27,8 @@ class VoiceService {
     _wakeWordSubscription?.cancel();
     _wakeWordSubscription = _wakeWordEventChannel.receiveBroadcastStream().listen((event) {
       if (event == 'wake_word_detected') {
-        HapticFeedback.mediumImpact();
+        HapticFeedback.heavyImpact();
+        SystemSound.play(SystemSoundType.click);
         onWakeWordTriggered();
       }
     }, onError: (_) {});

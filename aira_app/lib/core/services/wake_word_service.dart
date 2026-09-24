@@ -47,7 +47,8 @@ class WakeWordService {
 
   void triggerWakeWord() {
     debugPrint('[WAKE WORD] 🎤 Wake word triggered!');
-    HapticFeedback.mediumImpact();
+    HapticFeedback.heavyImpact();
+    SystemSound.play(SystemSoundType.click);
     _onWakeWordDetected?.call();
     _wakeWordStreamController.add(null);
   }

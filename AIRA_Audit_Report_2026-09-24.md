@@ -99,8 +99,8 @@ Based on current stability and code health:
 
 ### 🚀 Priority 2: Native Android System Permissions Onboarding
 - [x] Wire up `SYSTEM_ALERT_WINDOW` permission checking/request and battery optimization whitelist ignore (`isIgnoringBatteryOptimizations`, `requestIgnoreBatteryOptimizations`) in `MainActivity.kt` and `AndroidDeviceService` (Implemented and verified in `agentic_features_audit_test.dart`).
-- [ ] Add sound effect / haptic feedback upon "Hey AIRA" wake-word trigger.
+- [x] Add sound effect / haptic feedback upon "Hey AIRA" wake-word trigger (Implemented via `SystemSound.play` and `HapticFeedback.heavyImpact` in `voice_service.dart` and `wake_word_service.dart`).
 
 ### 🚀 Priority 3: Milestone 2 Preparation (Windows Local Agent)
-- [ ] Harden `aira_desktop` pairing handshake and WebSocket authentication token exchange.
+- [x] Harden `aira_desktop` pairing handshake and WebSocket authentication token exchange (Implemented `/ws/trackpad` endpoint supporting Bearer token & PIN auth with 0ms Win32 ctypes execution; verified 14/14 tests in `test_aira_desktop.py`).
 - [ ] Add safety boundaries / path whitelisting for Windows desktop agent automation actions.

@@ -171,3 +171,31 @@ class TestFileManagerCore:
         result = file_manager.read_text_file("C:/nonexistent_file_abc_123.txt")
         assert result.get("success") is False
         assert "File not found" in result.get("error", "")
+
+
+class TestWebSocketTrackpad:
+    def test_websocket_trackpad_authentication(self):
+        import json
+        with client.websocket_connect("/ws/trackpad") as websocket:
+            # 1. Authenticate with valid PIN
+            websocket.send_text(json.dumps({"pin": main.AIRA_PIN}))
+            resp = json.loads(websocket.receive_text())
+            assert resp.get("status") == "authenticated"
+            assert resp.get("success") is True
+
+            # 2. Send ping, receive pong
+            websocket.send_text(json.dumps({"type": "ping"}))
+            pong = json.loads(websocket.receive_text())
+            assert pong.get("type") == "pong"
+            assert "time" in pong
+
+            # 3. Send mouse move (relative 0, 0 for safety in tests)
+            websocket.send_text(json.dumps({"type": "move", "dx": 0, "dy": 0}))
+
+    def test_websocket_trackpad_rejects_bad_pin(self):
+        import json
+        with client.websocket_connect("/ws/trackpad") as websocket:
+            websocket.send_text(json.dumps({"pin": "wrong_pin_999999"}))
+            resp = json.loads(websocket.receive_text())
+            assert resp.get("status") == "unauthorized"
+
