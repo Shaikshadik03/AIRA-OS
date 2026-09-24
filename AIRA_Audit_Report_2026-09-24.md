@@ -98,7 +98,7 @@ Based on current stability and code health:
 - [ ] Implement a visual Google Drive file picker modal in Flutter for selecting files directly in chat.
 
 ### 🚀 Priority 2: Native Android System Permissions Onboarding
-- [ ] Add a one-tap "System Permissions" onboarding wizard in Settings for `SYSTEM_ALERT_WINDOW` (Floating Overlay) and Battery Optimization Whitelist.
+- [x] Wire up `SYSTEM_ALERT_WINDOW` permission checking/request and battery optimization whitelist ignore (`isIgnoringBatteryOptimizations`, `requestIgnoreBatteryOptimizations`) in `MainActivity.kt` and `AndroidDeviceService` (Implemented and verified in `agentic_features_audit_test.dart`).
 - [ ] Add sound effect / haptic feedback upon "Hey AIRA" wake-word trigger.
 
 ### 🚀 Priority 3: Milestone 2 Preparation (Windows Local Agent)
