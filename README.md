@@ -236,17 +236,21 @@ flutter run --debug
 
 ---
 
-## 🧪 Automated Cross-Platform Test Suite (144 / 144 Tests Passing — 100%)
+## 🧪 Automated Cross-Platform Test Suite (176 / 176 Tests Passing — 100%)
 
 AIRA-OS includes an exhaustive automated verification suite validating both the mobile application (`aira_app`) and the desktop companion (`aira_desktop`):
 
-### 1. 📱 Mobile Test Suite (`aira_app` — 132 Tests)
+### 1. 📱 Mobile Test Suite (`aira_app` — 156 Tests)
 Run the complete mobile test suite:
 ```bash
 cd aira_app
 flutter test --no-pub
 ```
 
+- **Google Workspace Milestone 1**: 7/7 passed (dual-mode live OAuth2 & offline sandbox for Gmail, Calendar, Docs, Drive, Sheets, and People API).
+- **Supabase Chat Persistence**: 3/3 passed (Hive offline-first hybrid message caching, cold restart recovery, zero message loss).
+- **Agentic Multi-Modal & Intent Audit**: 13/13 passed (AIRA Vision, Meeting Summarizer, Proactive Reminders, Routines, Approval Cards, Context Preservation).
+- **Google Drive File Picker**: 1/1 passed (visual bottom-sheet picker integrated into chat attachment menu).
 - **Stage M (Daily Reliability & Kill Switch)**: 7/7 passed (emergency pause, setup checklist, connection diagnostics, redacted logger, GDPR wipe).
 - **Stage L (Multi-Step Problem Solving)**: 14/14 passed (bounded 2–8 step planner, concurrency, crash resumption, evidence synthesis).
 - **Stage K (Android Actions)**: 13/13 passed (app allowlist, messaging/calendar/navigation intents, sensitive boundary halts).
@@ -259,7 +263,7 @@ flutter test --no-pub
 - **LLM Fallback & Diagnostics**: 6/6 passed (Groq ➔ Gemini ➔ OpenRouter fallback, key sanitization, 401/429 diagnostics).
 - **Device & Phone Intents**: 27/27 passed (voice notes, briefing feed, device hardware triggers).
 
-### 2. 💻 Desktop Companion Test Suite (`aira_desktop` — 12 Tests)
+### 2. 💻 Desktop Companion Test Suite (`aira_desktop` — 20 Tests)
 Run the desktop companion test suite:
 ```bash
 cd aira_desktop
@@ -269,7 +273,8 @@ python -m pytest test_aira_desktop.py
 - **API & Health**: 2/2 passed (`/health` endpoint, `/automation/status` reporting).
 - **Pairing & Security Handshake**: 5/5 passed (6-digit PIN generation with 5-min TTL, invalid PIN rejection, Bearer token issuance, 423 locked state when remote is paused, 403 rejection on revoked tokens).
 - **Durable Command Receipts**: 1/1 passed (idempotent receipt tracking and 250-receipt circular buffer bounding).
-- **File Manager Safety**: 4/4 passed (human-readable size formatting, safe directory listing, non-existent path guarding, text reading).
+- **File Manager Safety & System Boundaries**: 10/10 passed (human size formatting, safe listing, path traversal blocking, Windows system prefix lockouts, read/delete safety guardrails, rename traversal defense, FastAPI endpoint enforcement).
+- **WebSocket 0ms Trackpad**: 2/2 passed (PIN/Bearer token WebSocket handshake, ping-pong liveness, ctypes direct hardware mouse glide).
 
 ### 3. 🔍 Static Analysis
 - Mobile: `flutter analyze lib/ --no-pub` reports **0 errors, 0 warnings, 0 lints**.
