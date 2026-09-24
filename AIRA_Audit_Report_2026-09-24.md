@@ -105,3 +105,11 @@ Based on current stability and code health:
 - [x] Harden `aira_desktop` pairing handshake and WebSocket authentication token exchange (Implemented `/ws/trackpad` endpoint supporting Bearer token & PIN auth with 0ms Win32 ctypes execution; verified 14/14 tests in `test_aira_desktop.py`).
 - [x] Add safety boundaries / path whitelisting for Windows desktop agent automation actions (Implemented `is_safe_path` guardrails across `file_manager.py` blocking Windows system prefixes, path traversals, and root drive deletion; verified via 20/20 pytest tests in `test_aira_desktop.py`).
 
+### 🚀 Priority 4: Claude-Style GenAI Artifacts Engine (Documents, Slides, Sheets, Code, PDF)
+- [x] Full client-side binary generation & visual canvas for PDF, DOCX (Word), PPTX (PowerPoint), CSV/Sheets, SVG, HTML, and Code directly in Dart with zero cloud converter dependencies (`pdf: 3.13.1` and `archive: 4.3.0`).
+- [x] Interactive 16:9 widescreen presentation slide deck carousel viewer, tabular grid viewer, rich markdown document reader, and code viewer with syntax/line numbers in `ArtifactCanvasScreen`.
+- [x] 1-tap local storage downloads and Google Drive, Google Docs, and Google Sheets export workflows in `ArtifactService`.
+- [x] Automated unit test suite (`test/gen_ai_artifacts_test.dart`) covering XML parser, typed code fences, OpenXML structure validation, and export pipelines (16/16 tests passing).
+- [x] Full test suite expanded to **194 total passing tests** (172 Flutter tests + 22 Python desktop tests) with **0 static analysis errors**.
+
+

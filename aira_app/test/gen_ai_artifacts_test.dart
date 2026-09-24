@@ -1,0 +1,391 @@
+import 'dart:convert';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:archive/archive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:aira_app/core/artifacts/artifact_model.dart';
+import 'package:aira_app/core/artifacts/artifact_parser.dart';
+import 'package:aira_app/core/artifacts/artifact_service.dart';
+import 'package:aira_app/core/artifacts/generators/pdf_generator.dart';
+import 'package:aira_app/core/artifacts/generators/docx_generator.dart';
+import 'package:aira_app/core/artifacts/generators/pptx_generator.dart';
+import 'package:aira_app/core/artifacts/generators/csv_generator.dart';
+import 'package:aira_app/core/services/personality_engine.dart';
+import 'package:aira_app/core/services/google_workspace_service.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('Claude-Style GenAI Artifacts Engine Tests', () {
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({
+        'workspace_sandbox_mode': true,
+        'workspace_connected': true,
+      });
+      final workspace = GoogleWorkspaceService();
+      workspace.enableSandboxMode(true);
+      workspace.setCapability(calendar: true, gmail: true, drive: true);
+    });
+
+    // ── 1. ArtifactParser Tests ──
+    group('ArtifactParser', () {
+      test('extracts XML aira_artifact tag with type and title', () {
+        const response = '''
+Sure! Here is the formal project proposal you asked for:
+
+<aira_artifact type="pdf" title="Q4 Product Roadmap">
+# Q4 Product Roadmap
+## Executive Summary
+This document outlines our technical roadmap for the upcoming quarter.
+- Milestone 1: GenAI Artifacts Engine
+- Milestone 2: Native Office OpenXML export
+- Milestone 3: Realtime trackpad latency reduction
+</aira_artifact>
+
+Let me know if you would like me to adjust any of the milestones!
+''';
+
+        final artifacts = ArtifactParser.extractArtifacts(response);
+        expect(artifacts.length, equals(1));
+        expect(artifacts.first.title, equals('Q4 Product Roadmap'));
+        expect(artifacts.first.type, equals(ArtifactType.pdf));
+        expect(artifacts.first.content, contains('# Q4 Product Roadmap'));
+        expect(artifacts.first.content, contains('Milestone 1: GenAI Artifacts Engine'));
+      });
+
+      test('extracts Claude-compatible antArtifact tag', () {
+        const response = '''
+<antArtifact type="pptx" title="Investor Pitch Deck">
+# Pitch Deck: AIRA-OS
+The Next Generation Agentic Mobile Operating System
+---
+# Problem Statement
+- Mobile AI assistants are reactive, not proactive.
+- Existing tools lack native multi-device control.
+Notes: Focus on the urgency in the enterprise market.
+</antArtifact>
+''';
+
+        final artifacts = ArtifactParser.extractArtifacts(response);
+        expect(artifacts.length, equals(1));
+        expect(artifacts.first.title, equals('Investor Pitch Deck'));
+        expect(artifacts.first.type, equals(ArtifactType.pptx));
+      });
+
+      test('extracts typed markdown code fences', () {
+        const response = '''
+Here is the financial breakdown:
+
+```csv:Quarterly_Expenses
+| Department | Budget | Actual | Variance |
+| --- | --- | --- | --- |
+| Engineering | 50000 | 48000 | +2000 |
+| Operations | 20000 | 21500 | -1500 |
+| Marketing | 15000 | 14200 | +800 |
+```
+''';
+
+        final artifacts = ArtifactParser.extractArtifacts(response);
+        expect(artifacts.length, equals(1));
+        expect(artifacts.first.title, equals('Quarterly Expenses'));
+        expect(artifacts.first.type, equals(ArtifactType.csv));
+        expect(artifacts.first.content, contains('Engineering'));
+      });
+
+      test('sanitizes text for chat display', () {
+        const raw = '''
+Here is your doc:
+<aira_artifact type="docx" title="Board Resolution">
+Resolved that the company hereby adopts the 2026 expansion plan.
+</aira_artifact>
+Feel free to ask for revisions.
+''';
+
+        final sanitized = ArtifactParser.sanitizeTextForDisplay(raw);
+        expect(sanitized, isNot(contains('<aira_artifact')));
+        expect(sanitized, contains('📦 **Generated DOCX:** *Board Resolution*'));
+        expect(sanitized, contains('Feel free to ask for revisions.'));
+      });
+    });
+
+    // ── 2. PdfArtifactGenerator Tests ──
+    group('PdfArtifactGenerator', () {
+      test('generates valid PDF bytes starting with %PDF magic header', () async {
+        const content = '''
+# AIRA-OS Autonomous System Audit
+## Overview
+This audit establishes zero-assumption verification across all subsystems.
+
+> Critical Note: All tests must run with full proof-of-work validation.
+
+### Metrics Table
+| Component | Status | Latency |
+| --- | --- | --- |
+| Trackpad | PASS | 0ms |
+| Fallback LLM | PASS | 120ms |
+| Docx Engine | PASS | 8ms |
+
+- Item A: Pure Dart generation
+- Item B: OpenXML compatibility
+''';
+
+        final bytes = await PdfArtifactGenerator.generatePdf(
+          title: 'Autonomous System Audit',
+          subtitle: 'Generated by AIRA-OS',
+          content: content,
+        );
+
+        expect(bytes, isNotEmpty);
+        expect(bytes.length, greaterThan(100));
+
+        // PDF magic number check: %PDF (0x25, 0x50, 0x44, 0x46)
+        final header = String.fromCharCodes(bytes.sublist(0, 4));
+        expect(header, equals('%PDF'));
+      });
+    });
+
+    // ── 3. DocxArtifactGenerator Tests ──
+    group('DocxArtifactGenerator', () {
+      test('generates valid OpenXML DOCX archive with required parts', () {
+        const content = '''
+# Technical Architecture Document
+## Introduction
+This specification defines the multi-modal interaction bus.
+
+> Note: Offline execution is supported for all local operations.
+
+| Parameter | Value |
+| --- | --- |
+| Baud Rate | 115200 |
+| Protocol | WebSocket |
+
+- Zero runtime cloud conversion dependencies
+- Pure Dart OpenXML packaging
+''';
+
+        final bytes = DocxArtifactGenerator.generateDocx(
+          title: 'Technical Architecture Document',
+          subtitle: 'Version 2.0',
+          content: content,
+        );
+
+        expect(bytes, isNotEmpty);
+        // PK zip header (0x50, 0x4B)
+        expect(bytes[0], equals(0x50));
+        expect(bytes[1], equals(0x4B));
+
+        // Decode the zip and verify required OpenXML file structure
+        final archive = ZipDecoder().decodeBytes(bytes);
+        final fileNames = archive.files.map((f) => f.name).toSet();
+
+        expect(fileNames.contains('[Content_Types].xml'), isTrue);
+        expect(fileNames.contains('_rels/.rels'), isTrue);
+        expect(fileNames.contains('word/document.xml'), isTrue);
+        expect(fileNames.contains('word/styles.xml'), isTrue);
+        expect(fileNames.contains('word/_rels/document.xml.rels'), isTrue);
+
+        // Verify document.xml contents
+        final docFile = archive.findFile('word/document.xml')!;
+        final docXml = utf8.decode(docFile.content as List<int>);
+        expect(docXml, contains('Technical Architecture Document'));
+        expect(docXml, contains('Baud Rate'));
+      });
+    });
+
+    // ── 4. PptxArtifactGenerator Tests ──
+    group('PptxArtifactGenerator', () {
+      test('parses markdown slides correctly into structured SlideItems', () {
+        const presentationMarkdown = '''
+# Introduction to AIRA-OS
+- Autonomous mobile intelligent companion
+- Deep Google Workspace integration
+
+---
+# Core Architecture
+- Fast local parsing
+- Multi-provider fallback LLM
+Notes: Emphasize the 0ms trackpad response.
+''';
+
+        final slides = PptxArtifactGenerator.parseSlidesFromMarkdown(
+          'AIRA-OS Presentation',
+          'Company Pitch',
+          presentationMarkdown,
+        );
+
+        expect(slides.length, greaterThanOrEqualTo(2));
+        expect(slides[0].title, equals('AIRA-OS Presentation'));
+        expect(slides[1].title, equals('Introduction to AIRA-OS'));
+        expect(slides[1].bulletPoints, contains('Autonomous mobile intelligent companion'));
+
+        final lastSlide = slides.last;
+        expect(lastSlide.title, equals('Core Architecture'));
+        expect(lastSlide.speakerNotes, contains('0ms trackpad response'));
+      });
+
+      test('generates valid OpenXML PPTX presentation zip package', () {
+        const presentationMarkdown = '''
+# Slide 1: Welcome
+- First bullet item
+- Second bullet item
+---
+# Slide 2: Next Steps
+- Production verification
+- User testing
+Notes: Keep this slide under 2 minutes.
+''';
+
+        final bytes = PptxArtifactGenerator.generatePptx(
+          title: 'Product Briefing',
+          subtitle: 'Internal Review',
+          rawMarkdown: presentationMarkdown,
+        );
+
+        expect(bytes, isNotEmpty);
+        // PK zip header (0x50, 0x4B)
+        expect(bytes[0], equals(0x50));
+        expect(bytes[1], equals(0x4B));
+
+        // Decode zip and verify PPTX structure
+        final archive = ZipDecoder().decodeBytes(bytes);
+        final fileNames = archive.files.map((f) => f.name).toSet();
+
+        expect(fileNames.contains('[Content_Types].xml'), isTrue);
+        expect(fileNames.contains('_rels/.rels'), isTrue);
+        expect(fileNames.contains('ppt/presentation.xml'), isTrue);
+        expect(fileNames.contains('ppt/_rels/presentation.xml.rels'), isTrue);
+        expect(fileNames.contains('ppt/slides/slide1.xml'), isTrue);
+      });
+    });
+
+    // ── 5. CsvArtifactGenerator Tests ──
+    group('CsvArtifactGenerator', () {
+      test('converts markdown table to RFC 4180 CSV with escaped cells', () {
+        const markdown = '''
+| Employee | Role | Notes |
+| --- | --- | --- |
+| Alice Smith | "Lead, Architect" | On-site |
+| Bob Jones | Backend Developer | Remote |
+''';
+
+        final bytes = CsvArtifactGenerator.generateCsv(markdownTable: markdown);
+        final csvString = utf8.decode(bytes);
+
+        expect(csvString, contains('Employee,Role,Notes'));
+        expect(csvString, contains('Alice Smith'));
+        // Quoted cell with internal comma should be escaped
+        expect(csvString, contains('"""Lead, Architect"""'));
+        expect(csvString, contains('Bob Jones,Backend Developer,Remote'));
+      });
+    });
+
+    // ── 6. ArtifactService Compilation & Export Tests ──
+    group('ArtifactService', () {
+      final service = ArtifactService();
+
+      test('compiles PDF artifact bytes', () async {
+        final artifact = AiraArtifact(
+          id: 'test_pdf_01',
+          title: 'Quarterly Summary',
+          type: ArtifactType.pdf,
+          content: '# Summary\nAll systems nominal.',
+          createdAt: DateTime.now(),
+        );
+
+        final bytes = await service.compileArtifactBytes(artifact);
+        expect(bytes, isNotEmpty);
+        expect(String.fromCharCodes(bytes.sublist(0, 4)), equals('%PDF'));
+      });
+
+      test('compiles DOCX artifact bytes', () async {
+        final artifact = AiraArtifact(
+          id: 'test_docx_01',
+          title: 'Meeting Notes',
+          type: ArtifactType.docx,
+          content: '# Meeting Notes\n- Discussed Q4 goals.',
+          createdAt: DateTime.now(),
+        );
+
+        final bytes = await service.compileArtifactBytes(artifact);
+        expect(bytes, isNotEmpty);
+        expect(bytes[0], equals(0x50));
+        expect(bytes[1], equals(0x4B));
+      });
+
+      test('compiles PPTX artifact bytes', () async {
+        final artifact = AiraArtifact(
+          id: 'test_pptx_01',
+          title: 'Keynote',
+          type: ArtifactType.pptx,
+          content: '# Keynote Slide\n- Innovation at speed.',
+          createdAt: DateTime.now(),
+        );
+
+        final bytes = await service.compileArtifactBytes(artifact);
+        expect(bytes, isNotEmpty);
+        expect(bytes[0], equals(0x50));
+        expect(bytes[1], equals(0x4B));
+      });
+
+      test('exports artifact to Google Drive sandbox', () async {
+        final artifact = AiraArtifact(
+          id: 'test_drive_01',
+          title: 'Cloud Document',
+          type: ArtifactType.markdown,
+          content: '# Cloud Document\nPersisted content.',
+          createdAt: DateTime.now(),
+        );
+
+        final res = await service.exportToGoogleDrive(artifact);
+        expect(res['id'], isNotNull);
+        expect(res['name'], contains('Cloud Document'));
+      });
+
+      test('exports artifact to Google Docs sandbox', () async {
+        final artifact = AiraArtifact(
+          id: 'test_doc_01',
+          title: 'Executive Brief',
+          type: ArtifactType.docx,
+          content: '# Executive Brief\nContents here.',
+          createdAt: DateTime.now(),
+        );
+
+        final res = await service.exportToGoogleDoc(artifact);
+        expect(res['id'], isNotNull);
+        expect(res['title'], equals('Executive Brief'));
+      });
+
+      test('exports artifact to Google Sheets sandbox', () async {
+        final artifact = AiraArtifact(
+          id: 'test_sheet_01',
+          title: 'Inventory Sheet',
+          type: ArtifactType.sheet,
+          content: '| Item | Quantity |\n| --- | --- |\n| Laptops | 42 |\n| Monitors | 88 |',
+          createdAt: DateTime.now(),
+        );
+
+        final res = await service.exportToGoogleSheet(artifact);
+        expect(res['id'], isNotNull);
+        expect(res['title'], equals('Inventory Sheet'));
+      });
+    });
+
+    // ── 7. PersonalityEngine Artifact Directive Injection Test ──
+    group('PersonalityEngine Artifact Prompt Calibration', () {
+      test('buildSystemPrompt injects ARTIFACTS & DOCUMENTS DIRECTIVE', () {
+        final engine = PersonalityEngine();
+        final prompt = engine.buildSystemPrompt(
+          userProfile: {'name': 'Arshad', 'occupation': 'Software Engineer'},
+          memoryFacts: ['User prefers Dark Mode'],
+          localTime: '10:00 PM',
+        );
+
+        expect(prompt, contains('ARTIFACTS & DOCUMENTS DIRECTIVE:'));
+        expect(prompt, contains('<aira_artifact type="..." title="...">'));
+        expect(prompt, contains('"pdf"'));
+        expect(prompt, contains('"docx"'));
+        expect(prompt, contains('"pptx"'));
+        expect(prompt, contains('"sheet"'));
+      });
+    });
+  });
+}

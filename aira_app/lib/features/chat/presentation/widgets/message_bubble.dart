@@ -16,6 +16,8 @@ import 'package:aira_app/features/chat/presentation/widgets/workspace_email_dige
 import 'package:aira_app/features/chat/presentation/widgets/notification_digest_card.dart';
 import 'package:aira_app/features/chat/presentation/widgets/android_action_card.dart';
 import 'package:aira_app/core/agent/action_guardrail_manager.dart';
+import 'package:aira_app/core/artifacts/artifact_model.dart';
+import 'package:aira_app/core/artifacts/artifact_parser.dart';
 
 /// Pure Claude-Style Message Bubble with Live Artifacts:
 /// - User messages: Right-aligned compact bubble with warm surface tone and soft border.
@@ -32,24 +34,8 @@ class MessageBubble extends ConsumerStatefulWidget {
 
 class _MessageBubbleState extends ConsumerState<MessageBubble> {
 
-  List<_ArtifactSnippet> _extractArtifacts(String text) {
-    final artifacts = <_ArtifactSnippet>[];
-    final codeBlockRegex = RegExp(r'```([a-zA-Z0-9_-]*)\n([\s\S]*?)```');
-    final matches = codeBlockRegex.allMatches(text);
-
-    for (final m in matches) {
-      final lang = m.group(1)?.trim();
-      final code = m.group(2)?.trim() ?? '';
-      if (code.length > 40) {
-        final displayLang = (lang != null && lang.isNotEmpty) ? lang : 'code';
-        artifacts.add(_ArtifactSnippet(
-          language: displayLang,
-          content: code,
-          title: '$displayLang snippet (${code.split('\n').length} lines)',
-        ));
-      }
-    }
-    return artifacts;
+  List<AiraArtifact> _extractArtifacts(String text) {
+    return ArtifactParser.extractArtifacts(text);
   }
 
   @override
@@ -442,30 +428,66 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
     );
   }
 
-  Widget _buildArtifactCard(_ArtifactSnippet artifact, bool isDark) {
+  Widget _buildArtifactCard(AiraArtifact artifact, bool isDark) {
+    IconData icon;
+    Color accentColor;
+
+    switch (artifact.type) {
+      case ArtifactType.pdf:
+        icon = Icons.picture_as_pdf_rounded;
+        accentColor = const Color(0xFFD9381E);
+        break;
+      case ArtifactType.docx:
+        icon = Icons.article_rounded;
+        accentColor = const Color(0xFF1E88E5);
+        break;
+      case ArtifactType.pptx:
+        icon = Icons.slideshow_rounded;
+        accentColor = const Color(0xFFFB8C00);
+        break;
+      case ArtifactType.sheet:
+      case ArtifactType.csv:
+        icon = Icons.table_chart_rounded;
+        accentColor = const Color(0xFF2E7D32);
+        break;
+      case ArtifactType.html:
+      case ArtifactType.svg:
+        icon = Icons.web_rounded;
+        accentColor = const Color(0xFF8E24AA);
+        break;
+      case ArtifactType.markdown:
+        icon = Icons.format_align_left_rounded;
+        accentColor = AiraColors.claudeTerracotta;
+        break;
+      case ArtifactType.code:
+        icon = Icons.code_rounded;
+        accentColor = AiraColors.claudeTerracotta;
+        break;
+    }
+
     return Container(
       margin: const EdgeInsets.only(top: 8),
       decoration: BoxDecoration(
         color: isDark ? AiraColors.cardDark : AiraColors.cardLight,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AiraColors.claudeTerracotta.withValues(alpha: 0.35),
+          color: accentColor.withValues(alpha: 0.35),
           width: 1,
         ),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         leading: Container(
-          width: 36,
-          height: 36,
+          width: 38,
+          height: 38,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: AiraColors.claudeTerracotta.withValues(alpha: 0.12),
+            color: accentColor.withValues(alpha: 0.12),
           ),
-          child: const Icon(
-            Icons.code_rounded,
-            color: AiraColors.claudeTerracotta,
-            size: 18,
+          child: Icon(
+            icon,
+            color: accentColor,
+            size: 20,
           ),
         ),
         title: Text(
@@ -475,17 +497,37 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        subtitle: Text(
-          'Tap to open in Live Canvas',
-          style: GoogleFonts.sourceSerif4(
-            fontSize: 11.5,
-            color: AiraColors.claudeTerracotta,
-          ),
+        subtitle: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                artifact.type.displayName.toUpperCase(),
+                style: GoogleFonts.firaCode(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  color: accentColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Tap to preview & export',
+              style: GoogleFonts.sourceSerif4(
+                fontSize: 11,
+                color: isDark ? AiraColors.textMuted : AiraColors.textMutedLight,
+              ),
+            ),
+          ],
         ),
-        trailing: const Icon(
+        trailing: Icon(
           Icons.open_in_new_rounded,
           size: 18,
-          color: AiraColors.claudeTerracotta,
+          color: accentColor,
         ),
         onTap: () {
           HapticFeedback.mediumImpact();
@@ -496,6 +538,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
                 title: artifact.title,
                 content: artifact.content,
                 language: artifact.language,
+                artifact: artifact,
               ),
             ),
           );
@@ -503,16 +546,4 @@ class _MessageBubbleState extends ConsumerState<MessageBubble> {
       ),
     );
   }
-}
-
-class _ArtifactSnippet {
-  final String title;
-  final String language;
-  final String content;
-
-  const _ArtifactSnippet({
-    required this.title,
-    required this.language,
-    required this.content,
-  });
 }

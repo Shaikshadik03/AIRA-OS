@@ -240,13 +240,14 @@ flutter run --debug
 
 AIRA-OS includes an exhaustive automated verification suite validating both the mobile application (`aira_app`) and the desktop companion (`aira_desktop`):
 
-### 1. 📱 Mobile Test Suite (`aira_app` — 156 Tests)
+### 1. 📱 Mobile Test Suite (`aira_app` — 172 Tests)
 Run the complete mobile test suite:
 ```bash
 cd aira_app
 flutter test --no-pub
 ```
 
+- **Claude-Style GenAI Artifacts Engine**: 16/16 passed (XML `<aira_artifact>` & typed fence parser, pure Dart PDF, Word OpenXML DOCX, PowerPoint OpenXML PPTX, and CSV generators, 16:9 slide carousel, Google Workspace export).
 - **Google Workspace Milestone 1**: 7/7 passed (dual-mode live OAuth2 & offline sandbox for Gmail, Calendar, Docs, Drive, Sheets, and People API).
 - **Supabase Chat Persistence**: 3/3 passed (Hive offline-first hybrid message caching, cold restart recovery, zero message loss).
 - **Agentic Multi-Modal & Intent Audit**: 13/13 passed (AIRA Vision, Meeting Summarizer, Proactive Reminders, Routines, Approval Cards, Context Preservation).

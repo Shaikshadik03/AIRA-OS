@@ -1,8 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:aira_app/core/services/supabase_chat_service.dart';
 import 'package:aira_app/core/services/chat_cache_service.dart';
-import 'package:aira_app/features/chat/domain/chat_models.dart';
 import 'dart:io';
 
 void main() {

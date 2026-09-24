@@ -52,6 +52,8 @@ dependencies:
   speech_to_text: ^7.4.0
   flutter_tts: ^4.2.5
   google_sign_in: 6.2.1
+  pdf: ^3.13.1
+  archive: ^4.3.0
 
 dev_dependencies:
   flutter_test:
